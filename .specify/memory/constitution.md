@@ -1,50 +1,44 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# ansible-k3s-cluster Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Minimal, Focused Playbooks
+The Ansible playbooks must do the bare minimum required to provision and operate a functional k3s cluster: prepare hosts, install k3s, join nodes, and apply essential configuration. Non-essential application deployment, monitoring, or extras belong in separate playbooks or roles and must not be mixed into the core cluster provisioning flow.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Idempotent Cluster Provisioning
+All tasks must be idempotent and safe to re-run. Playbooks must converge the cluster into the desired state without requiring manual cleanup, must use Ansible modules instead of raw shell where feasible, and must avoid destructive operations (e.g., node wipe, data loss) unless explicitly guarded by clear variables and confirmations.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. k3s-Specific Constraints (NON-NEGOTIABLE)
+Playbooks must target k3s, not generic Kubernetes. k3s version must be explicitly pinned and configurable, system requirements for k3s (cgroups, kernel modules, ports, container runtime) must be enforced or validated, and server/agent node roles must be clearly defined. Changes must never assume full kubeadm semantics, must respect k3s-specific flags and datastore options, and must not silently perform in-place major k3s upgrades.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Clear Inventory and Node Roles
+The inventory must clearly distinguish control-plane (server) and worker (agent) nodes, including any special-purpose nodes (e.g., etcd, ingress, storage) via groups or host variables. Playbooks must derive behavior strictly from inventory and variables, not from hard-coded hostnames or IPs, and must work for at least a single-node and a small multi-node cluster.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Security, Networking, and Upgrades
+Default configuration must be secure by default: minimal open ports, TLS enabled by k3s, and no default credentials committed to the repository. Networking assumptions (CNI, service CIDR, cluster CIDR, required ports) must be explicit and configurable. Upgrades to k3s or critical dependencies must be controlled via variables and documented procedures, with safe rollback or re-run behavior.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Ansible & k3s Requirements
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+- Playbooks must be organized with a clear entry point (e.g., site.yml or cluster.yml), roles for host preparation and k3s installation, and group/host variables for cluster configuration.
+- Supported environments (e.g., Debian/Ubuntu-like, systemd-based Linux on x86_64/arm64) must be explicitly documented, and tasks must fail fast with clear messages on unsupported platforms.
+- k3s installation must:
+	- Pin k3s version via a variable and avoid "latest" by default.
+	- Explicitly configure server and agent services, including token and server URL.
+	- Ensure required ports for k3s control-plane and CNI are open and not conflicting.
+- Cluster configuration must expose variables for at least: cluster name, k3s version, node labels/taints (where applicable), CNI settings, and datastore backend (embedded SQLite vs external datastore) when supported.
+- Playbooks must never store secrets in the repository; secret values must be provided via Ansible Vault, environment-specific vars, or external secret management.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Development Workflow & Quality Gates
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- All changes to core cluster playbooks and roles must maintain idempotence and be validated at least with `--check` mode or a local test inventory.
+- Any change that affects k3s version, datastore, or networking must include a short, documented upgrade path in the repository (e.g., in docs or changelog).
+- Linting (e.g., ansible-lint) and basic syntax checks must pass before merging changes to the main branch.
+- Example inventories and variable files must remain runnable and minimal, demonstrating a small single-node and basic multi-node cluster setup.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- This constitution governs the design and evolution of all Ansible playbooks and roles in this repository that manage k3s clusters and takes precedence over ad-hoc practices.
+- Non-negotiable k3s constraints (version pinning, role separation, security defaults, and explicit networking assumptions) must be reviewed in every change touching cluster provisioning.
+- Any amendment to these principles or requirements must be documented in version control with rationale, and must include notes on impact to existing clusters.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-02-16 | **Last Amended**: 2026-02-16
