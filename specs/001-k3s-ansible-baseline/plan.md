@@ -21,6 +21,10 @@ Implement a set of Ansible playbooks and roles that manage the complete lifecycl
 **Constraints**: Idempotent runs; safe minor/patch k3s upgrades only; k3s-specific behavior (no kubeadm assumptions); no explicit hard limit on maximum cluster size in this feature
 **Scale/Scope**: Reference examples will target 1–3 control-plane nodes and a handful of workers (for example, up to ~10), while keeping the design structurally capable of larger clusters without guaranteeing behavior at very large scale
 
+**Non-Goals**:
+- Full disaster-recovery orchestration (for example, complete etcd loss or rebuild-from-backup flows) is out of scope for this feature; the playbooks focus on healthy-to-healthy lifecycle and partial-failure recovery via safe re-runs.
+- Large-scale cluster operations (dozens/hundreds of nodes) and advanced autoscaling scenarios are not targeted; they may require additional tooling and tuning beyond this baseline.
+
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*

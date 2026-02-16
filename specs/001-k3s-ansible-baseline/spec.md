@@ -13,6 +13,11 @@
 - Q: For this baseline feature, how far should the playbook go in handling k3s version upgrades? → A: Support minor/patch upgrades via a k3s version variable and re-running the playbook; major upgrades are out of scope.
 - Q: For DNS-01 challenges, should the baseline feature target a specific DNS provider or treat the provider as pluggable? → A: Make the DNS provider pluggable via variables (provider type and credentials), with the baseline spec treating provider choice as configuration.
 
+### Platform & Scope Clarifications (2026-02-16)
+
+- Q: What platforms and architectures are in scope for the baseline feature? → A: The baseline targets systemd-based Debian/Ubuntu-family Linux on x86_64 and arm64, reachable via SSH, as the explicitly supported environments; other Linux distributions may work but are considered best-effort and are not required to pass success criteria.
+- Q: What cluster size and failure modes is this feature designed for? → A: The baseline is designed and tested for small-to-medium clusters (for example, 1–3 control-plane nodes and up to roughly 10 workers) and for partial-failure scenarios (such as a node failing mid-run or an add-on failing to deploy). Full disaster recovery, including complete etcd loss or multi-node simultaneous failure scenarios, is explicitly out of scope for this feature and may require separate procedures.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Provision new HA k3s cluster (Priority: P1)

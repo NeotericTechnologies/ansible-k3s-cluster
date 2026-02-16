@@ -35,7 +35,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T007 Define example single-node inventory in ansible/inventories/examples/single-node with k3s_servers only
 - [ ] T008 Create base group_vars files for cluster-wide settings in ansible/group_vars/all.yml
 - [ ] T009 [P] Create base group_vars for k3s_servers and k3s_agents in ansible/group_vars/k3s_servers.yml and ansible/group_vars/k3s_agents.yml
-- [ ] T010 [P] Add README for Ansible layout and prerequisites in docs/ansible-structure.md
+ - [ ] T010 [P] Add README for Ansible layout, supported platforms, and host prerequisites in docs/ansible-structure.md
 - [ ] T011 Add minimal ansible-lint configuration in .ansible-lint.yml at repo root
 - [ ] T012 Add basic smoke playbook and inventory for tests in tests/ansible/smoke/smoke.yml and tests/ansible/inventories/local
 - [ ] T056 [P] Implement host prerequisite checks (supported OS, CPU/memory, required packages, ports, and network connectivity) in ansible/roles/k3s-common/ so playbooks fail fast with clear messages when requirements are not met
@@ -127,7 +127,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Purpose**: Cross-story improvements, documentation, and hardening.
 
-- [ ] T050 [P] Add detailed README for the Ansible project in docs/ansible-k3s-baseline.md
+ - [ ] T050 [P] Add detailed README for the Ansible project in docs/ansible-k3s-baseline.md, including supported environments, scale assumptions, and explicit non-goals (e.g., full DR orchestration)
 - [ ] T051 [P] Refine example inventories and vars to match real-world defaults in ansible/inventories/examples/ and ansible/group_vars/
 - [ ] T052 Code cleanup and role refactoring across ansible/roles/* for consistency and reuse
 - [ ] T053 [P] Add additional smoke validations (e.g., basic kubectl checks) in tests/ansible/smoke/smoke.yml
