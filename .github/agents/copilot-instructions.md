@@ -1,0 +1,29 @@
+# ansible-k3s-cluster Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2026-02-16
+
+## Active Technologies
+
+- Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+ + Ansible, k3s, k3s-io/k3s-ansible collection, cert-manager, multus CNI, Rancher and rancher-monitoring stack, Traefik ingress, kube-vip (or equivalent LB/VIP mechanism), optional Synology CSI driver (001-k3s-ansible-baseline)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+# Add commands for Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+
+
+## Code Style
+
+Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+: Follow standard conventions
+
+## Recent Changes
+
+- 001-k3s-ansible-baseline: Added Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+ + Ansible, k3s, k3s-io/k3s-ansible collection, cert-manager, multus CNI, Rancher and rancher-monitoring stack, Traefik ingress, kube-vip (or equivalent LB/VIP mechanism), optional Synology CSI driver
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->
