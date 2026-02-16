@@ -6,6 +6,8 @@ cert-manager should be installed on the cluster and issuers for both Let's Encry
 
 multus should be installed on the cluster and configured to allow pods to be connected to various available VLANs on the network.
 
+The synology-csi will be used to define storage classes and manage persistant volumes on the cluster.
+
 Rancher will be used as the management console for the cluster.
 
 rancher-monitoring should be configured.
