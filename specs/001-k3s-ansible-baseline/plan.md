@@ -12,7 +12,7 @@ Implement a set of Ansible playbooks and roles that manage the complete lifecycl
 ## Technical Context
 
 **Language/Version**: Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+
-**Primary Dependencies**: Ansible, k3s, k3s-io/k3s-ansible collection, cert-manager, multus CNI, Rancher and rancher-monitoring stack, Traefik ingress, kube-vip (or equivalent LB/VIP mechanism), optional Synology CSI driver
+**Primary Dependencies**: Ansible, k3s, k3s-io/k3s-ansible collection, cert-manager, multus CNI, Rancher and rancher-monitoring stack, Traefik ingress, kube-vip (or equivalent LB/VIP mechanism) for control-plane VIP and service load balancing, optional Synology CSI driver
 **Storage**: Embedded etcd for k3s control-plane state; optional Synology CSI-backed persistent volumes for workloads
 **Testing**: ansible-lint and `ansible-playbook --check` as the mandatory baseline; Molecule-based role tests are potential follow-up work, not required for this feature
 **Target Platform**: Linux servers (e.g., Debian/Ubuntu family, systemd-based, x86_64/arm64) reachable via SSH, as per constitution
@@ -60,6 +60,7 @@ ansible/
 │   ├── k3s-common/
 │   ├── k3s-server/
 │   ├── k3s-agent/
+│   ├── kube-vip/           # control-plane VIP and service LB
 │   ├── cert-manager/
 │   ├── multus/
 │   ├── rancher/
@@ -78,7 +79,7 @@ tests/
     └── smoke/             # simple smoke tests and check-mode runs
 ```
 
-**Structure Decision**: Use a single Ansible-focused project rooted under `ansible/` with standard inventories, group/host vars, and roles dedicated to each platform component (k3s core, cert-manager, multus, Rancher stack, Traefik, Synology CSI). Playbooks under `ansible/playbooks/` map directly to the primary user workflows (provision/update cluster, scale nodes, perform minor/patch upgrades). A lightweight `tests/ansible/` tree will host inventories and smoke tests rather than a separate service/application codebase.
+**Structure Decision**: Use a single Ansible-focused project rooted under `ansible/` with standard inventories, group/host vars, and roles dedicated to each platform component (k3s core, kube-vip for VIP/LB, cert-manager, multus, Rancher stack, Traefik, Synology CSI). Playbooks under `ansible/playbooks/` map directly to the primary user workflows (provision/update the core cluster, apply optional add-ons, scale nodes, perform minor/patch upgrades). A lightweight `tests/ansible/` tree will host inventories and smoke tests rather than a separate service/application codebase.
 
 ## Complexity Tracking
 

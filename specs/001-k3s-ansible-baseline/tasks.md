@@ -38,6 +38,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T010 [P] Add README for Ansible layout and prerequisites in docs/ansible-structure.md
 - [ ] T011 Add minimal ansible-lint configuration in .ansible-lint.yml at repo root
 - [ ] T012 Add basic smoke playbook and inventory for tests in tests/ansible/smoke/smoke.yml and tests/ansible/inventories/local
+- [ ] T056 [P] Implement host prerequisite checks (supported OS, CPU/memory, required packages, ports, and network connectivity) in ansible/roles/k3s-common/ so playbooks fail fast with clear messages when requirements are not met
 
 **Checkpoint**: Foundation ready – inventories, vars layout, and validation tooling exist.
 
@@ -47,7 +48,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Goal**: The core cluster playbook (cluster-core.yml) provisions a new HA k3s cluster with embedded etcd and a VIP-exposed control plane, while a separate add-ons playbook (cluster-addons.yml) applies selected platform add-ons (Traefik, cert-manager with DNS-01 issuers, multus, Rancher, rancher-monitoring, optional Synology CSI). Quickstart documentation demonstrates running only the core playbook for a minimal cluster and running both playbooks for the full baseline experience.
 
-**Independent Test**: Run cluster-core.yml against the example HA inventory and verify core cluster creation and accessibility; when validating platform add-ons, additionally run cluster-addons.yml with add-ons enabled and verify add-on health and idempotent re-runs.
+**Independent Test**: Run cluster-core.yml against the example HA inventory and verify core cluster creation and accessibility (including control-plane VIP via kube-vip or equivalent); when validating platform add-ons, additionally run cluster-addons.yml with add-ons enabled and verify add-on health and idempotent re-runs.
 
 ### Implementation for User Story 1
 
@@ -70,7 +71,10 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T029 [P] [US1] Scaffold optional Synology CSI role directory in ansible/roles/synology-csi/
 - [ ] T030 [P] [US1] Implement Synology CSI deployment and StorageClass configuration tasks in ansible/roles/synology-csi/tasks/main.yml
 - [ ] T031 [US1] Implement cluster-addons.yml playbook to orchestrate add-on roles (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) in ansible/playbooks/cluster-addons.yml
-- [ ] T032 [US1] Add validation tasks in cluster-core.yml and cluster-addons.yml to check node readiness, cluster state, add-on health, and VIP accessibility
+- [ ] T032 [US1] Add validation tasks in cluster-core.yml and cluster-addons.yml to check node readiness, cluster state, add-on health, and VIP accessibility (control-plane and service load balancers)
+- [ ] T057 [P] [US1] Scaffold kube-vip role directory in ansible/roles/kube-vip/ for control-plane VIP and service load balancer configuration
+- [ ] T058 [P] [US1] Implement kube-vip deployment and configuration tasks (control-plane VIP, service LB address pool) in ansible/roles/kube-vip/tasks/main.yml driven by variables
+- [ ] T059 [US1] Wire kube-vip role into cluster-core.yml (for control-plane VIP) and, where appropriate, cluster-addons.yml or Traefik configuration (for service load balancer behavior)
 - [ ] T033 [US1] Document example HA and single-node flows in specs/001-k3s-ansible-baseline/quickstart.md (update with final role and playbook names)
 
 **Checkpoint**: User Story 1 can be validated independently using example inventories and quickstart instructions.
@@ -81,7 +85,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Goal**: Re-running cluster-core.yml and/or cluster-addons.yml with updated variables applies configuration changes to core cluster settings and to add-ons (cert-manager, multus, Rancher, monitoring, Traefik, optional Synology CSI) without recreating the cluster.
 
-**Independent Test**: Change selected variables (e.g., DNS-01 provider settings, Rancher hostname, multus VLANs) and run cluster-core.yml and/or cluster-addons.yml, as appropriate, to verify in-place updates only.
+**Independent Test**: Change selected variables (e.g., DNS-01 provider settings, Rancher hostname, multus VLANs, kube-vip VIP or address pool) and run cluster-core.yml and/or cluster-addons.yml, as appropriate, to verify in-place updates only.
 
 ### Implementation for User Story 2
 
@@ -132,6 +136,16 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ---
 
+## Phase 7: Minor/Patch Upgrade Flow
+
+**Purpose**: Implement and validate the dedicated minor/patch k3s upgrade playbook.
+
+- [ ] T060 [P] Implement upgrade-k3s.yml playbook in ansible/playbooks/upgrade-k3s.yml to perform rolling minor/patch upgrades based on a k3s_version variable, ensuring only compatible version changes are attempted
+- [ ] T061 [P] Add upgrade tasks to verify node readiness and confirm that all servers and agents report the desired k3s_version after upgrade in ansible/playbooks/upgrade-k3s.yml
+- [ ] T062 [P] Add an upgrade-focused smoke scenario in tests/ansible/smoke/smoke.yml that runs upgrade-k3s.yml against an example inventory and asserts successful completion without prolonged control-plane downtime
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -169,18 +183,18 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 ### MVP First (User Story 1 Only)
 
 1. Complete Phase 1 (Setup) and Phase 2 (Foundational).
-2. Implement Phase 3 (US1) tasks T013–T033 to achieve a working HA k3s cluster using cluster-core.yml for the core cluster and cluster-addons.yml for optional baseline add-ons.
+2. Implement Phase 3 (US1) tasks T013–T033 and T057–T059 to achieve a working HA k3s cluster using cluster-core.yml for the core cluster, kube-vip for VIP/LB behavior, and cluster-addons.yml for optional baseline add-ons.
 3. Validate using example inventories and quickstart instructions.
 
 ### Incremental Delivery
 
 1. Deliver US1 as the initial MVP.
-2. Add US2 to support configuration updates via re-running cluster-core.yml and cluster-addons.yml.
+2. Add US2 to support configuration updates via re-running cluster-core.yml and cluster-addons.yml, including kube-vip VIP/LB and add-on configuration.
 3. Add US3 to support inventory-driven scaling of control-plane and worker nodes.
 4. Apply Phase 6 polish tasks for documentation, refactoring, and security review.
 
 ### Team Parallelization
 
-- One contributor can focus on k3s core roles and cluster-core.yml (T013–T017, T031–T032).
+- One contributor can focus on k3s core roles and cluster-core.yml (T013–T017, T031–T032, T059).
 - Others can implement add-on roles (T018–T030) in parallel.
 - Subsequent contributors can focus on update behavior (US2) and scaling logic (US3) while the core path stabilizes.

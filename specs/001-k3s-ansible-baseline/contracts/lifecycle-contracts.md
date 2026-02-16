@@ -4,28 +4,30 @@ This document maps user actions to Ansible playbook entrypoints and describes th
 
 ## Contract C-001: Provision New HA k3s Cluster
 
-- **User Action**: "Provision a new HA k3s cluster with required add-ons."
-- **Playbook**: `ansible/playbooks/cluster.yml`
+- **User Action**: "Provision a new HA k3s cluster with optional platform add-ons."
+- **Playbooks**: `ansible/playbooks/cluster-core.yml` (core) and, optionally, `ansible/playbooks/cluster-addons.yml` (add-ons)
 - **Invocation (example)**:
-  - `ansible-playbook -i ansible/inventories/examples/ha-cluster ansible/playbooks/cluster.yml`
+  - Core only: `ansible-playbook -i ansible/inventories/examples/ha-cluster ansible/playbooks/cluster-core.yml`
+  - Core + add-ons: `ansible-playbook -i ansible/inventories/examples/ha-cluster ansible/playbooks/cluster-core.yml && ansible-playbook -i ansible/inventories/examples/ha-cluster ansible/playbooks/cluster-addons.yml`
 - **Required Inputs**:
   - Inventory with `k3s_servers` and `k3s_agents` groups populated.
-  - Group/host vars defining `ClusterConfig`, `NetworkConfig`, and `AddonConfig` (including cert-manager, multus, Rancher, rancher-monitoring, Traefik, and optional Synology CSI).
+  - Group/host vars defining `ClusterConfig`, `NetworkConfig`, and (optionally) `AddonConfig` (including cert-manager, multus, Rancher, rancher-monitoring, Traefik, and Synology CSI).
 - **Expected Outcomes**:
   - New k3s cluster created with embedded etcd HA.
-  - Control-plane reachable via configured VIP/DNS.
-  - Add-ons deployed and healthy.
-  - Playbook can be safely re-run without recreating the cluster.
+  - Control-plane reachable via configured VIP/DNS via kube-vip or equivalent.
+  - When the add-ons playbook is executed with add-ons enabled, required add-ons are deployed and healthy.
+  - Playbooks can be safely re-run without recreating the cluster.
 
 ## Contract C-002: Update Existing Cluster Configuration
 
-- **User Action**: "Apply configuration changes to an existing k3s cluster."
-- **Playbook**: `ansible/playbooks/cluster.yml`
+- **User Action**: "Apply configuration changes to an existing k3s cluster and its add-ons."
+- **Playbooks**: `ansible/playbooks/cluster-core.yml` and `ansible/playbooks/cluster-addons.yml`
 - **Invocation (example)**:
-  - `ansible-playbook -i <existing-inventory> ansible/playbooks/cluster.yml`
+  - Core only: `ansible-playbook -i <existing-inventory> ansible/playbooks/cluster-core.yml`
+  - Core + add-ons: `ansible-playbook -i <existing-inventory> ansible/playbooks/cluster-core.yml && ansible-playbook -i <existing-inventory> ansible/playbooks/cluster-addons.yml`
 - **Required Inputs**:
   - Existing inventory and vars representing current desired state.
-  - Updated vars for cert-manager, Rancher, Traefik, multus, monitoring, or Synology CSI.
+  - Updated vars for core cluster settings (including kube-vip VIP/service LB configuration) and for cert-manager, Rancher, Traefik, multus, monitoring, or Synology CSI.
 - **Expected Outcomes**:
   - Only changed resources are updated; cluster and workloads remain available.
   - No recreation of the cluster or unnecessary node reboots.
@@ -59,12 +61,12 @@ This document maps user actions to Ansible playbook entrypoints and describes th
 ## Contract C-005: Optional Synology CSI Enablement
 
 - **User Action**: "Enable Synology CSI-backed persistent storage."
-- **Playbook**: `ansible/playbooks/cluster.yml` (same entrypoint; behavior gated by vars)
+- **Playbook**: `ansible/playbooks/cluster-addons.yml` (behavior gated by vars)
 - **Invocation (example)**:
-  - `ansible-playbook -i <inventory> -e synology_csi_enabled=true ansible/playbooks/cluster.yml`
+  - `ansible-playbook -i <inventory> -e synology_csi_enabled=true ansible/playbooks/cluster-addons.yml`
 - **Required Inputs**:
   - Synology-specific variables (endpoint, credentials, desired StorageClasses).
 - **Expected Outcomes**:
   - Synology CSI driver deployed and configured.
   - Expected StorageClasses created and ready for stateful workloads.
-  - Clusters without Synology variables remain unchanged and compliant.
+  - Clusters without Synology variables remain unchanged and compliant when only the core cluster playbook is run.

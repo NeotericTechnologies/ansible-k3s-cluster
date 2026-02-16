@@ -7,6 +7,7 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
 - Control node with Ansible Core 2.15+ installed.
 - SSH access from the control node to all target hosts.
 - Target hosts running a supported Linux distribution (e.g., Debian/Ubuntu), systemd-based, x86_64 or arm64.
+- Target hosts meeting documented resource and network prerequisites (for example: sufficient CPU/RAM for k3s and add-ons, required kernel modules, required ports open between nodes, and outbound internet/DNS access as described in the Ansible layout/prerequisites docs).
 - Basic DNS in place for the control-plane VIP/hostname and any ingress hostnames (e.g., Rancher).
 
 ## 2. Clone the Repository
@@ -21,22 +22,26 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
   - Cluster name and k3s version.
   - Control-plane VIP and API port.
   - Cluster and service CIDRs.
+  - kube-vip (or equivalent) configuration for the control-plane VIP and service load balancer addresses.
   - Add-on configurations (cert-manager, multus VLANs, Rancher, rancher-monitoring, Traefik, optional Synology CSI, DNS provider).
 
 ## 4. Provision a New HA Cluster
 
-- Run the cluster playbook:
-  - `ansible-playbook -i <your-inventory> ansible/playbooks/cluster.yml`
+- Run the core cluster playbook:
+  - `ansible-playbook -i <your-inventory> ansible/playbooks/cluster-core.yml`
+- (Optional) Run the add-ons playbook to deploy platform add-ons:
+  - `ansible-playbook -i <your-inventory> ansible/playbooks/cluster-addons.yml`
 - Verify:
   - `kubectl get nodes` shows all control-plane and worker nodes.
-  - Control-plane is reachable via the VIP endpoint.
-  - Core add-ons (cert-manager, multus, Rancher, monitoring, Traefik) are deployed and healthy.
+  - Control-plane is reachable via the VIP endpoint configured via kube-vip (or equivalent).
+  - If you ran the add-ons playbook, core add-ons (cert-manager, multus, Rancher, monitoring, Traefik) are deployed and healthy.
 
 ## 5. Update Cluster Configuration
 
-- Modify your group/host variable files to reflect the new desired configuration (for example, DNS-01 provider settings, Rancher hostname, Traefik options).
-- Re-run the same cluster playbook:
-  - `ansible-playbook -i <your-inventory> ansible/playbooks/cluster.yml`
+- Modify your group/host variable files to reflect the new desired configuration (for example, DNS-01 provider settings, Rancher hostname, Traefik options, kube-vip VIP or address pool).
+- Re-run the core cluster playbook and, if needed, the add-ons playbook:
+  - Core: `ansible-playbook -i <your-inventory> ansible/playbooks/cluster-core.yml`
+  - Add-ons: `ansible-playbook -i <your-inventory> ansible/playbooks/cluster-addons.yml`
 
 ## 6. Scale Nodes
 
@@ -46,15 +51,17 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
 
 ## 7. Perform a Minor/Patch k3s Upgrade
 
-- Update the `k3s_version` variable to the desired compatible minor/patch.
+- Update the `k3s_version` variable to the desired compatible minor/patch (major upgrades are out of scope for this baseline feature).
 - Run the upgrade playbook:
   - `ansible-playbook -i <your-inventory> -e k3s_version=<new-version> ansible/playbooks/upgrade-k3s.yml`
+- Verify that control-plane nodes and agents report the new version and that the cluster remains available aside from expected rolling restarts.
 
 ## 8. Enable Optional Synology CSI
 
 - Define Synology CSI variables (endpoint, credentials, storage classes).
 - Set `synology_csi_enabled: true` in the appropriate variable file.
-- Re-run the cluster playbook to deploy and configure Synology CSI.
+- Run the add-ons playbook to deploy and configure Synology CSI:
+  - `ansible-playbook -i <your-inventory> ansible/playbooks/cluster-addons.yml`
 
 ## 9. Validation and Smoke Tests
 
