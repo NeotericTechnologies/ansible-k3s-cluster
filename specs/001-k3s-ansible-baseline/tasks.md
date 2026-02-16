@@ -99,7 +99,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T041 [US2] Add variable-driven guards in cluster-addons.yml to ensure add-on roles run conditionally based on enabled components in ansible/playbooks/cluster-addons.yml
 - [ ] T042 [US2] Add idempotence-focused smoke scenario in tests/ansible/smoke/smoke.yml to run cluster-core.yml and cluster-addons.yml twice and verify clean convergence
 
-**Checkpoint**: User Story 2 validated by modifying vars and re-running cluster.yml without disruptive changes.
+**Checkpoint**: User Story 2 validated by modifying vars and re-running cluster-core.yml and, where needed, cluster-addons.yml without disruptive changes.
 
 ---
 
