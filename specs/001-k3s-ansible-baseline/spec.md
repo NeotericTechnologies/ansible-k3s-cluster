@@ -3,7 +3,7 @@
 **Feature Branch**: `001-k3s-ansible-baseline`
 **Created**: 2026-02-16
 **Status**: Draft
-**Input**: User description: "Baseline requirements for an Ansible playbook that manages the complete lifecycle of a k3s cluster, including deployment, configuration updates, node management, HA etcd, cert-manager with DNS challenges, multus VLAN networking, Rancher, rancher-monitoring, Traefik, use of k3s-ansible where possible, and load-balanced/VIP access via kube-vip."
+**Input**: User description: "Baseline requirements for an Ansible playbook that manages the complete lifecycle of a k3s cluster, including deployment, configuration updates, node management, HA etcd, cert-manager with DNS challenges, multus VLAN networking, Synology CSI-backed persistent storage, Rancher, rancher-monitoring, Traefik, use of k3s-ansible where possible, and load-balanced/VIP access via kube-vip."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -75,6 +75,7 @@ An operator wants to scale the cluster by adding or removing control-plane and w
 - **FR-012**: Services and applications on the cluster MUST be accessible through a service load-balancer mechanism (for example, via kube-vip or an equivalent) so that they can be uniquely addressable, and the playbook MUST provide configuration patterns and variables to enable this behavior.
 - **FR-013**: The playbook MUST validate or enforce documented prerequisites on target hosts (such as supported OS, required packages, network connectivity, and firewall rules) and fail with clear messages when requirements are not met.
 - **FR-014**: The playbook MUST provide clearly documented variables and example inventories for common scenarios, including at minimum a single-node cluster and a small HA cluster with multiple control-plane and worker nodes.
+- **FR-015**: The playbook MUST deploy and configure synology-csi (or an equivalent Synology CSI integration) to define storage classes and manage persistent volumes on the cluster, using variables to describe storage endpoints, credentials, and storage policies.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -82,6 +83,7 @@ An operator wants to scale the cluster by adding or removing control-plane and w
 - **Cluster Node**: An individual host participating in the k3s cluster, characterized by its role (control-plane or worker), labels/taints, and connectivity to storage and networks.
 - **Network Integration**: The configuration representing multus, VLAN attachments, and load-balancer/VIP endpoints for control-plane and services.
 - **Cluster Add-ons**: Logical grouping of components such as cert-manager, Rancher, rancher-monitoring, Traefik, and related configuration and credentials.
+- **Persistent Storage Integration**: Configuration and behavior of Synology-based CSI integration and resulting storage classes and persistent volumes used by workloads.
 
 ## Success Criteria *(mandatory)*
 
@@ -91,3 +93,4 @@ An operator wants to scale the cluster by adding or removing control-plane and w
 - **SC-002**: Re-running the playbook on an existing cluster results in successful completion with no unexpected disruptions to running workloads in at least 95% of test runs under normal conditions, demonstrating idempotent behavior.
 - **SC-003**: Operators are able to successfully add or remove control-plane and worker nodes using the documented process in at least 90% of attempts during testing, without causing loss of cluster availability or etcd quorum for properly configured HA topologies.
 - **SC-004**: At least 90% of target users (operators) report that the documented process for provisioning, updating, and scaling the cluster is understandable and can be followed without direct assistance after reading the documentation once, as measured by internal feedback or usability reviews.
+ - **SC-005**: Operators can successfully deploy at least one stateful workload that uses a storage class backed by Synology CSI and have its persistent volumes automatically created, bound, and available in at least 90% of test runs.
