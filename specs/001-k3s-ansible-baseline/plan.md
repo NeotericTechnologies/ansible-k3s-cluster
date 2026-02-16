@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement a set of Ansible playbooks and roles that manage the complete lifecycle of a k3s cluster: provisioning a new HA cluster (embedded etcd, control-plane behind a VIP/load balancer), updating configuration for existing clusters, and adding/removing control-plane and worker nodes. The playbooks will integrate k3s-io/k3s-ansible where possible and install core platform add-ons (cert-manager with provider-agnostic DNS-01 issuers, multus for VLAN-based pod networking, Rancher and rancher-monitoring, Traefik, and optional Synology CSI-backed storage), while remaining idempotent, k3s-specific, and driven entirely from inventory and variables.
+Implement a set of Ansible playbooks and roles that manage the complete lifecycle of a k3s cluster: provisioning a new HA cluster (embedded etcd, control-plane behind a VIP/load balancer), updating configuration for existing clusters, and adding/removing control-plane and worker nodes. One core playbook provisions and updates the k3s cluster itself, while a separate add-ons playbook installs and manages optional platform components (cert-manager with provider-agnostic DNS-01 issuers, multus for VLAN-based pod networking, Rancher and rancher-monitoring, Traefik, and optional Synology CSI-backed storage) that can be enabled or disabled via variables. All playbooks remain idempotent, k3s-specific, and driven entirely from inventory and variables.
 
 ## Technical Context
 
@@ -25,7 +25,7 @@ Implement a set of Ansible playbooks and roles that manage the complete lifecycl
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- **Gate C1 – Minimal, Focused Playbooks**: Scope is limited to k3s cluster lifecycle and core platform add-ons (networking, ingress, certificates, monitoring, optional storage). No application workloads are included. **Status: PASS (confirmed after Phase 1 design)**.
+- **Gate C1 – Minimal, Focused Playbooks**: Scope is limited to the k3s cluster lifecycle as the core concern, with platform add-ons (networking, ingress, certificates, monitoring, optional storage) provided via a separate add-ons playbook and conditional variables so that the core cluster can be provisioned independently. No application workloads are included. **Status: PASS (confirmed after Phase 1 design)**.
 - **Gate C2 – Idempotent Cluster Provisioning**: Roles are planned to be idempotent and safe to re-run (modules over raw shell, guarded destructive actions, safe upgrades), with lint/check-mode and smoke tests supporting this. **Status: PASS (design and validation approach defined)**.
 - **Gate C3 – k3s-Specific Constraints (NON-NEGOTIABLE)**: Design pins k3s version via variables, uses embedded etcd HA, and explicitly scopes out major version upgrades. **Status: PASS**.
 - **Gate C4 – Clear Inventory and Node Roles**: Inventory and data model define explicit groups (`k3s_servers`, `k3s_agents`) and host vars for labels/taints, with no hard-coded hosts. **Status: PASS**.
@@ -67,9 +67,10 @@ ansible/
 │   ├── traefik/
 │   └── synology-csi/
 └── playbooks/
-    ├── cluster.yml        # end-to-end create/update cluster
-    ├── scale-nodes.yml    # add/remove control-plane and worker nodes
-    └── upgrade-k3s.yml    # minor/patch k3s upgrades
+    ├── cluster-core.yml     # core create/update cluster
+    ├── cluster-addons.yml   # optional platform add-ons
+    ├── scale-nodes.yml      # add/remove control-plane and worker nodes
+    └── upgrade-k3s.yml      # minor/patch k3s upgrades
 
 tests/
 └── ansible/

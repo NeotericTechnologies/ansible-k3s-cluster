@@ -20,7 +20,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T001 Create Ansible project root and base folders under ansible/
 - [ ] T002 [P] Create ansible/inventories/examples/ and ansible/inventories/production/ directories
 - [ ] T003 [P] Create ansible/group_vars/ and ansible/host_vars/ directories
-- [ ] T004 [P] Initialize ansible/playbooks/ directory with empty cluster.yml, scale-nodes.yml, and upgrade-k3s.yml placeholders
+- [ ] T004 [P] Initialize ansible/playbooks/ directory with empty cluster-core.yml, cluster-addons.yml, scale-nodes.yml, and upgrade-k3s.yml placeholders
 - [ ] T005 [P] Initialize tests/ansible/ and tests/ansible/inventories/ and tests/ansible/smoke/ directories
 
 ---
@@ -45,9 +45,9 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ## Phase 3: User Story 1 - Provision new HA k3s cluster (Priority: P1) 🎯 MVP
 
-**Goal**: Single playbook run provisions a new HA k3s cluster with embedded etcd, VIP-exposed control plane, and required add-ons (Traefik, cert-manager with DNS-01 issuers, multus, Rancher, rancher-monitoring, optional Synology CSI).
+**Goal**: The core cluster playbook (cluster-core.yml) provisions a new HA k3s cluster with embedded etcd and a VIP-exposed control plane, while a separate add-ons playbook (cluster-addons.yml) applies selected platform add-ons (Traefik, cert-manager with DNS-01 issuers, multus, Rancher, rancher-monitoring, optional Synology CSI). Quickstart documentation demonstrates running only the core playbook for a minimal cluster and running both playbooks for the full baseline experience.
 
-**Independent Test**: Run cluster.yml against example HA inventory and verify cluster creation, add-on health, and idempotent re-runs.
+**Independent Test**: Run cluster-core.yml against the example HA inventory and verify core cluster creation and accessibility; when validating platform add-ons, additionally run cluster-addons.yml with add-ons enabled and verify add-on health and idempotent re-runs.
 
 ### Implementation for User Story 1
 
@@ -55,7 +55,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T014 [P] [US1] Integrate upstream k3s-io/k3s-ansible patterns into ansible/roles/k3s-common/ for host preparation tasks
 - [ ] T015 [P] [US1] Implement k3s-server role tasks for embedded etcd HA in ansible/roles/k3s-server/tasks/main.yml
 - [ ] T016 [P] [US1] Implement k3s-agent role tasks for joining worker nodes in ansible/roles/k3s-agent/tasks/main.yml
-- [ ] T017 [US1] Implement cluster.yml playbook to orchestrate k3s-common, k3s-server, and k3s-agent roles in ansible/playbooks/cluster.yml
+- [ ] T017 [US1] Implement cluster-core.yml playbook to orchestrate k3s-common, k3s-server, and k3s-agent roles in ansible/playbooks/cluster-core.yml
 - [ ] T018 [P] [US1] Scaffold cert-manager role directory in ansible/roles/cert-manager/
 - [ ] T019 [P] [US1] Implement cert-manager installation and CRDs deployment tasks in ansible/roles/cert-manager/tasks/main.yml
 - [ ] T020 [P] [US1] Implement DNS-01 provider-agnostic ClusterIssuer templates in ansible/roles/cert-manager/templates/ with variables from ansible/group_vars/
@@ -69,8 +69,8 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T028 [P] [US1] Implement Traefik configuration and deployment tasks in ansible/roles/traefik/tasks/main.yml
 - [ ] T029 [P] [US1] Scaffold optional Synology CSI role directory in ansible/roles/synology-csi/
 - [ ] T030 [P] [US1] Implement Synology CSI deployment and StorageClass configuration tasks in ansible/roles/synology-csi/tasks/main.yml
-- [ ] T031 [US1] Wire add-on roles (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) into cluster.yml playbook in ansible/playbooks/cluster.yml
-- [ ] T032 [US1] Add validation tasks in cluster.yml to check node readiness, core add-ons health, and VIP accessibility
+- [ ] T031 [US1] Implement cluster-addons.yml playbook to orchestrate add-on roles (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) in ansible/playbooks/cluster-addons.yml
+- [ ] T032 [US1] Add validation tasks in cluster-core.yml and cluster-addons.yml to check node readiness, cluster state, add-on health, and VIP accessibility
 - [ ] T033 [US1] Document example HA and single-node flows in specs/001-k3s-ansible-baseline/quickstart.md (update with final role and playbook names)
 
 **Checkpoint**: User Story 1 can be validated independently using example inventories and quickstart instructions.
@@ -79,9 +79,9 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ## Phase 4: User Story 2 - Update existing cluster configuration (Priority: P2)
 
-**Goal**: Re-running cluster.yml with updated variables applies configuration changes to cert-manager, multus, Rancher, monitoring, Traefik, and optional Synology CSI without recreating the cluster.
+**Goal**: Re-running cluster-core.yml and/or cluster-addons.yml with updated variables applies configuration changes to core cluster settings and to add-ons (cert-manager, multus, Rancher, monitoring, Traefik, optional Synology CSI) without recreating the cluster.
 
-**Independent Test**: Change selected variables (e.g., DNS-01 provider settings, Rancher hostname, multus VLANs) and run cluster.yml to verify in-place updates only.
+**Independent Test**: Change selected variables (e.g., DNS-01 provider settings, Rancher hostname, multus VLANs) and run cluster-core.yml and/or cluster-addons.yml, as appropriate, to verify in-place updates only.
 
 ### Implementation for User Story 2
 
@@ -92,8 +92,8 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T038 [P] [US2] Implement rancher-monitoring configuration updates via Helm upgrade in ansible/roles/rancher-monitoring/tasks/main.yml
 - [ ] T039 [P] [US2] Implement Traefik configuration updates via Helm upgrade or manifest patching in ansible/roles/traefik/tasks/main.yml
 - [ ] T040 [P] [US2] Implement Synology CSI configuration updates (storage classes, parameters) in ansible/roles/synology-csi/tasks/main.yml
-- [ ] T041 [US2] Add variable-driven guards in cluster.yml to ensure roles run conditionally based on enabled add-ons in ansible/playbooks/cluster.yml
-- [ ] T042 [US2] Add idempotence-focused smoke scenario in tests/ansible/smoke/smoke.yml to run cluster.yml twice and verify clean convergence
+- [ ] T041 [US2] Add variable-driven guards in cluster-addons.yml to ensure add-on roles run conditionally based on enabled components in ansible/playbooks/cluster-addons.yml
+- [ ] T042 [US2] Add idempotence-focused smoke scenario in tests/ansible/smoke/smoke.yml to run cluster-core.yml and cluster-addons.yml twice and verify clean convergence
 
 **Checkpoint**: User Story 2 validated by modifying vars and re-running cluster.yml without disruptive changes.
 
@@ -139,27 +139,27 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - **Phase 1 – Setup**: No dependencies; must be completed before foundational wiring and user story implementation.
 - **Phase 2 – Foundational**: Depends on Phase 1; blocks all user stories until inventories, vars, and lint/smoke scaffolding exist.
 - **Phase 3 – User Story 1 (P1)**: Depends on Phase 2; establishes the MVP cluster provisioning path.
-- **Phase 4 – User Story 2 (P2)**: Depends on completion of User Story 1; operates on clusters already provisioned by cluster.yml.
+- **Phase 4 – User Story 2 (P2)**: Depends on completion of User Story 1; operates on clusters already provisioned by the core cluster playbook (cluster-core.yml).
 - **Phase 5 – User Story 3 (P3)**: Depends on completion of User Story 1; uses the same roles to scale nodes.
 - **Phase 6 – Polish**: Depends on all targeted user stories being implemented.
 
 ### User Story Dependencies
 
 - **US1 (Provision new HA k3s cluster)**: Depends only on Setup and Foundational phases; can be implemented independently.
-- **US2 (Update existing cluster configuration)**: Depends on US1, since it assumes a cluster created and managed by cluster.yml.
+- **US2 (Update existing cluster configuration)**: Depends on US1, since it assumes a cluster created and managed by the core cluster playbook (cluster-core.yml).
 - **US3 (Manage control-plane and worker nodes)**: Depends on US1, as it reuses k3s roles and the baseline cluster lifecycle path.
 
 ### Within Each User Story
 
-- Core roles and playbooks (k3s-common, k3s-server, k3s-agent, cluster.yml) must be in place before enabling higher-level add-ons and scale/upgrade flows.
+- Core roles and playbooks (k3s-common, k3s-server, k3s-agent, cluster-core.yml) must be in place before enabling higher-level add-ons and scale/upgrade flows.
 - Add-ons (cert-manager, multus, Rancher, monitoring, Traefik, Synology CSI) can be developed largely in parallel once the cluster lifecycle roles are available.
 - Scale operations (US3) must be wired after core cluster provisioning is stable.
 
 ### Parallel Execution Examples
 
 - During **Phase 1–2**, tasks marked [P] (T002–T005, T009–T010) can be implemented in parallel, as they touch different directories.
-- For **US1**, role scaffolding and implementations for cert-manager, multus, Rancher, rancher-monitoring, Traefik, and Synology CSI (T018–T030) can proceed in parallel while T017 and T031 integrate them in cluster.yml.
-- For **US2**, idempotence updates across roles (T034–T040) can be done in parallel, then cluster.yml wiring (T041) and smoke scenario (T042) follow.
+- For **US1**, role scaffolding and implementations for cert-manager, multus, Rancher, rancher-monitoring, Traefik, and Synology CSI (T018–T030) can proceed in parallel while T017 and T031 integrate them via cluster-core.yml and cluster-addons.yml.
+- For **US2**, idempotence updates across roles (T034–T040) can be done in parallel, then add-ons playbook wiring (T041) and the smoke scenario (T042) follow.
 - For **US3**, joining/removal logic tasks (T043–T046) can be worked on in parallel before adding safeguards and validations (T047–T048).
 
 ---
@@ -169,18 +169,18 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 ### MVP First (User Story 1 Only)
 
 1. Complete Phase 1 (Setup) and Phase 2 (Foundational).
-2. Implement Phase 3 (US1) tasks T013–T033 to achieve a working HA k3s cluster with all baseline add-ons.
+2. Implement Phase 3 (US1) tasks T013–T033 to achieve a working HA k3s cluster using cluster-core.yml for the core cluster and cluster-addons.yml for optional baseline add-ons.
 3. Validate using example inventories and quickstart instructions.
 
 ### Incremental Delivery
 
 1. Deliver US1 as the initial MVP.
-2. Add US2 to support configuration updates via re-running cluster.yml.
+2. Add US2 to support configuration updates via re-running cluster-core.yml and cluster-addons.yml.
 3. Add US3 to support inventory-driven scaling of control-plane and worker nodes.
 4. Apply Phase 6 polish tasks for documentation, refactoring, and security review.
 
 ### Team Parallelization
 
-- One contributor can focus on k3s core roles and cluster.yml (T013–T017, T031–T032).
+- One contributor can focus on k3s core roles and cluster-core.yml (T013–T017, T031–T032).
 - Others can implement add-on roles (T018–T030) in parallel.
 - Subsequent contributors can focus on update behavior (US2) and scaling logic (US3) while the core path stabilizes.
