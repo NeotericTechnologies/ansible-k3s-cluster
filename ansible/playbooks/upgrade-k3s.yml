@@ -1,0 +1,29 @@
+---
+# upgrade-k3s.yml
+# Purpose: Perform rolling upgrades of k3s cluster (minor/patch versions only)
+#
+# This playbook handles:
+# - Pre-upgrade validation (version compatibility, cluster health)
+# - Rolling upgrade of k3s-server (control-plane) nodes
+# - Rolling upgrade of k3s-agent (worker) nodes
+# - Post-upgrade validation and verification
+#
+# Prerequisites:
+#   - k3s core cluster provisioned via cluster-core.yml
+#   - Target k3s version specified in group_vars
+#
+# Limitations:
+#   - Supports minor and patch version upgrades only
+#   - Major version upgrades (e.g., 1.x -> 2.x) are out of scope
+#
+# Usage:
+#   # Update k3s_version in group_vars/all.yml first
+#   ansible-playbook -i inventories/production ansible/playbooks/upgrade-k3s.yml
+
+- name: Placeholder for k3s upgrade operations
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Upgrade tasks to be implemented
+      ansible.builtin.debug:
+        msg: "upgrade-k3s.yml implementation pending"

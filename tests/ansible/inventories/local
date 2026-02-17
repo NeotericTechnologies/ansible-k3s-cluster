@@ -1,0 +1,13 @@
+# Local Test Inventory
+# Purpose: Inventory for smoke tests against localhost or local VM
+# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
+
+[k3s_servers]
+localhost ansible_connection=local
+
+[k3s_cluster:children]
+k3s_servers
+
+[k3s_cluster:vars]
+control_plane_vip=127.0.0.1
+api_port=6443

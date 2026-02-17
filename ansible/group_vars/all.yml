@@ -1,0 +1,77 @@
+---
+# group_vars/all.yml
+# Purpose: Cluster-wide configuration shared by all k3s nodes
+# Reference: specs/001-k3s-ansible-baseline/data-model.md
+
+# Cluster identity
+cluster_name: "k3s-baseline"
+
+# k3s version (pinned for consistent upgrades)
+k3s_version: "v1.28.5+k3s1"
+
+# Cluster networking
+cluster_cidr: "10.42.0.0/16"
+service_cidr: "10.43.0.0/16"
+
+# Control-plane access (VIP managed by kube-vip)
+control_plane_vip: "192.168.1.100"
+api_port: 6443
+
+# HA mode: single-node | embedded-etcd-ha
+ha_mode: "embedded-etcd-ha"
+
+# kube-vip configuration for control-plane VIP and service load balancing
+kube_vip_enabled: true
+kube_vip_version: "v0.6.4"
+kube_vip_interface: "eth0"
+kube_vip_lb_enable: true
+kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+
+# Add-ons enablement (deployed via cluster-addons.yml)
+cert_manager_enabled: false
+multus_enabled: false
+rancher_enabled: false
+rancher_monitoring_enabled: false
+traefik_enabled: true  # k3s includes Traefik by default, role configures it
+synology_csi_enabled: false
+
+# cert-manager DNS-01 configuration (when enabled)
+cert_manager_version: "v1.13.3"
+cert_manager_email: "admin@example.com"
+cert_manager_dns_provider: "cloudflare"  # Options: cloudflare, route53, etc.
+cert_manager_dns_provider_credentials: {}  # Provider-specific credentials (secret)
+cert_manager_staging_issuer: "letsencrypt-staging"
+cert_manager_production_issuer: "letsencrypt-production"
+
+# multus CNI configuration (when enabled)
+multus_version: "v4.0.2"
+multus_vlan_networks: []
+# Example:
+# - name: storage-net
+#   vlan_id: 100
+#   interface: eth1
+#   cidr: 10.100.0.0/24
+#   gateway: 10.100.0.1
+
+# Rancher configuration (when enabled)
+rancher_version: "2.8.0"
+rancher_hostname: "rancher.example.com"
+rancher_ingress_class: "traefik"
+rancher_tls_source: "cert-manager"
+
+# rancher-monitoring configuration (when enabled)
+rancher_monitoring_version: "103.0.3"
+rancher_monitoring_retention: "7d"
+
+# Traefik ingress configuration
+traefik_service_type: "LoadBalancer"  # Uses kube-vip for LoadBalancer services
+traefik_entrypoints:
+  - web
+  - websecure
+
+# Synology CSI configuration (when enabled)
+synology_csi_endpoint: ""
+synology_csi_username: ""
+synology_csi_password: ""  # Store in Ansible Vault
+synology_csi_default_storage_class: "synology-iscsi"
+synology_csi_additional_storage_classes: []

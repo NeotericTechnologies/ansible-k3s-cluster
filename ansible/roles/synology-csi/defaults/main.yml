@@ -1,0 +1,7 @@
+---
+synology_csi_enabled: false
+synology_csi_endpoint: ""
+synology_csi_username: ""
+synology_csi_password: ""  # Store in Ansible Vault
+synology_csi_default_storage_class: "synology-iscsi"
+synology_csi_additional_storage_classes: []

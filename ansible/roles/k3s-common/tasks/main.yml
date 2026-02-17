@@ -1,0 +1,15 @@
+---
+# ansible/roles/k3s-common/tasks/main.yml
+# Purpose: Host prerequisite validation and common k3s setup tasks
+# Reference: FR-013, docs/ansible-structure.md
+
+- name: Include prerequisite validation tasks
+  ansible.builtin.include_tasks: prerequisites.yml
+  tags:
+    - prerequisites
+    - validation
+
+- name: Include common k3s dependencies
+  ansible.builtin.include_tasks: dependencies.yml
+  tags:
+    - dependencies

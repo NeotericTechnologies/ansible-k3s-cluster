@@ -1,0 +1,48 @@
+---
+# ansible/roles/rancher-monitoring/tasks/install.yml
+# Purpose: Deploy rancher-monitoring via Helm
+# Reference: FR-008
+
+- name: Create cattle-monitoring-system namespace
+  ansible.builtin.command: >-
+    kubectl create namespace cattle-monitoring-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: monitoring_ns
+  changed_when: "'created' in monitoring_ns.stdout"
+  failed_when: monitoring_ns.rc != 0 and 'AlreadyExists' not in monitoring_ns.stderr
+
+- name: Install rancher-monitoring via Helm
+  ansible.builtin.shell: |
+    helm repo add rancher-charts https://charts.rancher.io
+    helm repo update
+    helm upgrade --install rancher-monitoring rancher-charts/rancher-monitoring \
+      --namespace cattle-monitoring-system \
+      --set prometheus.prometheusSpec.retention={{ rancher_monitoring_retention }} \
+      --version {{ rancher_monitoring_version }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: monitoring_install
+  changed_when: "'deployed' in monitoring_install.stdout or 'upgraded' in monitoring_install.stdout"
+
+- name: Wait for rancher-monitoring to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=available deployment
+    -l app.kubernetes.io/name=grafana
+    -n cattle-monitoring-system
+    --timeout=600s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: monitoring_ready
+  retries: 10
+  delay: 30
+  until: monitoring_ready.rc == 0
+  changed_when: false
+
+- name: rancher-monitoring deployment summary
+  ansible.builtin.debug:
+    msg: |
+      rancher-monitoring deployed successfully:
+      - Version: {{ rancher_monitoring_version }}
+      - Retention: {{ rancher_monitoring_retention }}
+      - Prometheus and Grafana are available via Rancher UI

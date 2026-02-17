@@ -1,0 +1,11 @@
+---
+# ansible/roles/rancher/tasks/main.yml
+# Purpose: Deploy Rancher for cluster management
+# Reference: FR-007
+
+- name: Include Rancher installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: rancher_enabled | default(false)
+  tags:
+    - install
+    - rancher

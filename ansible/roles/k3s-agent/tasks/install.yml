@@ -1,0 +1,62 @@
+---
+# ansible/roles/k3s-agent/tasks/install.yml
+# Purpose: Install k3s agent (worker) nodes and join them to the cluster
+# Reference: FR-001
+
+- name: Check if k3s-agent is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s-agent
+  register: k3s_agent_binary
+
+- name: Get installed k3s-agent version
+  ansible.builtin.command: k3s-agent --version
+  register: installed_k3s_agent_version
+  changed_when: false
+  failed_when: false
+  when: k3s_agent_binary.stat.exists
+
+- name: Determine if k3s-agent installation is needed
+  ansible.builtin.set_fact:
+    k3s_agent_install_needed: "{{ not k3s_agent_binary.stat.exists or k3s_version not in installed_k3s_agent_version.stdout }}"
+
+- name: Wait for k3s server to be available
+  ansible.builtin.wait_for:
+    host: "{{ control_plane_vip }}"
+    port: "{{ api_port }}"
+    timeout: 300
+  delegate_to: localhost
+  become: false
+
+- name: Fetch node token from first server
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token_encoded
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  run_once: true
+
+- name: Decode node token
+  ansible.builtin.set_fact:
+    k3s_node_token: "{{ k3s_node_token_encoded.content | b64decode | trim }}"
+
+- name: Install k3s-agent
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+    K3S_URL="{{ k3s_server_url }}" \
+    K3S_TOKEN="{{ k3s_node_token }}" \
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    INSTALL_K3S_EXEC="agent {{ k3s_agent_extra_args }}" \
+    sh -
+  args:
+    creates: /etc/systemd/system/k3s-agent.service
+  when: k3s_agent_install_needed
+
+- name: Enable and start k3s-agent service
+  ansible.builtin.systemd:
+    name: k3s-agent
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for k3s-agent to register with cluster
+  ansible.builtin.pause:
+    seconds: 10

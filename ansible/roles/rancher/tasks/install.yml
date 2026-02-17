@@ -1,0 +1,58 @@
+---
+# ansible/roles/rancher/tasks/install.yml
+# Purpose: Deploy Rancher via Helm
+# Reference: FR-007
+
+- name: Add Rancher Helm repository
+  ansible.builtin.command: >-
+    kubectl apply -f -
+  args:
+    stdin: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: cattle-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cattle_ns
+  changed_when: "'created' in cattle_ns.stdout"
+  failed_when: cattle_ns.rc != 0 and 'AlreadyExists' not in cattle_ns.stderr
+
+- name: Install Rancher via kubectl (using Helm manifest)
+  ansible.builtin.shell: |
+    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+    helm repo update
+    helm upgrade --install rancher rancher-stable/rancher \
+      --namespace cattle-system \
+      --set hostname={{ rancher_hostname }} \
+      --set replicas=1 \
+      --set ingress.tls.source={{ rancher_tls_source }} \
+      --version {{ rancher_version }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: rancher_install
+  changed_when: "'deployed' in rancher_install.stdout or 'upgraded' in rancher_install.stdout"
+
+- name: Wait for Rancher to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=available deployment rancher
+    -n cattle-system
+    --timeout=600s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: rancher_ready
+  retries: 10
+  delay: 30
+  until: rancher_ready.rc == 0
+  changed_when: false
+
+- name: Rancher deployment summary
+  ansible.builtin.debug:
+    msg: |
+      Rancher deployed successfully:
+      - Version: {{ rancher_version }}
+      - Hostname: {{ rancher_hostname }}
+      - Access: https://{{ rancher_hostname }}
+
+      Note: Retrieve bootstrap password with:
+      kubectl get secret --namespace cattle-system bootstrap-secret -o json | jq -r .data.bootstrapPassword | base64 -d

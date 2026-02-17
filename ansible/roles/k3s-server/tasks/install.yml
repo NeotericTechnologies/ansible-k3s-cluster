@@ -1,0 +1,106 @@
+---
+# ansible/roles/k3s-server/tasks/install.yml
+# Purpose: Install k3s server with embedded etcd HA configuration
+# Reference: FR-001, constitution gate C3
+
+- name: Check if k3s is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Get installed k3s version
+  ansible.builtin.command: k3s --version
+  register: installed_k3s_version
+  changed_when: false
+  failed_when: false
+  when: k3s_binary.stat.exists
+
+- name: Determine if k3s installation is needed
+  ansible.builtin.set_fact:
+    k3s_install_needed: "{{ not k3s_binary.stat.exists or k3s_version not in installed_k3s_version.stdout }}"
+
+- name: Determine if this is the first control-plane node
+  ansible.builtin.set_fact:
+    is_first_server: "{{ groups['k3s_servers'].index(inventory_hostname) == 0 }}"
+
+- name: Install k3s on first control-plane node
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    INSTALL_K3S_EXEC="server \
+      --cluster-init \
+      --tls-san={{ control_plane_vip }} \
+      {{ k3s_server_extra_args }}" \
+    sh -
+  args:
+    creates: /etc/systemd/system/k3s.service
+  when:
+    - k3s_install_needed
+    - is_first_server
+    - ha_mode == 'embedded-etcd-ha'
+  register: k3s_first_server_install
+
+- name: Wait for first control-plane node to be ready
+  ansible.builtin.wait_for:
+    path: /var/lib/rancher/k3s/server/node-token
+    timeout: 300
+  when:
+    - is_first_server
+    - ha_mode == 'embedded-etcd-ha'
+
+- name: Fetch node token from first server
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token_encoded
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  run_once: true
+  when: not is_first_server
+
+- name: Decode node token
+  ansible.builtin.set_fact:
+    k3s_node_token: "{{ k3s_node_token_encoded.content | b64decode | trim }}"
+  when: not is_first_server
+
+- name: Install k3s on additional control-plane nodes
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+    K3S_URL="https://{{ groups['k3s_servers'][0] }}:6443" \
+    K3S_TOKEN="{{ k3s_node_token }}" \
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    INSTALL_K3S_EXEC="server \
+      --server https://{{ groups['k3s_servers'][0] }}:6443 \
+      --tls-san={{ control_plane_vip }} \
+      {{ k3s_server_extra_args }}" \
+    sh -
+  args:
+    creates: /etc/systemd/system/k3s.service
+  when:
+    - k3s_install_needed
+    - not is_first_server
+    - ha_mode == 'embedded-etcd-ha'
+
+- name: Install k3s on single-node cluster
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+    INSTALL_K3S_VERSION="{{ k3s_version }}" \
+    INSTALL_K3S_EXEC="server \
+      --tls-san={{ control_plane_vip }} \
+      {{ k3s_server_extra_args }}" \
+    sh -
+  args:
+    creates: /etc/systemd/system/k3s.service
+  when:
+    - k3s_install_needed
+    - ha_mode == 'single-node'
+
+- name: Enable and start k3s service
+  ansible.builtin.systemd:
+    name: k3s
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for k3s to be ready
+  ansible.builtin.wait_for:
+    port: 6443
+    timeout: 300

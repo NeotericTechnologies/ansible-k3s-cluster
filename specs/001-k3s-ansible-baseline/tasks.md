@@ -17,11 +17,11 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Purpose**: Repository and Ansible project scaffolding, aligned with the implementation plan.
 
-- [ ] T001 Create Ansible project root and base folders under ansible/
-- [ ] T002 [P] Create ansible/inventories/examples/ and ansible/inventories/production/ directories
-- [ ] T003 [P] Create ansible/group_vars/ and ansible/host_vars/ directories
-- [ ] T004 [P] Initialize ansible/playbooks/ directory with empty cluster-core.yml, cluster-addons.yml, scale-nodes.yml, and upgrade-k3s.yml placeholders
-- [ ] T005 [P] Initialize tests/ansible/ and tests/ansible/inventories/ and tests/ansible/smoke/ directories
+- [X] T001 Create Ansible project root and base folders under ansible/
+- [X] T002 [P] Create ansible/inventories/examples/ and ansible/inventories/production/ directories
+- [X] T003 [P] Create ansible/group_vars/ and ansible/host_vars/ directories
+- [X] T004 [P] Initialize ansible/playbooks/ directory with empty cluster-core.yml, cluster-addons.yml, scale-nodes.yml, and upgrade-k3s.yml placeholders
+- [X] T005 [P] Initialize tests/ansible/ and tests/ansible/inventories/ and tests/ansible/smoke/ directories
 
 ---
 
@@ -31,14 +31,14 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Note**: No user story work should begin until these tasks are complete.
 
-- [ ] T006 Define example HA inventory in ansible/inventories/examples/ha-cluster with k3s_servers and k3s_agents groups
-- [ ] T007 Define example single-node inventory in ansible/inventories/examples/single-node with k3s_servers only
-- [ ] T008 Create base group_vars files for cluster-wide settings in ansible/group_vars/all.yml
-- [ ] T009 [P] Create base group_vars for k3s_servers and k3s_agents in ansible/group_vars/k3s_servers.yml and ansible/group_vars/k3s_agents.yml
- - [ ] T010 [P] Add README for Ansible layout, supported platforms, and host prerequisites in docs/ansible-structure.md
-- [ ] T011 Add minimal ansible-lint configuration in .ansible-lint.yml at repo root
-- [ ] T012 Add basic smoke playbook and inventory for tests in tests/ansible/smoke/smoke.yml and tests/ansible/inventories/local
-- [ ] T056 [P] Implement host prerequisite checks (supported OS, CPU/memory, required packages, ports, and network connectivity) in ansible/roles/k3s-common/ so playbooks fail fast with clear messages when requirements are not met
+- [X] T006 Define example HA inventory in ansible/inventories/examples/ha-cluster with k3s_servers and k3s_agents groups
+- [X] T007 Define example single-node inventory in ansible/inventories/examples/single-node with k3s_servers only
+- [X] T008 Create base group_vars files for cluster-wide settings in ansible/group_vars/all.yml
+- [X] T009 [P] Create base group_vars for k3s_servers and k3s_agents in ansible/group_vars/k3s_servers.yml and ansible/group_vars/k3s_agents.yml
+ - [X] T010 [P] Add README for Ansible layout, supported platforms, and host prerequisites in docs/ansible-structure.md
+- [X] T011 Add minimal ansible-lint configuration in .ansible-lint.yml at repo root
+- [X] T012 Add basic smoke playbook and inventory for tests in tests/ansible/smoke/smoke.yml and tests/ansible/inventories/local
+- [X] T056 [P] Implement host prerequisite checks (supported OS, CPU/memory, required packages, ports, and network connectivity) in ansible/roles/k3s-common/ so playbooks fail fast with clear messages when requirements are not met
 
 **Checkpoint**: Foundation ready – inventories, vars layout, and validation tooling exist.
 
@@ -52,30 +52,30 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ### Implementation for User Story 1
 
-- [ ] T013 [P] [US1] Scaffold k3s-common, k3s-server, and k3s-agent roles in ansible/roles/k3s-common/, ansible/roles/k3s-server/, ansible/roles/k3s-agent/
-- [ ] T014 [P] [US1] Integrate upstream k3s-io/k3s-ansible patterns into ansible/roles/k3s-common/ for host preparation tasks
-- [ ] T015 [P] [US1] Implement k3s-server role tasks for embedded etcd HA in ansible/roles/k3s-server/tasks/main.yml
-- [ ] T016 [P] [US1] Implement k3s-agent role tasks for joining worker nodes in ansible/roles/k3s-agent/tasks/main.yml
-- [ ] T017 [US1] Implement cluster-core.yml playbook to orchestrate k3s-common, k3s-server, and k3s-agent roles in ansible/playbooks/cluster-core.yml
-- [ ] T018 [P] [US1] Scaffold cert-manager role directory in ansible/roles/cert-manager/
-- [ ] T019 [P] [US1] Implement cert-manager installation and CRDs deployment tasks in ansible/roles/cert-manager/tasks/main.yml
-- [ ] T020 [P] [US1] Implement DNS-01 provider-agnostic ClusterIssuer templates in ansible/roles/cert-manager/templates/ with variables from ansible/group_vars/
-- [ ] T021 [P] [US1] Scaffold multus role directory in ansible/roles/multus/
-- [ ] T022 [P] [US1] Implement multus installation and NetworkAttachmentDefinition rendering in ansible/roles/multus/tasks/main.yml
-- [ ] T023 [P] [US1] Scaffold Rancher role directory in ansible/roles/rancher/
-- [ ] T024 [P] [US1] Implement Rancher Helm-based deployment tasks in ansible/roles/rancher/tasks/main.yml
-- [ ] T025 [P] [US1] Scaffold rancher-monitoring role directory in ansible/roles/rancher-monitoring/
-- [ ] T026 [P] [US1] Implement rancher-monitoring Helm-based deployment tasks in ansible/roles/rancher-monitoring/tasks/main.yml
-- [ ] T027 [P] [US1] Scaffold Traefik role directory in ansible/roles/traefik/
-- [ ] T028 [P] [US1] Implement Traefik configuration and deployment tasks in ansible/roles/traefik/tasks/main.yml
-- [ ] T029 [P] [US1] Scaffold optional Synology CSI role directory in ansible/roles/synology-csi/
-- [ ] T030 [P] [US1] Implement Synology CSI deployment and StorageClass configuration tasks in ansible/roles/synology-csi/tasks/main.yml
-- [ ] T031 [US1] Implement cluster-addons.yml playbook to orchestrate add-on roles (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) in ansible/playbooks/cluster-addons.yml
-- [ ] T032 [US1] Add validation tasks in cluster-core.yml and cluster-addons.yml to check node readiness, cluster state, add-on health, and VIP accessibility (control-plane and service load balancers)
-- [ ] T057 [P] [US1] Scaffold kube-vip role directory in ansible/roles/kube-vip/ for control-plane VIP and service load balancer configuration
-- [ ] T058 [P] [US1] Implement kube-vip deployment and configuration tasks (control-plane VIP, service LB address pool) in ansible/roles/kube-vip/tasks/main.yml driven by variables
-- [ ] T059 [US1] Wire kube-vip role into cluster-core.yml (for control-plane VIP) and, where appropriate, cluster-addons.yml or Traefik configuration (for service load balancer behavior)
-- [ ] T033 [US1] Document example HA and single-node flows in specs/001-k3s-ansible-baseline/quickstart.md (update with final role and playbook names)
+- [X] T013 [P] [US1] Scaffold k3s-common, k3s-server, and k3s-agent roles in ansible/roles/k3s-common/, ansible/roles/k3s-server/, ansible/roles/k3s-agent/
+- [X] T014 [P] [US1] Integrate upstream k3s-io/k3s-ansible patterns into ansible/roles/k3s-common/ for host preparation tasks
+- [X] T015 [P] [US1] Implement k3s-server role tasks for embedded etcd HA in ansible/roles/k3s-server/tasks/main.yml
+- [X] T016 [P] [US1] Implement k3s-agent role tasks for joining worker nodes in ansible/roles/k3s-agent/tasks/main.yml
+- [X] T017 [US1] Implement cluster-core.yml playbook to orchestrate k3s-common, k3s-server, and k3s-agent roles in ansible/playbooks/cluster-core.yml
+- [X] T018 [P] [US1] Scaffold cert-manager role directory in ansible/roles/cert-manager/
+- [X] T019 [P] [US1] Implement cert-manager installation and CRDs deployment tasks in ansible/roles/cert-manager/tasks/main.yml
+- [X] T020 [P] [US1] Implement DNS-01 provider-agnostic ClusterIssuer templates in ansible/roles/cert-manager/templates/ with variables from ansible/group_vars/
+- [X] T021 [P] [US1] Scaffold multus role directory in ansible/roles/multus/
+- [X] T022 [P] [US1] Implement multus installation and NetworkAttachmentDefinition rendering in ansible/roles/multus/tasks/main.yml
+- [X] T023 [P] [US1] Scaffold Rancher role directory in ansible/roles/rancher/
+- [X] T024 [P] [US1] Implement Rancher Helm-based deployment tasks in ansible/roles/rancher/tasks/main.yml
+- [X] T025 [P] [US1] Scaffold rancher-monitoring role directory in ansible/roles/rancher-monitoring/
+- [X] T026 [P] [US1] Implement rancher-monitoring Helm-based deployment tasks in ansible/roles/rancher-monitoring/tasks/main.yml
+- [X] T027 [P] [US1] Scaffold Traefik role directory in ansible/roles/traefik/
+- [X] T028 [P] [US1] Implement Traefik configuration and deployment tasks in ansible/roles/traefik/tasks/main.yml
+- [X] T029 [P] [US1] Scaffold optional Synology CSI role directory in ansible/roles/synology-csi/
+- [X] T030 [P] [US1] Implement Synology CSI deployment and StorageClass configuration tasks in ansible/roles/synology-csi/tasks/main.yml
+- [X] T031 [US1] Implement cluster-addons.yml playbook to orchestrate add-on roles (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) in ansible/playbooks/cluster-addons.yml
+- [X] T032 [US1] Add validation tasks in cluster-core.yml and cluster-addons.yml to check node readiness, cluster state, add-on health, and VIP accessibility (control-plane and service load balancers)
+- [X] T057 [P] [US1] Scaffold kube-vip role directory in ansible/roles/kube-vip/ for control-plane VIP and service load balancer configuration
+- [X] T058 [P] [US1] Implement kube-vip deployment and configuration tasks (control-plane VIP, service LB address pool) in ansible/roles/kube-vip/tasks/main.yml driven by variables
+- [X] T059 [US1] Wire kube-vip role into cluster-core.yml (for control-plane VIP) and, where appropriate, cluster-addons.yml or Traefik configuration (for service load balancer behavior)
+- [X] T033 [US1] Document example HA and single-node flows in specs/001-k3s-ansible-baseline/quickstart.md (update with final role and playbook names)
 
 **Checkpoint**: User Story 1 can be validated independently using example inventories and quickstart instructions.
 

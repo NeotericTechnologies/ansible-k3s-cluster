@@ -1,0 +1,43 @@
+---
+# .ansible-lint.yml
+# Purpose: Minimal ansible-lint configuration for baseline k3s playbooks
+# Reference: https://ansible-lint.readthedocs.io/
+
+# Exclude paths from linting
+exclude_paths:
+  - .git/
+  - .vscode/
+  - venv/
+  - .venv/
+  - __pycache__/
+  - '*.retry'
+  - tests/ansible/inventories/  # Test inventories may have intentional violations
+
+# Skip specific rules that are too strict for this baseline
+skip_list:
+  - 'yaml[line-length]'  # Allow longer YAML lines for readability
+  - 'name[casing]'       # Allow flexible task naming conventions
+  - 'fqcn[action-core]'  # Allow short-form module names (ansible.builtin.*)
+
+# Warn only for certain rules (don't fail CI)
+warn_list:
+  - 'experimental'       # Warn on experimental features
+  - 'role-name'          # Warn on role naming conventions
+
+# Enable offline mode (don't fetch galaxy roles)
+offline: false
+
+# Use default ansible-lint profile
+profile: null
+
+# Minimum ansible-lint version
+min_ansible_version: "2.15"
+
+# Enable progressive mode (stricter over time)
+progressive: false
+
+# Write violations to file (optional)
+# write_list:
+#   - all
+
+# Ansible-lint will use ansible-playbook and ansible-galaxy from PATH

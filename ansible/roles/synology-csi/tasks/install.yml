@@ -1,0 +1,69 @@
+---
+# ansible/roles/synology-csi/tasks/install.yml
+# Purpose: Deploy Synology CSI driver and StorageClasses
+# Reference: FR-010
+
+- name: Create synology-csi namespace
+  ansible.builtin.command: >-
+    kubectl create namespace synology-csi
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: synology_ns
+  changed_when: "'created' in synology_ns.stdout"
+  failed_when: synology_ns.rc != 0 and 'AlreadyExists' not in synology_ns.stderr
+
+- name: Create Synology CSI credentials secret
+  ansible.builtin.template:
+    src: synology-credentials.yaml.j2
+    dest: /tmp/synology-credentials.yaml
+    mode: '0600'
+  no_log: true
+
+- name: Apply Synology CSI credentials
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/synology-credentials.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: synology_secret
+  changed_when: "'created' in synology_secret.stdout or 'configured' in synology_secret.stdout"
+  no_log: true
+
+- name: Remove temporary credentials file
+  ansible.builtin.file:
+    path: /tmp/synology-credentials.yaml
+    state: absent
+
+- name: Deploy Synology CSI driver
+  ansible.builtin.shell: |
+    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/main/deploy/kubernetes/v1.20/namespace.yaml
+    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/main/deploy/kubernetes/v1.20/synology-csi-driver.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: synology_deploy
+  changed_when: "'created' in synology_deploy.stdout or 'configured' in synology_deploy.stdout"
+
+- name: Create default StorageClass
+  ansible.builtin.template:
+    src: storage-class.yaml.j2
+    dest: /tmp/synology-storage-class.yaml
+    mode: '0644'
+
+- name: Apply default StorageClass
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/synology-storage-class.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: storage_class
+  changed_when: "'created' in storage_class.stdout or 'configured' in storage_class.stdout"
+
+- name: Clean up temporary files
+  ansible.builtin.file:
+    path: /tmp/synology-storage-class.yaml
+    state: absent
+
+- name: Synology CSI deployment summary
+  ansible.builtin.debug:
+    msg: |
+      Synology CSI deployed successfully:
+      - Endpoint: {{ synology_csi_endpoint }}
+      - Default StorageClass: {{ synology_csi_default_storage_class }}

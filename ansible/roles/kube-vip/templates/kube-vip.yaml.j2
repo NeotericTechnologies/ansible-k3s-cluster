@@ -1,0 +1,65 @@
+---
+# kube-vip static pod manifest for control-plane VIP
+# Reference: FR-011 (control-plane VIP)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vip
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: kube-vip
+spec:
+  containers:
+  - name: kube-vip
+    image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version | default('v0.6.4') }}
+    imagePullPolicy: IfNotPresent
+    args:
+    - manager
+    env:
+    - name: vip_arp
+      value: "true"
+    - name: vip_interface
+      value: "{{ kube_vip_interface }}"
+    - name: port
+      value: "{{ api_port }}"
+    - name: vip_cidr
+      value: "32"
+    - name: cp_enable
+      value: "true"
+    - name: cp_namespace
+      value: kube-system
+    - name: vip_ddns
+      value: "false"
+    - name: vip_leaderelection
+      value: "true"
+    - name: vip_leaseduration
+      value: "15"
+    - name: vip_renewdeadline
+      value: "10"
+    - name: vip_retryperiod
+      value: "2"
+    - name: address
+      value: "{{ control_plane_vip }}"
+{% if kube_vip_lb_enable | default(false) %}
+    - name: svc_enable
+      value: "true"
+    - name: lb_enable
+      value: "true"
+    - name: lb_port
+      value: "6443"
+{% endif %}
+    securityContext:
+      capabilities:
+        add:
+        - NET_ADMIN
+        - NET_RAW
+    volumeMounts:
+    - name: kubeconfig
+      mountPath: /etc/kubernetes/admin.conf
+      readOnly: true
+  hostNetwork: true
+  volumes:
+  - name: kubeconfig
+    hostPath:
+      path: /etc/rancher/k3s/k3s.yaml
+      type: File

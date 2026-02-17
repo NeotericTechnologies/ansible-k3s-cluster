@@ -1,0 +1,44 @@
+---
+# Let's Encrypt Staging ClusterIssuer with DNS-01 challenge
+# Reference: FR-005, FR-017
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ cert_manager_staging_issuer }}
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: {{ cert_manager_email }}
+    privateKeySecretRef:
+      name: {{ cert_manager_staging_issuer }}-account-key
+    solvers:
+    - dns01:
+{% if cert_manager_dns_provider == 'cloudflare' %}
+        cloudflare:
+          email: {{ cert_manager_email }}
+          apiTokenSecretRef:
+            name: cert-manager-dns-credentials
+            key: api-token
+{% elif cert_manager_dns_provider == 'route53' %}
+        route53:
+          region: {{ cert_manager_dns_provider_credentials.region | default('us-east-1') }}
+          accessKeyIDSecretRef:
+            name: cert-manager-dns-credentials
+            key: access-key-id
+          secretAccessKeySecretRef:
+            name: cert-manager-dns-credentials
+            key: secret-access-key
+{% elif cert_manager_dns_provider == 'cloudns' %}
+        cloudDNS:
+          project: {{ cert_manager_dns_provider_credentials.project }}
+          serviceAccountSecretRef:
+            name: cert-manager-dns-credentials
+            key: service-account-json
+{% else %}
+        # Provider: {{ cert_manager_dns_provider }}
+        # Note: Add provider-specific configuration based on cert-manager docs
+        webhook:
+          groupName: acme.example.com
+          solverName: {{ cert_manager_dns_provider }}
+          config: {}
+{% endif %}

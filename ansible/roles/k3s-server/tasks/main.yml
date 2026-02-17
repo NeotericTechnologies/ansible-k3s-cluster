@@ -1,0 +1,15 @@
+---
+# ansible/roles/k3s-server/tasks/main.yml
+# Purpose: Install and configure k3s control-plane (server) nodes with embedded etcd HA
+# Reference: FR-001, US1
+
+- name: Include k3s installation tasks
+  ansible.builtin.include_tasks: install.yml
+  tags:
+    - install
+    - k3s-server
+
+- name: Include kubeconfig configuration tasks
+  ansible.builtin.include_tasks: kubeconfig.yml
+  tags:
+    - kubeconfig

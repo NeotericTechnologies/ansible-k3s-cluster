@@ -1,0 +1,4 @@
+---
+multus_enabled: false
+multus_version: "v4.0.2"
+multus_vlan_networks: []

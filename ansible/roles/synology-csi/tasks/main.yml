@@ -1,0 +1,11 @@
+---
+# ansible/roles/synology-csi/tasks/main.yml
+# Purpose: Deploy Synology CSI for persistent storage
+# Reference: FR-010
+
+- name: Include Synology CSI installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: synology_csi_enabled | default(false)
+  tags:
+    - install
+    - storage

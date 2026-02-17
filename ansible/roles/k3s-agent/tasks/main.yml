@@ -1,0 +1,10 @@
+---
+# ansible/roles/k3s-agent/tasks/main.yml
+# Purpose: Install and configure k3s worker (agent) nodes
+# Reference: FR-001, US1
+
+- name: Include k3s agent installation tasks
+  ansible.builtin.include_tasks: install.yml
+  tags:
+    - install
+    - k3s-agent

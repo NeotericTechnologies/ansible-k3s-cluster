@@ -1,0 +1,19 @@
+---
+# group_vars/k3s_agents.yml
+# Purpose: Variables specific to k3s worker (agent) nodes
+# Reference: specs/001-k3s-ansible-baseline/data-model.md
+
+# k3s agent-specific flags
+k3s_agent_enabled: true
+
+# Node labels for worker nodes (example)
+k3s_agent_labels: {}
+
+# Node taints for worker nodes (default: none)
+k3s_agent_taints: []
+
+# Additional k3s agent arguments
+k3s_agent_extra_args: ""
+
+# Server URL for agents to join (constructed from control_plane_vip)
+k3s_server_url: "https://{{ control_plane_vip }}:{{ api_port }}"

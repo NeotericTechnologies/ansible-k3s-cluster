@@ -1,0 +1,58 @@
+---
+# ansible/roles/multus/tasks/install.yml
+# Purpose: Install multus CNI and configure NetworkAttachmentDefinitions
+# Reference: FR-006 (multus for VLAN secondary networking)
+
+- name: Deploy multus DaemonSet
+  ansible.builtin.command: >-
+    kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/{{ multus_version }}/deployments/multus-daemonset.yml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: multus_deploy
+  changed_when: "'created' in multus_deploy.stdout or 'configured' in multus_deploy.stdout"
+
+- name: Wait for multus to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=ready pod
+    -l app=multus
+    -n kube-system
+    --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: multus_ready
+  retries: 5
+  delay: 10
+  until: multus_ready.rc == 0
+  changed_when: false
+
+- name: Create NetworkAttachmentDefinitions for VLAN networks
+  ansible.builtin.template:
+    src: network-attachment-definition.yaml.j2
+    dest: "/tmp/nad-{{ item.name }}.yaml"
+    mode: '0644'
+  loop: "{{ multus_vlan_networks }}"
+  when: multus_vlan_networks | default([]) | length > 0
+
+- name: Apply NetworkAttachment Definitions
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/nad-{{ item.name }}.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ multus_vlan_networks }}"
+  when: multus_vlan_networks | default([]) | length > 0
+  register: nad_apply
+  changed_when: "'created' in nad_apply.stdout or 'configured' in nad_apply.stdout"
+
+- name: Clean up temporary NetworkAttachmentDefinition files
+  ansible.builtin.file:
+    path: "/tmp/nad-{{ item.name }}.yaml"
+    state: absent
+  loop: "{{ multus_vlan_networks }}"
+  when: multus_vlan_networks | default([]) | length > 0
+
+- name: multus deployment summary
+  ansible.builtin.debug:
+    msg: |
+      multus deployed successfully:
+      - Version: {{ multus_version }}
+      - VLAN Networks: {{ multus_vlan_networks | map(attribute='name') | list | join(', ') if multus_vlan_networks else 'None' }}

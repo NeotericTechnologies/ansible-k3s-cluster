@@ -1,0 +1,10 @@
+---
+# ansible/roles/kube-vip/defaults/main.yml
+# Purpose: Default variables for kube-vip role
+# Reference: FR-011, FR-012
+
+kube_vip_enabled: true
+kube_vip_version: "v0.6.4"
+kube_vip_interface: "eth0"
+kube_vip_lb_enable: true
+kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"

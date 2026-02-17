@@ -1,0 +1,10 @@
+---
+# kube-vip ConfigMap for LoadBalancer IP address pool
+# Reference: FR-012 (service load balancing)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubevip
+  namespace: kube-system
+data:
+  range-global: {{ kube_vip_lb_ip_range }}

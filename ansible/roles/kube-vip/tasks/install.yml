@@ -1,0 +1,79 @@
+---
+# ansible/roles/kube-vip/tasks/install.yml
+# Purpose: Install and configure kube-vip for control-plane VIP and LoadBalancer services
+# Reference: FR-011 (control-plane VIP), FR-012 (service load balancing)
+
+- name: Ensure k3s manifests directory exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/server/manifests
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  when: inventory_hostname in groups['k3s_servers']
+
+- name: Generate kube-vip static pod manifest for control-plane VIP
+  ansible.builtin.template:
+    src: kube-vip.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/kube-vip.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  when: inventory_hostname in groups['k3s_servers']
+  notify: Restart k3s
+
+- name: Wait for kube-vip daemonset to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=ready pod
+    -l app.kubernetes.io/name=kube-vip
+    -n kube-system
+    --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: kube_vip_status
+  retries: 5
+  delay: 10
+  until: kube_vip_status.rc == 0
+  changed_when: false
+  failed_when: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Deploy kube-vip cloud controller for LoadBalancer services
+  ansible.builtin.template:
+    src: kube-vip-cloud-controller.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/kube-vip-cloud-controller.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+
+- name: Create ConfigMap for kube-vip IP address pool
+  ansible.builtin.template:
+    src: kube-vip-configmap.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/kube-vip-configmap.yaml
+    mode: '0644'
+    owner: root
+    group: root
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+
+- name: Verify control-plane VIP is reachable
+  ansible.builtin.wait_for:
+    host: "{{ control_plane_vip }}"
+    port: "{{ api_port }}"
+    timeout: 60
+  delegate_to: localhost
+  become: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: kube-vip deployment summary
+  ansible.builtin.debug:
+    msg: |
+      kube-vip deployed successfully:
+      - Control-plane VIP: {{ control_plane_vip }}:{{ api_port }}
+      - Service LoadBalancer: {{ 'Enabled' if kube_vip_lb_enable else 'Disabled' }}
+      - IP Pool: {{ kube_vip_lb_ip_range if kube_vip_lb_enable else 'N/A' }}
+  when: inventory_hostname == groups['k3s_servers'][0]

@@ -1,0 +1,48 @@
+---
+# ansible/roles/traefik/tasks/configure.yml
+# Purpose: Configure Traefik ingress (k3s includes Traefik by default, but we disabled it for kube-vip LB)
+# Reference: FR-009
+
+- name: Deploy Traefik via Helm (since we disabled default k3s Traefik)
+  ansible.builtin.shell: |
+    helm repo add traefik https://traefik.github.io/charts
+    helm repo update
+    helm upgrade --install traefik traefik/traefik \
+      --namespace kube-system \
+      --set service.type={{ traefik_service_type }} \
+      --set ports.web.exposedPort=80 \
+      --set ports.websecure.exposedPort=443
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: traefik_install
+  changed_when: "'deployed' in traefik_install.stdout or 'upgraded' in traefik_install.stdout"
+
+- name: Wait for Traefik to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=available deployment traefik
+    -n kube-system
+    --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: traefik_ready
+  retries: 5
+  delay: 10
+  until: traefik_ready.rc == 0
+  changed_when: false
+
+- name: Get Traefik LoadBalancer service status
+  ansible.builtin.command: >-
+    kubectl get svc traefik -n kube-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: traefik_lb_ip
+  changed_when: false
+  failed_when: false
+
+- name: Traefik deployment summary
+  ansible.builtin.debug:
+    msg: |
+      Traefik deployed successfully:
+      - Service Type: {{ traefik_service_type }}
+      - LoadBalancer IP: {{ traefik_lb_ip.stdout if traefik_lb_ip.stdout else 'Pending (check kube-vip pool)' }}
+      - Entrypoints: {{ traefik_entrypoints | join(', ') }}

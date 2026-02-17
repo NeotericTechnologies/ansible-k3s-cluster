@@ -1,0 +1,11 @@
+---
+# ansible/roles/kube-vip/tasks/main.yml
+# Purpose: Deploy kube-vip for control-plane VIP and service load balancer
+# Reference: FR-011, FR-012, C2
+
+- name: Include kube-vip installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: kube_vip_enabled | default(false)
+  tags:
+    - install
+    - kube-vip

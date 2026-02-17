@@ -1,0 +1,128 @@
+---
+# cluster-addons.yml
+# Purpose: Deploy optional platform add-ons to an existing k3s cluster
+#
+# This playbook handles:
+# - cert-manager with DNS-01 issuers (provider-agnostic)
+# - multus CNI for VLAN-based secondary networking
+# - Rancher for cluster management
+# - rancher-monitoring for observability
+# - Traefik ingress controller configuration
+# - Synology CSI for persistent storage (optional)
+#
+# Prerequisites:
+#   - k3s core cluster provisioned via cluster-core.yml
+#   - kubeconfig access configured
+#
+# Usage:
+#   ansible-playbook -i inventories/production ansible/playbooks/cluster-addons.yml
+#
+# Reference: FR-005 - FR-010, US1
+
+- name: Deploy platform add-ons to k3s cluster
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Verify k3s cluster is operational
+      ansible.builtin.command: kubectl get nodes
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cluster_status
+      changed_when: false
+      failed_when: cluster_status.rc != 0
+
+    - name: Add-ons deployment header
+      ansible.builtin.debug:
+        msg: |
+          ===== Platform Add-ons Deployment =====
+          The following add-ons will be deployed based on enablement flags:
+          - cert-manager: {{ cert_manager_enabled | default(false) }}
+          - multus: {{ multus_enabled | default(false) }}
+          - Rancher: {{ rancher_enabled | default(false) }}
+          - rancher-monitoring: {{ rancher_monitoring_enabled | default(false) }}
+          - Traefik: {{ traefik_enabled | default(true) }}
+          - Synology CSI: {{ synology_csi_enabled | default(false) }}
+
+- name: Deploy cert-manager
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: cert-manager
+      tags: ['cert-manager', 'certificates']
+      when: cert_manager_enabled | default(false)
+
+- name: Deploy multus CNI
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: multus
+      tags: ['multus', 'networking']
+      when: multus_enabled | default(false)
+
+- name: Deploy Traefik ingress
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: traefik
+      tags: ['traefik', 'ingress']
+      when: traefik_enabled | default(true)
+
+- name: Deploy Rancher
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: rancher
+      tags: ['rancher', 'management']
+      when: rancher_enabled | default(false)
+
+- name: Deploy rancher-monitoring
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: rancher-monitoring
+      tags: ['monitoring', 'observability']
+      when: rancher_monitoring_enabled | default(false)
+
+- name: Deploy Synology CSI
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: synology-csi
+      tags: ['storage', 'synology']
+      when: synology_csi_enabled | default(false)
+
+- name: Validate add-ons deployment
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Get all deployed add-on resources
+      ansible.builtin.command: >-
+        kubectl get all -A --selector='app.kubernetes.io/managed-by in (Helm,kubectl)'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: addons_status
+      changed_when: false
+      failed_when: false
+
+    - name: Add-ons deployment summary
+      ansible.builtin.debug:
+        msg: |
+          ===== Add-ons Deployment Complete =====
+          Deployed add-ons (based on enablement flags):
+          {{ '✓ cert-manager' if cert_manager_enabled | default(false) else '✗ cert-manager (disabled)' }}
+          {{ '✓ multus CNI' if multus_enabled | default(false) else '✗ multus (disabled)' }}
+          {{ '✓ Traefik ingress' if traefik_enabled | default(true) else '✗ Traefik (disabled)' }}
+          {{ '✓ Rancher' if rancher_enabled | default(false) else '✗ Rancher (disabled)' }}
+          {{ '✓ rancher-monitoring' if rancher_monitoring_enabled | default(false) else '✗ rancher-monitoring (disabled)' }}
+          {{ '✓ Synology CSI' if synology_csi_enabled | default(false) else '✗ Synology CSI (disabled)' }}
+
+          Verify deployment:
+          kubectl get pods -A

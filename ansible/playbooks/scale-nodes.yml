@@ -1,0 +1,26 @@
+---
+# scale-nodes.yml
+# Purpose: Add or remove k3s nodes from an existing cluster
+#
+# This playbook handles:
+# - Adding new k3s-server (control-plane) nodes to HA cluster
+# - Adding new k3s-agent (worker) nodes
+# - Draining and removing nodes from the cluster
+#
+# Prerequisites:
+#   - k3s core cluster provisioned via cluster-core.yml
+#   - Target nodes prepared with SSH access
+#
+# Usage (add nodes):
+#   ansible-playbook -i inventories/production ansible/playbooks/scale-nodes.yml --tags add
+#
+# Usage (remove nodes):
+#   ansible-playbook -i inventories/production ansible/playbooks/scale-nodes.yml --tags remove --limit <node>
+
+- name: Placeholder for node scaling operations
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Scaling tasks to be implemented
+      ansible.builtin.debug:
+        msg: "scale-nodes.yml implementation pending"
