@@ -89,15 +89,15 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ### Implementation for User Story 2
 
-- [ ] T034 [P] [US2] Ensure cert-manager role uses idempotent module calls and `state: present` semantics in ansible/roles/cert-manager/tasks/main.yml
-- [ ] T035 [P] [US2] Add tasks to update existing ClusterIssuer resources on variable changes in ansible/roles/cert-manager/tasks/main.yml
-- [ ] T036 [P] [US2] Ensure multus NetworkAttachmentDefinitions are rendered and updated from vars without destructive recreation in ansible/roles/multus/tasks/main.yml
-- [ ] T037 [P] [US2] Implement Rancher configuration updates (hostname, TLS, values) through Helm upgrade semantics in ansible/roles/rancher/tasks/main.yml
-- [ ] T038 [P] [US2] Implement rancher-monitoring configuration updates via Helm upgrade in ansible/roles/rancher-monitoring/tasks/main.yml
-- [ ] T039 [P] [US2] Implement Traefik configuration updates via Helm upgrade or manifest patching in ansible/roles/traefik/tasks/main.yml
-- [ ] T040 [P] [US2] Implement Synology CSI configuration updates (storage classes, parameters) in ansible/roles/synology-csi/tasks/main.yml
-- [ ] T041 [US2] Add variable-driven guards in cluster-addons.yml to ensure add-on roles run conditionally based on enabled components in ansible/playbooks/cluster-addons.yml
-- [ ] T042 [US2] Add idempotence-focused smoke scenario in tests/ansible/smoke/smoke.yml to run cluster-core.yml and cluster-addons.yml twice and verify clean convergence
+- [X] T034 [P] [US2] Ensure cert-manager role uses idempotent module calls and `state: present` semantics in ansible/roles/cert-manager/tasks/main.yml
+- [X] T035 [P] [US2] Add tasks to update existing ClusterIssuer resources on variable changes in ansible/roles/cert-manager/tasks/main.yml
+- [X] T036 [P] [US2] Ensure multus NetworkAttachmentDefinitions are rendered and updated from vars without destructive recreation in ansible/roles/multus/tasks/main.yml
+- [X] T037 [P] [US2] Implement Rancher configuration updates (hostname, TLS, values) through Helm upgrade semantics in ansible/roles/rancher/tasks/main.yml
+- [X] T038 [P] [US2] Implement rancher-monitoring configuration updates via Helm upgrade in ansible/roles/rancher-monitoring/tasks/main.yml
+- [X] T039 [P] [US2] Implement Traefik configuration updates via Helm upgrade or manifest patching in ansible/roles/traefik/tasks/main.yml
+- [X] T040 [P] [US2] Implement Synology CSI configuration updates (storage classes, parameters) in ansible/roles/synology-csi/tasks/main.yml
+- [X] T041 [US2] Add variable-driven guards in cluster-addons.yml to ensure add-on roles run conditionally based on enabled components in ansible/playbooks/cluster-addons.yml
+- [X] T042 [US2] Add idempotence-focused smoke scenario in tests/ansible/smoke/smoke.yml to run cluster-core.yml and cluster-addons.yml twice and verify clean convergence
 
 **Checkpoint**: User Story 2 validated by modifying vars and re-running cluster-core.yml and, where needed, cluster-addons.yml without disruptive changes.
 

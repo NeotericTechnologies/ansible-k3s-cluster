@@ -1,6 +1,5 @@
 ---
-# Let's Encrypt Production ClusterIssuer with DNS-01 challenge
-# Reference: FR-005, FR-017
+# Let's Encrypt production ClusterIssuer
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -15,30 +14,21 @@ spec:
     - dns01:
 {% if cert_manager_dns_provider == 'cloudflare' %}
         cloudflare:
-          email: {{ cert_manager_email }}
           apiTokenSecretRef:
-            name: cert-manager-dns-credentials
+            name: {{ cert_manager_dns_provider }}-credentials
             key: api-token
 {% elif cert_manager_dns_provider == 'route53' %}
         route53:
           region: {{ cert_manager_dns_provider_credentials.region | default('us-east-1') }}
-          accessKeyIDSecretRef:
-            name: cert-manager-dns-credentials
-            key: access-key-id
-          secretAccessKeySecretRef:
-            name: cert-manager-dns-credentials
-            key: secret-access-key
-{% elif cert_manager_dns_provider == 'cloudns' %}
+{% elif cert_manager_dns_provider == 'digitalocean' %}
+        digitalocean:
+          tokenSecretRef:
+            name: {{ cert_manager_dns_provider }}-credentials
+            key: access-token
+{% elif cert_manager_dns_provider == 'google' %}
         cloudDNS:
           project: {{ cert_manager_dns_provider_credentials.project }}
           serviceAccountSecretRef:
-            name: cert-manager-dns-credentials
-            key: service-account-json
-{% else %}
-        # Provider: {{ cert_manager_dns_provider }}
-        # Note: Add provider-specific configuration based on cert-manager docs
-        webhook:
-          groupName: acme.example.com
-          solverName: {{ cert_manager_dns_provider }}
-          config: {}
+            name: {{ cert_manager_dns_provider }}-credentials
+            key: service-account.json
 {% endif %}

@@ -1,133 +1,121 @@
-------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      {{ clusterissuers.stdout }}      ClusterIssuers:            - Production Issuer: {{ cert_manager_production_issuer }}      - Staging Issuer: {{ cert_manager_staging_issuer }}      - DNS Provider: {{ cert_manager_dns_provider }}      - Version: {{ cert_manager_version }}      cert-manager deployed successfully:    msg: |  ansible.builtin.debug:- name: cert-manager deployment summary  changed_when: false  register: clusterissuers    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    kubectl get clusterissuers  ansible.builtin.command: >-- name: Verify ClusterIssuers are ready    - /tmp/clusterissuer-production.yaml    - /tmp/clusterissuer-staging.yaml  loop:    state: absent    path: "{{ item }}"  ansible.builtin.file:- name: Clean up temporary manifests  changed_when: "'created' in production_issuer.stdout or 'configured' in production_issuer.stdout"  register: production_issuer    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    kubectl apply -f /tmp/clusterissuer-production.yaml  ansible.builtin.command: >-- name: Apply production ClusterIssuer    mode: '0644'    dest: /tmp/clusterissuer-production.yaml    src: clusterissuer-production.yaml.j2  ansible.builtin.template:- name: Deploy Let's Encrypt production ClusterIssuer  changed_when: "'created' in staging_issuer.stdout or 'configured' in staging_issuer.stdout"  register: staging_issuer    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    kubectl apply -f /tmp/clusterissuer-staging.yaml  ansible.builtin.command: >-- name: Apply staging ClusterIssuer    mode: '0644'    dest: /tmp/clusterissuer-staging.yaml    src: clusterissuer-staging.yaml.j2  ansible.builtin.template:- name: Deploy Let's Encrypt staging ClusterIssuer  when: cert_manager_dns_provider_credentials | default({}) | length > 0    state: absent    path: /tmp/cert-manager-dns-secret.yaml  ansible.builtin.file:- name: Remove temporary credentials file  no_log: true  changed_when: "'created' in dns_secret.stdout or 'configured' in dns_secret.stdout"  register: dns_secret  when: cert_manager_dns_provider_credentials | default({}) | length > 0    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    kubectl apply -f /tmp/cert-manager-dns-secret.yaml  ansible.builtin.command: >-- name: Apply DNS provider credentials secret  no_log: true  # Don't log credentials  when: cert_manager_dns_provider_credentials | default({}) | length > 0    mode: '0600'    dest: /tmp/cert-manager-dns-secret.yaml    src: dns-credentials-secret.yaml.j2  ansible.builtin.template:- name: Create DNS provider credentials secret  changed_when: false  until: cert_manager_ready.rc == 0  delay: 10  retries: 5  register: cert_manager_ready    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    --timeout=300s    -n cert-manager    kubectl wait --for=condition=available deployment --all  ansible.builtin.command: >-- name: Wait for cert-manager to be ready  changed_when: "'created' in cert_manager_deploy.stdout or 'configured' in cert_manager_deploy.stdout"  register: cert_manager_deploy    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.yaml  ansible.builtin.command: >-- name: Deploy cert-manager via kubectl  failed_when: cert_manager_ns.rc != 0 and 'AlreadyExists' not in cert_manager_ns.stderr  changed_when: "'created' in cert_manager_ns.stdout"  register: cert_manager_ns    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    kubectl create namespace cert-manager  ansible.builtin.command: >-- name: Create cert-manager namespace  changed_when: "'created' in cert_manager_crds.stdout or 'configured' in cert_manager_crds.stdout"  register: cert_manager_crds    KUBECONFIG: /etc/rancher/k3s/k3s.yaml  environment:    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.crds.yaml  ansible.builtin.command: >-- name: Add cert-manager Helm repository# Reference: FR-005 (cert-manager deployment), FR-017 (provider-agnostic DNS-01)# Purpose: Install cert-manager and configure DNS-01 ClusterIssuers# ansible/roles/cert-manager/tasks/install.yml# ansible/roles/cert-manager/tasks/main.yml
-# Purpose: Deploy cert-manager with provider-agnostic DNS-01 issuers
+---
+# ansible/roles/cert-manager/tasks/install.yml
+# Purpose: Deploy cert-manager and configure DNS-01 ClusterIssuers
 # Reference: FR-005, FR-017
 
-- name: Include cert-manager installation tasks
-  ansible.builtin.include_tasks: install.yml
-  when: cert_manager_enabled | default(false)
-  tags:
-    - install
-    - cert-manager
+- name: Install cert-manager CRDs
+  ansible.builtin.command: >-
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.crds.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_crds
+  changed_when: "'created' in cert_manager_crds.stdout or 'configured' in cert_manager_crds.stdout"
+
+- name: Create cert-manager namespace
+  ansible.builtin.command: kubectl create namespace cert-manager
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_ns
+  changed_when: "'created' in cert_manager_ns.stdout"
+  failed_when: cert_manager_ns.rc != 0 and 'AlreadyExists' not in cert_manager_ns.stderr
+
+- name: Deploy cert-manager via kubectl
+  ansible.builtin.command: >-
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_deploy
+  changed_when: "'created' in cert_manager_deploy.stdout or 'configured' in cert_manager_deploy.stdout"
+
+- name: Wait for cert-manager to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=available deployment --all
+    -n cert-manager
+    --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_ready
+  retries: 5
+  delay: 10
+  until: cert_manager_ready.rc == 0
+  changed_when: false
+
+- name: Create DNS provider credentials secret
+  ansible.builtin.template:
+    src: dns-credentials-secret.yaml.j2
+    dest: /tmp/cert-manager-dns-secret.yaml
+    mode: '0600'
+  when: cert_manager_dns_provider_credentials | default({}) | length > 0
+  no_log: true  # Don't log credentials
+
+- name: Apply DNS provider credentials secret
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/cert-manager-dns-secret.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: dns_secret
+  changed_when: "'created' in dns_secret.stdout or 'configured' in dns_secret.stdout"
+  when: cert_manager_dns_provider_credentials | default({}) | length > 0
+  no_log: true
+
+- name: Remove temporary credentials file
+  ansible.builtin.file:
+    path: /tmp/cert-manager-dns-secret.yaml
+    state: absent
+  when: cert_manager_dns_provider_credentials | default({}) | length > 0
+
+- name: Deploy Let's Encrypt staging ClusterIssuer
+  ansible.builtin.template:
+    src: clusterissuer-staging.yaml.j2
+    dest: /tmp/clusterissuer-staging.yaml
+    mode: '0644'
+
+- name: Apply staging ClusterIssuer
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/clusterissuer-staging.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: staging_issuer
+  changed_when: "'created' in staging_issuer.stdout or 'configured' in staging_issuer.stdout"
+
+- name: Deploy Let's Encrypt production ClusterIssuer
+  ansible.builtin.template:
+    src: clusterissuer-production.yaml.j2
+    dest: /tmp/clusterissuer-production.yaml
+    mode: '0644'
+
+- name: Apply production ClusterIssuer
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/clusterissuer-production.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: production_issuer
+  changed_when: "'created' in production_issuer.stdout or 'configured' in production_issuer.stdout"
+
+- name: Clean up temporary manifests
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/clusterissuer-staging.yaml
+    - /tmp/clusterissuer-production.yaml
+
+- name: Verify ClusterIssuers are ready
+  ansible.builtin.command: >-
+    kubectl get clusterissuers
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: clusterissuers
+  changed_when: false
+
+- name: cert-manager deployment summary
+  ansible.builtin.debug:
+    msg: |
+      cert-manager deployed successfully:
+      - Version: {{ cert_manager_version }}
+      - DNS Provider: {{ cert_manager_dns_provider }}
+      - Staging Issuer: {{ cert_manager_staging_issuer }}
+      - Production Issuer: {{ cert_manager_production_issuer }}
+      
+      ClusterIssuers:
+      {{ clusterissuers.stdout }}
