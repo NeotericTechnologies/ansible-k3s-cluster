@@ -111,13 +111,13 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ### Implementation for User Story 3
 
-- [ ] T043 [P] [US3] Implement logic in scale-nodes.yml to detect new vs removed nodes from inventory in ansible/playbooks/scale-nodes.yml
-- [ ] T044 [P] [US3] Add tasks to join new control-plane nodes using k3s-server role in ansible/playbooks/scale-nodes.yml
-- [ ] T045 [P] [US3] Add tasks to join new worker nodes using k3s-agent role in ansible/playbooks/scale-nodes.yml
-- [ ] T046 [P] [US3] Implement node drain and cordon behavior for removal candidates in ansible/playbooks/scale-nodes.yml
-- [ ] T047 [US3] Add safeguards and checks to preserve embedded etcd quorum when removing control-plane nodes in ansible/playbooks/scale-nodes.yml
-- [ ] T048 [US3] Add validation tasks to confirm updated node list and scheduling on new workers in ansible/playbooks/scale-nodes.yml
-- [ ] T049 [US3] Add scale-related smoke scenario in tests/ansible/smoke/smoke.yml to exercise add/remove flows
+- [X] T043 [P] [US3] Implement logic in scale-nodes.yml to detect new vs removed nodes from inventory in ansible/playbooks/scale-nodes.yml
+- [X] T044 [P] [US3] Add tasks to join new control-plane nodes using k3s-server role in ansible/playbooks/scale-nodes.yml
+- [X] T045 [P] [US3] Add tasks to join new worker nodes using k3s-agent role in ansible/playbooks/scale-nodes.yml
+- [X] T046 [P] [US3] Implement node drain and cordon behavior for removal candidates in ansible/playbooks/scale-nodes.yml
+- [X] T047 [US3] Add safeguards and checks to preserve embedded etcd quorum when removing control-plane nodes in ansible/playbooks/scale-nodes.yml
+- [X] T048 [US3] Add validation tasks to confirm updated node list and scheduling on new workers in ansible/playbooks/scale-nodes.yml
+- [X] T049 [US3] Add scale-related smoke scenario in tests/ansible/smoke/smoke.yml to exercise add/remove flows
 
 **Checkpoint**: User Story 3 validated by inventory-driven add/remove operations on control-plane and worker nodes.
 
@@ -127,12 +127,12 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Purpose**: Cross-story improvements, documentation, and hardening.
 
- - [ ] T050 [P] Add detailed README for the Ansible project in docs/ansible-k3s-baseline.md, including supported environments, scale assumptions, and explicit non-goals (e.g., full DR orchestration)
-- [ ] T051 [P] Refine example inventories and vars to match real-world defaults in ansible/inventories/examples/ and ansible/group_vars/
-- [ ] T052 Code cleanup and role refactoring across ansible/roles/* for consistency and reuse
-- [ ] T053 [P] Add additional smoke validations (e.g., basic kubectl checks) in tests/ansible/smoke/smoke.yml
-- [ ] T054 [P] Verify quickstart flows end-to-end and update specs/001-k3s-ansible-baseline/quickstart.md as needed
-- [ ] T055 Security and hardening pass (review of secrets handling, TLS defaults, firewall assumptions) across ansible/ roles and playbooks
+ - [X] T050 [P] Add detailed README for the Ansible project in docs/ansible-k3s-baseline.md, including supported environments, scale assumptions, and explicit non-goals (e.g., full DR orchestration)
+- [X] T051 [P] Refine example inventories and vars to match real-world defaults in ansible/inventories/examples/ and ansible/group_vars/
+- [X] T052 Code cleanup and role refactoring across ansible/roles/* for consistency and reuse
+- [X] T053 [P] Add additional smoke validations (e.g., basic kubectl checks) in tests/ansible/smoke/smoke.yml
+- [X] T054 [P] Verify quickstart flows end-to-end and update specs/001-k3s-ansible-baseline/quickstart.md as needed
+- [X] T055 Security and hardening pass (review of secrets handling, TLS defaults, firewall assumptions) across ansible/ roles and playbooks
 
 ---
 
@@ -140,9 +140,9 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Purpose**: Implement and validate the dedicated minor/patch k3s upgrade playbook.
 
-- [ ] T060 [P] Implement upgrade-k3s.yml playbook in ansible/playbooks/upgrade-k3s.yml to perform rolling minor/patch upgrades based on a k3s_version variable, ensuring only compatible version changes are attempted
-- [ ] T061 [P] Add upgrade tasks to verify node readiness and confirm that all servers and agents report the desired k3s_version after upgrade in ansible/playbooks/upgrade-k3s.yml
-- [ ] T062 [P] Add an upgrade-focused smoke scenario in tests/ansible/smoke/smoke.yml that runs upgrade-k3s.yml against an example inventory and asserts successful completion without prolonged control-plane downtime
+- [X] T060 [P] Implement upgrade-k3s.yml playbook in ansible/playbooks/upgrade-k3s.yml to perform rolling minor/patch upgrades based on a k3s_version variable, ensuring only compatible version changes are attempted
+- [X] T061 [P] Add upgrade tasks to verify node readiness and confirm that all servers and agents report the desired k3s_version after upgrade in ansible/playbooks/upgrade-k3s.yml
+- [X] T062 [P] Add an upgrade-focused smoke scenario in tests/ansible/smoke/smoke.yml that runs upgrade-k3s.yml against an example inventory and asserts successful completion without prolonged control-plane downtime
 
 ---
 

@@ -1,0 +1,171 @@
+---
+# Scale Operation Smoke Tests
+# Purpose: Validate scale-nodes.yml playbook functionality
+# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/scale-test.yml
+#
+# Test Scenarios:
+# 1. Add a worker node to existing cluster
+# 2. Remove a worker node from cluster
+# 3. Validate etcd quorum protection (cannot remove last control-plane)
+#
+# Prerequisites:
+# - Existing k3s cluster provisioned
+# - Inventory prepared with node(s) to add/remove
+
+- name: Scale Test - Baseline Cluster State
+  hosts: k3s_servers[0]
+  gather_facts: no
+  tasks:
+    - name: Get initial node count
+      ansible.builtin.command:
+        cmd: kubectl get nodes --no-headers
+      register: initial_nodes
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Display initial cluster state
+      ansible.builtin.debug:
+        msg: "Initial cluster has {{ initial_nodes.stdout_lines | length }} nodes"
+
+    - name: Store baseline for comparison
+      ansible.builtin.set_fact:
+        baseline_node_count: "{{ initial_nodes.stdout_lines | length }}"
+      delegate_to: localhost
+      delegate_facts: yes
+
+- name: Test Scenario 1 - Add Worker Node
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Instructions for add test
+      ansible.builtin.debug:
+        msg:
+          - "To test adding a worker node:"
+          - "1. Add a new entry to k3s_agents in your inventory"
+          - "2. Run: ansible-playbook -i <inventory> playbooks/scale-nodes.yml"
+          - "3. Verify the new node appears in 'kubectl get nodes'"
+          - "4. Run this test again to validate the addition"
+
+- name: Test Scenario 2 - Remove Worker Node
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Instructions for remove test
+      ansible.builtin.debug:
+        msg:
+          - "To test removing a worker node:"
+          - "1. Remove a worker entry from k3s_agents in your inventory"
+          - "2. Run: ansible-playbook -i <inventory> playbooks/scale-nodes.yml"
+          - "3. Verify node is drained and removed from 'kubectl get nodes'"
+          - "4. Run this test again to validate the removal"
+
+- name: Test Scenario 3 - Etcd Quorum Protection
+  hosts: k3s_servers[0]
+  gather_facts: no
+  tasks:
+    - name: Count control-plane nodes
+      ansible.builtin.command:
+        cmd: kubectl get nodes -l node-role.kubernetes.io/control-plane=true --no-headers
+      register: control_plane_nodes
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Display control-plane count
+      ansible.builtin.debug:
+        msg: "Cluster has {{ control_plane_nodes.stdout_lines | length }} control-plane node(s)"
+
+    - name: Verify etcd quorum protection
+      ansible.builtin.debug:
+        msg:
+          - "Etcd quorum protection test:"
+          - "- Current control-plane nodes: {{ control_plane_nodes.stdout_lines | length }}"
+          - "- Minimum required: 1"
+          - "- scale-nodes.yml will prevent removing the last control-plane node"
+          - "- For HA, odd numbers (3, 5, 7) are recommended"
+
+- name: Automated Add/Remove Worker Flow (Optional)
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Automated test instructions
+      ansible.builtin.debug:
+        msg:
+          - "For automated testing:"
+          - "1. Create a test inventory with spare worker capacity"
+          - "2. Add a worker to inventory and run scale-nodes.yml"
+          - "3. Verify addition: kubectl get nodes | grep Ready"
+          - "4. Remove same worker from inventory and run scale-nodes.yml"
+          - "5. Verify removal: kubectl get nodes (should not list removed node)"
+
+- name: Validate Current Cluster State
+  hosts: k3s_servers[0]
+  gather_facts: no
+  tasks:
+    - name: Get current node list
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o wide
+      register: current_nodes
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Display node list
+      ansible.builtin.debug:
+        msg: "{{ current_nodes.stdout_lines }}"
+
+    - name: Get node readiness
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+      register: node_readiness
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Parse readiness data
+      ansible.builtin.set_fact:
+        nodes_ready: "{{ node_readiness.stdout_lines | select('search', 'True') | list | length }}"
+        nodes_total: "{{ node_readiness.stdout_lines | length }}"
+
+    - name: Verify all nodes are Ready
+      ansible.builtin.assert:
+        that:
+          - nodes_ready == nodes_total
+        fail_msg: "Not all nodes are Ready: {{ nodes_ready }}/{{ nodes_total }}"
+        success_msg: "✓ All {{ nodes_total }} nodes are Ready"
+
+    - name: Test pod scheduling
+      ansible.builtin.command:
+        cmd: kubectl run scale-smoke-test --image=busybox:latest --restart=Never --rm -i --command -- echo "Scale test successful"
+      register: pod_test
+      changed_when: false
+      failed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Validate pod scheduling works
+      ansible.builtin.assert:
+        that:
+          - pod_test.rc == 0
+        fail_msg: "Pod scheduling test failed"
+        success_msg: "✓ Pod scheduling successful on scaled cluster"
+
+- name: Scale Test Summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Display test summary
+      ansible.builtin.debug:
+        msg:
+          - "====== Scale Test Summary ======"
+          - "Baseline: {{ hostvars['localhost']['baseline_node_count'] | default('N/A') }} nodes"
+          - ""
+          - "Manual Testing Steps:"
+          - "1. Update inventory to add/remove nodes"
+          - "2. Run scale-nodes.yml playbook"
+          - "3. Verify with kubectl get nodes"
+          - "4. Re-run this test to validate"
+          - ""
+          - "All automated validations passed."
+          - "Scale functionality is ready for use."

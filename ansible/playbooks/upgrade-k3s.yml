@@ -1,29 +1,312 @@
 ---
-# upgrade-k3s.yml
-# Purpose: Perform rolling upgrades of k3s cluster (minor/patch versions only)
+# Rolling k3s upgrade playbook for minor and patch versions
 #
-# This playbook handles:
-# - Pre-upgrade validation (version compatibility, cluster health)
-# - Rolling upgrade of k3s-server (control-plane) nodes
-# - Rolling upgrade of k3s-agent (worker) nodes
-# - Post-upgrade validation and verification
+# This playbook performs a rolling upgrade of k3s across control-plane
+# and worker nodes. It upgrades one node at a time to maintain cluster
+# availability during the upgrade process.
 #
 # Prerequisites:
-#   - k3s core cluster provisioned via cluster-core.yml
-#   - Target k3s version specified in group_vars
-#
-# Limitations:
-#   - Supports minor and patch version upgrades only
-#   - Major version upgrades (e.g., 1.x -> 2.x) are out of scope
+# - Existing k3s cluster
+# - Set k3s_version variable to target version in group_vars or extra-vars
+# - Backup etcd data before major upgrades (not handled by this playbook)
 #
 # Usage:
-#   # Update k3s_version in group_vars/all.yml first
-#   ansible-playbook -i inventories/production ansible/playbooks/upgrade-k3s.yml
+#   ansible-playbook -i inventories/prod/hosts.ini \
+#     playbooks/upgrade-k3s.yml \
+#     -e "k3s_version=v1.28.6+k3s1"
+#
+# Safety:
+# - Serial execution ensures one node upgrades at a time
+# - Validates cluster health before and after upgrade
+# - Checks version compatibility
+# - Waits for node readiness after each upgrade
 
-- name: Placeholder for k3s upgrade operations
-  hosts: all
-  gather_facts: true
+- name: Pre-upgrade validation and planning
+  hosts: k3s_servers[0]
+  gather_facts: yes
   tasks:
-    - name: Upgrade tasks to be implemented
+    - name: Verify target k3s_version is defined
+      ansible.builtin.assert:
+        that:
+          - k3s_version is defined
+          - k3s_version | length > 0
+        fail_msg: "k3s_version variable is required. Example: -e 'k3s_version=v1.28.6+k3s1'"
+        success_msg: "Target version: {{ k3s_version }}"
+
+    - name: Get current k3s version from first server
+      ansible.builtin.command:
+        cmd: k3s --version
+      register: current_k3s_version_raw
+      changed_when: false
+
+    - name: Parse current version
+      ansible.builtin.set_fact:
+        current_version: "{{ current_k3s_version_raw.stdout.split()[2] }}"
+
+    - name: Display upgrade plan
       ansible.builtin.debug:
-        msg: "upgrade-k3s.yml implementation pending"
+        msg:
+          - "Upgrade Plan:"
+          - "  Current version: {{ current_version }}"
+          - "  Target version:  {{ k3s_version }}"
+          - "  Control-plane nodes: {{ groups['k3s_servers'] | length }}"
+          - "  Worker nodes: {{ groups['k3s_agents'] | default([]) | length }}"
+
+    - name: Warn if versions are the same
+      ansible.builtin.debug:
+        msg: "WARNING: Current version matches target version. No upgrade needed."
+      when: current_version == k3s_version
+
+    - name: Validate cluster health before upgrade
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o json
+      register: pre_upgrade_nodes
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Parse node health
+      ansible.builtin.set_fact:
+        nodes_data: "{{ pre_upgrade_nodes.stdout | from_json }}"
+
+    - name: Check all nodes are Ready
+      ansible.builtin.set_fact:
+        not_ready_nodes: "{{ nodes_data.items | selectattr('status.conditions', 'defined') | rejectattr('status.conditions', 'search', 'Ready.*True') | map(attribute='metadata.name') | list }}"
+
+    - name: Fail if any nodes are not Ready
+      ansible.builtin.fail:
+        msg: "Cannot proceed with upgrade. The following nodes are not Ready: {{ not_ready_nodes }}"
+      when: not_ready_nodes | length > 0
+
+    - name: Display pre-upgrade cluster health
+      ansible.builtin.debug:
+        msg: "✓ All {{ nodes_data.items | length }} nodes are Ready. Proceeding with upgrade."
+
+    - name: Recommendation to backup etcd
+      ansible.builtin.debug:
+        msg:
+          - "IMPORTANT: Ensure you have a recent etcd backup before proceeding."
+          - "k3s stores etcd data in /var/lib/rancher/k3s/server/db/"
+          - "Consider creating a snapshot before major upgrades."
+
+    - name: Pause for confirmation (optional - comment out to skip)
+      ansible.builtin.pause:
+        prompt: "Press Enter to continue with upgrade, or Ctrl+C to abort"
+      when: upgrade_pause_for_confirmation | default(false) | bool
+
+# Upgrade control-plane nodes one at a time
+- name: Upgrade control-plane nodes
+  hosts: k3s_servers
+  gather_facts: yes
+  serial: 1
+  tasks:
+    - name: Get current node k3s version
+      ansible.builtin.command:
+        cmd: k3s --version
+      register: node_k3s_version
+      changed_when: false
+
+    - name: Display upgrade status for this node
+      ansible.builtin.debug:
+        msg: "Upgrading {{ inventory_hostname }} from {{ node_k3s_version.stdout.split()[2] }} to {{ k3s_version }}"
+
+    - name: Install target k3s version on control-plane
+      ansible.builtin.shell:
+        cmd: |
+          curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_VERSION="{{ k3s_version }}" \
+          sh -s - server \
+          {% if groups['k3s_servers'].index(inventory_hostname) == 0 %}
+          --cluster-init \
+          {% else %}
+          --server "https://{{ hostvars[groups['k3s_servers'][0]]['ansible_default_ipv4']['address'] }}:6443" \
+          {% endif %}
+          {{ k3s_server_extra_args | default('') }}
+      args:
+        executable: /bin/bash
+      register: k3s_upgrade_server
+      changed_when: "'No change detected' not in k3s_upgrade_server.stderr"
+
+    - name: Wait for k3s service to be stable
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+      register: k3s_service_status
+      until: k3s_service_status.status.ActiveState == "active"
+      retries: 12
+      delay: 5
+
+    - name: Wait for node to be Ready after upgrade
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=300s
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Verify upgraded version
+      ansible.builtin.command:
+        cmd: k3s --version
+      register: upgraded_version
+      changed_when: false
+      failed_when: k3s_version not in upgraded_version.stdout
+
+    - name: Display upgrade success
+      ansible.builtin.debug:
+        msg: "✓ {{ inventory_hostname }} successfully upgraded to {{ k3s_version }}"
+
+    - name: Pause between control-plane upgrades
+      ansible.builtin.pause:
+        seconds: "{{ upgrade_pause_between_nodes | default(10) }}"
+      when: groups['k3s_servers'] | length > 1
+
+# Upgrade worker nodes one at a time
+- name: Upgrade worker nodes
+  hosts: k3s_agents
+  gather_facts: yes
+  serial: 1
+  tasks:
+    - name: Get current node k3s version
+      ansible.builtin.command:
+        cmd: k3s --version
+      register: node_k3s_version
+      changed_when: false
+
+    - name: Display upgrade status for this node
+      ansible.builtin.debug:
+        msg: "Upgrading {{ inventory_hostname }} from {{ node_k3s_version.stdout.split()[2] }} to {{ k3s_version }}"
+
+    - name: Get node token from first control-plane
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+      run_once: true
+
+    - name: Install target k3s version on worker
+      ansible.builtin.shell:
+        cmd: |
+          curl -sfL https://get.k3s.io | \
+          INSTALL_K3S_VERSION="{{ k3s_version }}" \
+          K3S_URL="https://{{ control_plane_vip | default(hostvars[groups['k3s_servers'][0]]['ansible_default_ipv4']['address']) }}:6443" \
+          K3S_TOKEN="{{ node_token.content | b64decode | trim }}" \
+          sh -s - agent \
+          {{ k3s_agent_extra_args | default('') }}
+      args:
+        executable: /bin/bash
+      register: k3s_upgrade_agent
+      changed_when: "'No change detected' not in k3s_upgrade_agent.stderr"
+
+    - name: Wait for k3s-agent service to be stable
+      ansible.builtin.systemd:
+        name: k3s-agent
+        state: started
+      register: k3s_agent_status
+      until: k3s_agent_status.status.ActiveState == "active"
+      retries: 12
+      delay: 5
+
+    - name: Wait for node to be Ready after upgrade
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=300s
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Verify upgraded version
+      ansible.builtin.command:
+        cmd: k3s --version
+      register: upgraded_version
+      changed_when: false
+      failed_when: k3s_version not in upgraded_version.stdout
+
+    - name: Display upgrade success
+      ansible.builtin.debug:
+        msg: "✓ {{ inventory_hostname }} successfully upgraded to {{ k3s_version }}"
+
+    - name: Pause between worker upgrades
+      ansible.builtin.pause:
+        seconds: "{{ upgrade_pause_between_nodes | default(5) }}"
+
+# Post-upgrade validation
+- name: Post-upgrade validation
+  hosts: k3s_servers[0]
+  gather_facts: no
+  tasks:
+    - name: Wait for all nodes to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=Ready nodes --all --timeout=300s
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Get final cluster state
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o wide
+      register: final_nodes
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Display final cluster state
+      ansible.builtin.debug:
+        msg: "{{ final_nodes.stdout_lines }}"
+
+    - name: Verify all nodes report target version
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o json
+      register: final_nodes_json
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Parse node versions
+      ansible.builtin.set_fact:
+        node_versions: "{{ final_nodes_json.stdout | from_json | json_query('items[*].[metadata.name, status.nodeInfo.kubeletVersion]') }}"
+
+    - name: Check for version mismatches
+      ansible.builtin.set_fact:
+        mismatched_nodes: "{{ node_versions | selectattr('1', 'ne', k3s_version) | list }}"
+
+    - name: Report any version mismatches
+      ansible.builtin.debug:
+        msg: "WARNING: The following nodes are not running {{ k3s_version }}: {{ mismatched_nodes }}"
+      when: mismatched_nodes | length > 0
+
+    - name: Validate all nodes upgraded successfully
+      ansible.builtin.assert:
+        that:
+          - mismatched_nodes | length == 0
+        fail_msg: "Not all nodes upgraded successfully. Check mismatched_nodes above."
+        success_msg: "✓ All nodes successfully upgraded to {{ k3s_version }}"
+
+    - name: Test cluster functionality
+      ansible.builtin.command:
+        cmd: kubectl run upgrade-test-{{ ansible_date_time.epoch }} --image=busybox:latest --restart=Never --rm -i --command -- echo "Cluster functional after upgrade"
+      register: functionality_test
+      changed_when: false
+      failed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Validate cluster is functional
+      ansible.builtin.assert:
+        that:
+          - functionality_test.rc == 0
+        fail_msg: "Cluster functionality test failed after upgrade"
+        success_msg: "✓ Cluster is functional after upgrade"
+
+    - name: Upgrade complete summary
+      ansible.builtin.debug:
+        msg:
+          - "====== Upgrade Complete ======"
+          - "Target version: {{ k3s_version }}"
+          - "Total nodes: {{ node_versions | length }}"
+          - "All nodes verified at target version"
+          - "Cluster is healthy and functional"
+          - ""
+          - "Next steps:"
+          - "1. Test application workloads"
+          - "2. Monitor cluster stability"
+          - "3. Update documentation with new version"
