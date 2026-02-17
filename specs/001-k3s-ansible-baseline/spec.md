@@ -37,16 +37,16 @@ An operator wants to provision a new highly available k3s cluster on a set of pr
 
 ### User Story 2 - Update existing cluster configuration (Priority: P2)
 
-An operator needs to update configuration on an existing k3s cluster managed by this playbook (for example, adjusting cert-manager issuers, updating Rancher or Traefik configuration, or modifying multus VLAN network definitions) by re-running the playbook with updated variables, without rebuilding the cluster from scratch.
+An operator needs to update configuration on an existing k3s cluster managed by these playbooks (for example, adjusting cert-manager issuers, updating Rancher or Traefik configuration, or modifying multus VLAN network definitions) by re-running the core cluster and/or add-ons playbooks with updated variables, without rebuilding the cluster from scratch.
 
 **Why this priority**: Ongoing configuration management is essential for maintaining and evolving the cluster safely over time without manual, error-prone changes.
 
-**Independent Test**: Apply the playbook to an already-provisioned cluster after making specific configuration changes in group/host variables and verify that only the intended components are updated and the cluster remains healthy.
+**Independent Test**: Apply the core cluster playbook and, where applicable, the add-ons playbook to an already-provisioned cluster after making specific configuration changes in group/host variables and verify that only the intended components are updated and the cluster remains healthy.
 
 **Acceptance Scenarios**:
 
-1. **Given** a running k3s cluster previously provisioned by this playbook, **When** the operator updates variables related to cert-manager issuers (such as DNS challenge details or contact email) and re-runs the playbook, **Then** the corresponding cert-manager resources are updated to match the new configuration without recreating the cluster.
-2. **Given** a running k3s cluster and updated configuration for Rancher, rancher-monitoring, or Traefik in the variables, **When** the operator re-runs the playbook, **Then** the relevant components are updated to the new desired state while the rest of the cluster remains unchanged and available.
+1. **Given** a running k3s cluster previously provisioned by the core cluster playbook and (optionally) the add-ons playbook, **When** the operator updates variables related to cert-manager issuers (such as DNS challenge details or contact email) and re-runs the add-ons playbook, **Then** the corresponding cert-manager resources are updated to match the new configuration without recreating the cluster.
+2. **Given** a running k3s cluster and updated configuration for Rancher, rancher-monitoring, or Traefik in the variables, **When** the operator re-runs the add-ons playbook, **Then** the relevant components are updated to the new desired state while the rest of the cluster remains unchanged and available.
 
 ---
 
@@ -74,10 +74,10 @@ An operator wants to scale the cluster by adding or removing control-plane and w
 
 ### Functional Requirements
 
-- **FR-001**: The playbook MUST provision a new k3s cluster on a set of target hosts defined in the inventory, using embedded etcd for high availability where multiple control-plane nodes are defined.
-- **FR-002**: The playbook MUST be idempotent and safe to re-run, converging existing clusters to the desired state without unnecessary restarts or data loss.
-- **FR-003**: The playbook MUST support both deploying new clusters and updating configuration of existing clusters using the same entry point, based on inventory and variables.
-- **FR-004**: The playbook MUST support adding and removing both control-plane and worker nodes via inventory and configuration changes, while preserving control-plane and embedded etcd quorum where applicable.
+- **FR-001**: The core cluster playbook MUST provision a new k3s cluster on a set of target hosts defined in the inventory, using embedded etcd for high availability where multiple control-plane nodes are defined.
+- **FR-002**: The core cluster and add-ons playbooks MUST be idempotent and safe to re-run, converging existing clusters to the desired state without unnecessary restarts or data loss.
+- **FR-003**: The combination of core cluster and add-ons playbooks MUST support both deploying new clusters and updating configuration of existing clusters using the same entry points, driven solely by inventory and variables.
+- **FR-004**: The playbooks MUST support adding and removing both control-plane and worker nodes via inventory and configuration changes, while preserving control-plane and embedded etcd quorum where applicable.
 -- **FR-005**: When enabled via configuration and the add-ons playbook, the system MUST install and configure cert-manager on the cluster, including issuers for both Let's Encrypt Staging and Let's Encrypt Production that use DNS challenge authentication.
 -- **FR-006**: When enabled via configuration and the add-ons playbook, the system MUST install and configure multus so that pods can be attached to additional network interfaces mapped to available VLANs on the underlying network, with configuration driven by variables.
 -- **FR-007**: When enabled via configuration and the add-ons playbook, the system MUST deploy Rancher as the management console for the k3s cluster and ensure that it is reachable via the configured ingress.
@@ -105,7 +105,7 @@ An operator wants to scale the cluster by adding or removing control-plane and w
 ### Measurable Outcomes
 
 - **SC-001**: An operator can provision a new, fully functional k3s cluster using the documented combination of core and add-on playbooks (for example, running the core cluster playbook followed by the add-ons playbook with desired components enabled), with the end-to-end process typically completing within a time window acceptable for the target environment (for example, within one hour for a small HA cluster); the core cluster can also be provisioned without platform add-ons by running only the core cluster playbook.
-- **SC-002**: Re-running the playbook on an existing cluster results in successful completion with no unexpected disruptions to running workloads in at least 95% of test runs under normal conditions, demonstrating idempotent behavior.
+- **SC-002**: Re-running the core cluster and, where applicable, add-ons playbooks on an existing cluster results in successful completion with no unexpected disruptions to running workloads in at least 95% of test runs under normal conditions, demonstrating idempotent behavior.
 - **SC-003**: Operators are able to successfully add or remove control-plane and worker nodes using the documented process in at least 90% of attempts during testing, without causing loss of cluster availability or etcd quorum for properly configured HA topologies.
 - **SC-004**: At least 90% of target users (operators) report that the documented process for provisioning, updating, and scaling the cluster is understandable and can be followed without direct assistance after reading the documentation once, as measured by internal feedback or usability reviews.
 - **SC-005**: When Synology storage variables are provided, operators can successfully deploy at least one stateful workload that uses a storage class backed by Synology CSI and have its persistent volumes automatically created, bound, and available in at least 90% of test runs.
