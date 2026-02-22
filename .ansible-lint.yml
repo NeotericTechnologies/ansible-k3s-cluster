@@ -31,7 +31,7 @@ offline: false
 profile: null
 
 # Minimum ansible-lint version
-min_ansible_version: "2.15"
+# min_ansible_version: "2.15"
 
 # Enable progressive mode (stricter over time)
 progressive: false
