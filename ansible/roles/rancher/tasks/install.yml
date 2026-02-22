@@ -14,9 +14,9 @@
         name: cattle-system
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: cattle_ns
-  changed_when: "'created' in cattle_ns.stdout"
-  failed_when: cattle_ns.rc != 0 and 'AlreadyExists' not in cattle_ns.stderr
+  register: rancher_cattle_ns
+  changed_when: "'created' in rancher_cattle_ns.stdout"
+  failed_when: rancher_cattle_ns.rc != 0 and 'AlreadyExists' not in rancher_cattle_ns.stderr
 
 - name: Install Rancher via kubectl (using Helm manifest)
   ansible.builtin.shell: |

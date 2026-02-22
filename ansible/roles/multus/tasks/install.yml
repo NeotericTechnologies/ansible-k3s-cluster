@@ -40,8 +40,8 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   loop: "{{ multus_vlan_networks }}"
   when: multus_vlan_networks | default([]) | length > 0
-  register: nad_apply
-  changed_when: "'created' in nad_apply.stdout or 'configured' in nad_apply.stdout"
+  register: multus_nad_apply
+  changed_when: "'created' in multus_nad_apply.stdout or 'configured' in multus_nad_apply.stdout"
 
 - name: Clean up temporary NetworkAttachmentDefinition files
   ansible.builtin.file:

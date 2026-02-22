@@ -45,7 +45,7 @@
   roles:
     - role: k3s-agent
       tags: ['k3s-agent', 'workers']
-  when: groups['k3s_agents'] | default([]) | length > 0
+      when: groups['k3s_agents'] | default([]) | length > 0
 
 - name: Validate cluster health
   hosts: k3s_servers[0]

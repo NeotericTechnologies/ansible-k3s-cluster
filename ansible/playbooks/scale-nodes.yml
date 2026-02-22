@@ -172,6 +172,9 @@
       failed_when:
         - drain_result.rc != 0
         - "'cannot delete' not in drain_result.stderr"
+      changed_when:
+        - drain_result.rc == 0
+        - "'node/{{ item }} cordoned' in drain_result.stdout"
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -180,6 +183,12 @@
         cmd: kubectl delete node {{ item }}
       loop: "{{ nodes_to_remove }}"
       when: nodes_to_remove | length > 0
+      register: delete_result
+      failed_when:
+        - delete_result.rc != 0
+        - "'not found' not in delete_result.stderr"
+      changed_when:
+        - delete_result.rc == 0
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
