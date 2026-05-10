@@ -7,6 +7,65 @@
   ansible.builtin.setup:
   when: ansible_facts.keys() | length == 0
 
+- name: Check if initial host setup has already completed
+  ansible.builtin.stat:
+    path: "{{ k3s_initial_setup_marker_path }}"
+  register: k3s_initial_setup_marker
+
+- name: Run one-time initial host setup
+  when:
+    - k3s_initial_server_setup | bool
+    - not k3s_initial_setup_marker.stat.exists
+  block:
+    - name: Set hostname from inventory
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+      when: ansible_facts.hostname != inventory_hostname
+
+    # DHCP renewal can briefly interrupt SSH; run asynchronously then reconnect.
+    - name: Renew DHCP lease on primary interface
+      ansible.builtin.shell: |
+        set -e
+        iface="{{ ansible_default_ipv4.interface | default('') }}"
+        if command -v dhclient >/dev/null 2>&1; then
+          if [[ -n "$iface" ]]; then
+            dhclient -r "$iface" || true
+            dhclient "$iface"
+          else
+            dhclient -r || true
+            dhclient
+          fi
+        elif command -v networkctl >/dev/null 2>&1 && [[ -n "$iface" ]]; then
+          networkctl renew "$iface"
+        else
+          echo "No supported DHCP renewal command found (dhclient or networkctl)." >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      async: 120
+      poll: 0
+      changed_when: true
+      when: k3s_renew_dhcp_lease_on_bootstrap | bool
+
+    - name: Wait for SSH to become available after DHCP renewal
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+        sleep: 5
+      when: k3s_renew_dhcp_lease_on_bootstrap | bool
+
+    - name: Ensure bootstrap marker directory exists
+      ansible.builtin.file:
+        path: "{{ k3s_initial_setup_marker_path | dirname }}"
+        state: directory
+        mode: '0755'
+
+    - name: Record completion of initial host setup
+      ansible.builtin.copy:
+        dest: "{{ k3s_initial_setup_marker_path }}"
+        content: "completed={{ ansible_date_time.iso8601 }}\n"
+        mode: '0644'
+
 - name: Validate operating system family
   ansible.builtin.assert:
     that:
@@ -75,9 +134,10 @@
     - iptables --version
     - nft --version
 
-- name: Determine if a firewall backend is available
+- name: Determine which firewall backend is available
   ansible.builtin.set_fact:
     firewall_backend_available: "{{ (firewall_check.results | selectattr('rc', 'equalto', 0) | list | length) > 0 }}"
+    firewall_backend_type: "{% set iptables_result = firewall_check.results | selectattr('item', 'equalto', 'iptables --version') | map(attribute='rc') | first | default(1) %}{{ 'iptables' if iptables_result == 0 else 'nftables' }}"
 
 - name: Install nftables when no firewall backend is present
   ansible.builtin.apt:
@@ -96,12 +156,17 @@
   failed_when: false
   when: not firewall_backend_available
 
+- name: Update firewall backend type after installation
+  ansible.builtin.set_fact:
+    firewall_backend_type: "nftables"
+  when: not firewall_backend_available and (nft_check is defined and nft_check.rc == 0)
+
 - name: Validate firewall backend is available
   ansible.builtin.assert:
     that:
       - firewall_backend_available or (nft_check is defined and nft_check.rc == 0)
     fail_msg: "Neither iptables nor nftables is available. One is required for kube-proxy."
-    success_msg: "Firewall backend check passed: {{ 'iptables' if (firewall_check.results | selectattr('item', 'equalto', 'iptables --version') | map(attribute='rc') | first | default(1)) == 0 else 'nftables' }}"
+    success_msg: "Firewall backend check passed: {{ firewall_backend_type }}"
 
 - name: Check network connectivity to k3s GitHub releases
   ansible.builtin.uri:

@@ -3,6 +3,14 @@
 # Purpose: Install k3s server with embedded etcd HA configuration
 # Reference: FR-001, constitution gate C3
 
+- name: Validate ha_mode is defined and has allowed value
+  ansible.builtin.assert:
+    that:
+      - ha_mode is defined
+      - ha_mode in ['embedded-etcd-ha', 'single-node']
+    fail_msg: "Invalid or undefined ha_mode: '{{ ha_mode | default('UNDEFINED') }}'. Allowed values: 'embedded-etcd-ha', 'single-node'"
+    success_msg: "ha_mode validation passed: {{ ha_mode | default('UNDEFINED') }}"
+
 - name: Check if k3s is already installed
   ansible.builtin.stat:
     path: /usr/local/bin/k3s
