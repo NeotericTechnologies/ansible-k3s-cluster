@@ -75,12 +75,33 @@
     - iptables --version
     - nft --version
 
+- name: Determine if a firewall backend is available
+  ansible.builtin.set_fact:
+    firewall_backend_available: "{{ (firewall_check.results | selectattr('rc', 'equalto', 0) | list | length) > 0 }}"
+
+- name: Install nftables when no firewall backend is present
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - not firewall_backend_available
+    - ansible_facts.os_family == 'Debian'
+
+- name: Verify nftables availability after installation
+  ansible.builtin.command: nft --version
+  register: nft_check
+  changed_when: false
+  failed_when: false
+  when: not firewall_backend_available
+
 - name: Validate firewall backend is available
   ansible.builtin.assert:
     that:
-      - firewall_check.results | selectattr('rc', 'equalto', 0) | list | length > 0
+      - firewall_backend_available or (nft_check is defined and nft_check.rc == 0)
     fail_msg: "Neither iptables nor nftables is available. One is required for kube-proxy."
-    success_msg: "Firewall backend check passed"
+    success_msg: "Firewall backend check passed: {{ 'iptables' if (firewall_check.results | selectattr('item', 'equalto', 'iptables --version') | map(attribute='rc') | first | default(1)) == 0 else 'nftables' }}"
 
 - name: Check network connectivity to k3s GitHub releases
   ansible.builtin.uri:
