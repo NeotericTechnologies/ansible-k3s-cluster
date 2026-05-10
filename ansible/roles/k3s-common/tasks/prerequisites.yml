@@ -22,37 +22,13 @@
         name: "{{ inventory_hostname }}"
       when: ansible_facts.hostname != inventory_hostname
 
-    # DHCP renewal can briefly interrupt SSH; run asynchronously then reconnect.
-    - name: Renew DHCP lease on primary interface
-      ansible.builtin.shell: |
-        set -e
-        iface="{{ ansible_default_ipv4.interface | default('') }}"
-        if command -v dhclient >/dev/null 2>&1; then
-          if [[ -n "$iface" ]]; then
-            dhclient -r "$iface" || true
-            dhclient "$iface"
-          else
-            dhclient -r || true
-            dhclient
-          fi
-        elif command -v networkctl >/dev/null 2>&1 && [[ -n "$iface" ]]; then
-          networkctl renew "$iface"
-        else
-          echo "No supported DHCP renewal command found (dhclient or networkctl)." >&2
-          exit 1
-        fi
-      args:
-        executable: /bin/bash
-      async: 120
-      poll: 0
-      changed_when: true
-      when: k3s_renew_dhcp_lease_on_bootstrap | bool
-
-    - name: Wait for SSH to become available after DHCP renewal
-      ansible.builtin.wait_for_connection:
-        timeout: 180
-        sleep: 5
-      when: k3s_renew_dhcp_lease_on_bootstrap | bool
+    - name: Reboot host after initial bootstrap changes
+      ansible.builtin.reboot:
+        msg: "Reboot initiated by Ansible initial host setup"
+        connect_timeout: 10
+        reboot_timeout: 600
+        post_reboot_delay: 10
+      when: k3s_reboot_on_bootstrap | bool
 
     - name: Ensure bootstrap marker directory exists
       ansible.builtin.file:
@@ -63,7 +39,7 @@
     - name: Record completion of initial host setup
       ansible.builtin.copy:
         dest: "{{ k3s_initial_setup_marker_path }}"
-        content: "completed={{ ansible_date_time.iso8601 }}\n"
+        content: "completed={{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}\n"
         mode: '0644'
 
 - name: Validate operating system family

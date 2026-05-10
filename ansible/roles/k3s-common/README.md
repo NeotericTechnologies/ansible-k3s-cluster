@@ -57,11 +57,11 @@ k3s_check_internet: true
 
 # One-time host bootstrap actions
 k3s_initial_server_setup: false
-k3s_renew_dhcp_lease_on_bootstrap: true
+k3s_reboot_on_bootstrap: true
 k3s_initial_setup_marker_path: /var/lib/ansible-k3s/.initial-setup-complete
 ```
 
-Set `k3s_initial_server_setup: true` for your first bootstrap run to apply hostname and DHCP lease renewal once per host.
+Set `k3s_initial_server_setup: true` for your first bootstrap run to apply hostname and reboot once per host.
 
 ## Dependencies
 
