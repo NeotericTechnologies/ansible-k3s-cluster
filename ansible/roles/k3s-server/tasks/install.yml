@@ -23,15 +23,19 @@
   ansible.builtin.set_fact:
     is_first_server: "{{ groups['k3s_servers'].index(inventory_hostname) == 0 }}"
 
+- name: Download k3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/get_k3s.sh
+    mode: '0755'
+    force: false
+  when: k3s_install_needed
+
 - name: Install k3s on first control-plane node
-  ansible.builtin.shell: |
-    curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_VERSION="{{ k3s_version }}" \
-    INSTALL_K3S_EXEC="server \
-      --cluster-init \
-      --tls-san={{ control_plane_vip }} \
-      {{ k3s_server_extra_args }}" \
-    sh -
+  ansible.builtin.command: /tmp/get_k3s.sh
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: "server --cluster-init --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
   args:
     creates: /etc/systemd/system/k3s.service
   when:
@@ -62,16 +66,12 @@
   when: not is_first_server
 
 - name: Install k3s on additional control-plane nodes
-  ansible.builtin.shell: |
-    curl -sfL https://get.k3s.io | \
-    K3S_URL="https://{{ groups['k3s_servers'][0] }}:6443" \
-    K3S_TOKEN="{{ k3s_node_token }}" \
-    INSTALL_K3S_VERSION="{{ k3s_version }}" \
-    INSTALL_K3S_EXEC="server \
-      --server https://{{ groups['k3s_servers'][0] }}:6443 \
-      --tls-san={{ control_plane_vip }} \
-      {{ k3s_server_extra_args }}" \
-    sh -
+  ansible.builtin.command: /tmp/get_k3s.sh
+  environment:
+    K3S_URL: "https://{{ groups['k3s_servers'][0] }}:6443"
+    K3S_TOKEN: "{{ k3s_node_token }}"
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: "server --server https://{{ groups['k3s_servers'][0] }}:6443 --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
   args:
     creates: /etc/systemd/system/k3s.service
   when:
@@ -80,13 +80,10 @@
     - ha_mode == 'embedded-etcd-ha'
 
 - name: Install k3s on single-node cluster
-  ansible.builtin.shell: |
-    curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_VERSION="{{ k3s_version }}" \
-    INSTALL_K3S_EXEC="server \
-      --tls-san={{ control_plane_vip }} \
-      {{ k3s_server_extra_args }}" \
-    sh -
+  ansible.builtin.command: /tmp/get_k3s.sh
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: "server --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
   args:
     creates: /etc/systemd/system/k3s.service
   when:

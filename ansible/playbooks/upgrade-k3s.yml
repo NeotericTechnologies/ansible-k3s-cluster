@@ -100,6 +100,13 @@
   gather_facts: yes
   serial: 1
   tasks:
+    - name: Download k3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /tmp/get_k3s.sh
+        mode: '0755'
+        force: false
+
     - name: Get current node k3s version
       ansible.builtin.command:
         cmd: k3s --version
@@ -111,19 +118,10 @@
         msg: "Upgrading {{ inventory_hostname }} from {{ node_k3s_version.stdout.split()[2] }} to {{ k3s_version }}"
 
     - name: Install target k3s version on control-plane
-      ansible.builtin.shell:
-        cmd: |
-          curl -sfL https://get.k3s.io | \
-          INSTALL_K3S_VERSION="{{ k3s_version }}" \
-          sh -s - server \
-          {% if groups['k3s_servers'].index(inventory_hostname) == 0 %}
-          --cluster-init \
-          {% else %}
-          --server "https://{{ hostvars[groups['k3s_servers'][0]]['ansible_default_ipv4']['address'] }}:6443" \
-          {% endif %}
-          {{ k3s_server_extra_args | default('') }}
-      args:
-        executable: /bin/bash
+      ansible.builtin.command: /tmp/get_k3s.sh
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+        INSTALL_K3S_EXEC: "server {% if groups['k3s_servers'].index(inventory_hostname) == 0 %}--cluster-init{% else %}--server https://{{ hostvars[groups['k3s_servers'][0]]['ansible_default_ipv4']['address'] }}:6443{% endif %} {{ k3s_server_extra_args | default('') }}"
       register: k3s_upgrade_server
       changed_when: "'No change detected' not in k3s_upgrade_server.stderr"
 
@@ -166,6 +164,13 @@
   gather_facts: yes
   serial: 1
   tasks:
+    - name: Download k3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /tmp/get_k3s.sh
+        mode: '0755'
+        force: false
+
     - name: Get current node k3s version
       ansible.builtin.command:
         cmd: k3s --version
@@ -181,19 +186,14 @@
         src: /var/lib/rancher/k3s/server/node-token
       register: node_token
       delegate_to: "{{ groups['k3s_servers'][0] }}"
-      run_once: true
 
     - name: Install target k3s version on worker
-      ansible.builtin.shell:
-        cmd: |
-          curl -sfL https://get.k3s.io | \
-          INSTALL_K3S_VERSION="{{ k3s_version }}" \
-          K3S_URL="https://{{ control_plane_vip | default(hostvars[groups['k3s_servers'][0]]['ansible_default_ipv4']['address']) }}:6443" \
-          K3S_TOKEN="{{ node_token.content | b64decode | trim }}" \
-          sh -s - agent \
-          {{ k3s_agent_extra_args | default('') }}
-      args:
-        executable: /bin/bash
+      ansible.builtin.command: /tmp/get_k3s.sh
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+        K3S_URL: "https://{{ control_plane_vip | default(hostvars[groups['k3s_servers'][0]]['ansible_default_ipv4']['address']) }}:6443"
+        K3S_TOKEN: "{{ node_token.content | b64decode | trim }}"
+        INSTALL_K3S_EXEC: "agent {{ k3s_agent_extra_args | default('') }}"
       register: k3s_upgrade_agent
       changed_when: "'No change detected' not in k3s_upgrade_agent.stderr"
 

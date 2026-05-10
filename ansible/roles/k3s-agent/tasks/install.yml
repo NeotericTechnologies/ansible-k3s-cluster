@@ -19,6 +19,14 @@
   ansible.builtin.set_fact:
     k3s_agent_install_needed: "{{ not k3s_agent_binary.stat.exists or k3s_version not in installed_k3s_agent_version.stdout }}"
 
+- name: Download k3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/get_k3s.sh
+    mode: '0755'
+    force: false
+  when: k3s_agent_install_needed
+
 - name: Wait for k3s server to be available
   ansible.builtin.wait_for:
     host: "{{ control_plane_vip }}"
@@ -39,13 +47,12 @@
     k3s_node_token: "{{ k3s_node_token_encoded.content | b64decode | trim }}"
 
 - name: Install k3s-agent
-  ansible.builtin.shell: |
-    curl -sfL https://get.k3s.io | \
-    K3S_URL="{{ k3s_server_url }}" \
-    K3S_TOKEN="{{ k3s_node_token }}" \
-    INSTALL_K3S_VERSION="{{ k3s_version }}" \
-    INSTALL_K3S_EXEC="agent {{ k3s_agent_extra_args }}" \
-    sh -
+  ansible.builtin.command: /tmp/get_k3s.sh
+  environment:
+    K3S_URL: "{{ k3s_server_url }}"
+    K3S_TOKEN: "{{ k3s_node_token }}"
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: "agent {{ k3s_agent_extra_args }}"
   args:
     creates: /etc/systemd/system/k3s-agent.service
   when: k3s_agent_install_needed
