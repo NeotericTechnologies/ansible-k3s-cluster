@@ -10,51 +10,51 @@
 - name: Validate operating system family
   ansible.builtin.assert:
     that:
-      - ansible_os_family == 'Debian'
-    fail_msg: "Unsupported OS family: {{ ansible_os_family }}. Only Debian/Ubuntu are supported."
-    success_msg: "Operating system family check passed: {{ ansible_os_family }}"
+      - ansible_facts.os_family == 'Debian'
+    fail_msg: "Unsupported OS family: {{ ansible_facts.os_family }}. Only Debian/Ubuntu are supported."
+    success_msg: "Operating system family check passed: {{ ansible_facts.os_family }}"
 
 - name: Validate operating system distribution
   ansible.builtin.assert:
     that:
-      - ansible_distribution in ['Debian', 'Ubuntu']
-    fail_msg: "Unsupported distribution: {{ ansible_distribution }}. Only Debian and Ubuntu are supported."
-    success_msg: "Operating system distribution check passed: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - ansible_facts.distribution in ['Debian', 'Ubuntu']
+    fail_msg: "Unsupported distribution: {{ ansible_facts.distribution }}. Only Debian and Ubuntu are supported."
+    success_msg: "Operating system distribution check passed: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
 
 - name: Validate system architecture
   ansible.builtin.assert:
     that:
-      - ansible_architecture in ['x86_64', 'aarch64', 'arm64']
-    fail_msg: "Unsupported architecture: {{ ansible_architecture }}. Only x86_64 and arm64 are supported."
-    success_msg: "System architecture check passed: {{ ansible_architecture }}"
+      - ansible_facts.architecture in ['x86_64', 'aarch64', 'arm64']
+    fail_msg: "Unsupported architecture: {{ ansible_facts.architecture }}. Only x86_64 and arm64 are supported."
+    success_msg: "System architecture check passed: {{ ansible_facts.architecture }}"
 
 - name: Validate systemd is present
   ansible.builtin.assert:
     that:
-      - ansible_service_mgr == 'systemd'
-    fail_msg: "systemd is required for k3s service management. Found: {{ ansible_service_mgr }}"
+      - ansible_facts.service_mgr == 'systemd'
+    fail_msg: "systemd is required for k3s service management. Found: {{ ansible_facts.service_mgr }}"
     success_msg: "systemd check passed"
 
 - name: Validate minimum CPU cores
   ansible.builtin.assert:
     that:
-      - ansible_processor_vcpus >= k3s_min_cpu_cores
-    fail_msg: "Insufficient CPU cores: {{ ansible_processor_vcpus }}. Minimum required: {{ k3s_min_cpu_cores }}"
-    success_msg: "CPU cores check passed: {{ ansible_processor_vcpus }} cores available"
+      - ansible_facts.processor_vcpus >= k3s_min_cpu_cores
+    fail_msg: "Insufficient CPU cores: {{ ansible_facts.processor_vcpus }}. Minimum required: {{ k3s_min_cpu_cores }}"
+    success_msg: "CPU cores check passed: {{ ansible_facts.processor_vcpus }} cores available"
 
 - name: Validate minimum memory (MB)
   ansible.builtin.assert:
     that:
-      - ansible_memtotal_mb >= k3s_min_memory_mb
-    fail_msg: "Insufficient memory: {{ ansible_memtotal_mb }}MB. Minimum required: {{ k3s_min_memory_mb }}MB"
-    success_msg: "Memory check passed: {{ ansible_memtotal_mb }}MB available"
+      - ansible_facts.memtotal_mb >= k3s_min_memory_mb
+    fail_msg: "Insufficient memory: {{ ansible_facts.memtotal_mb }}MB. Minimum required: {{ k3s_min_memory_mb }}MB"
+    success_msg: "Memory check passed: {{ ansible_facts.memtotal_mb }}MB available"
 
 - name: Validate minimum disk space (root partition)
   ansible.builtin.assert:
     that:
-      - (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1024 / 1024 / 1024) | int >= k3s_min_disk_gb
-    fail_msg: "Insufficient disk space on /: {{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1024 / 1024 / 1024) | int }}GB. Minimum required: {{ k3s_min_disk_gb }}GB"
-    success_msg: "Disk space check passed: {{ (ansible_mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1024 / 1024 / 1024) | int }}GB available"
+      - (ansible_facts.mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1024 / 1024 / 1024) | int >= k3s_min_disk_gb
+    fail_msg: "Insufficient disk space on /: {{ (ansible_facts.mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1024 / 1024 / 1024) | int }}GB. Minimum required: {{ k3s_min_disk_gb }}GB"
+    success_msg: "Disk space check passed: {{ (ansible_facts.mounts | selectattr('mount', 'equalto', '/') | map(attribute='size_available') | first / 1024 / 1024 / 1024) | int }}GB available"
 
 - name: Check Python 3 is installed
   ansible.builtin.command: python3 --version
