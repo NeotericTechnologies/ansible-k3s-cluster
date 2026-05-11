@@ -1,10 +1,16 @@
 ---
 # kube-vip ConfigMap for LoadBalancer IP address pool
 # Reference: FR-012 (service load balancing)
+# Updated for kube-vip v1.1.2
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: kubevip
   namespace: kube-system
+  labels:
+    app.kubernetes.io/name: kube-vip
 data:
   range-global: {{ kube_vip_lb_ip_range }}
+  # Supported formats:
+  # - Range: 192.168.1.200-192.168.1.220
+  # - CIDR: 192.168.1.0/24 (v1.1.2+)

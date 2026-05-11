@@ -1,6 +1,7 @@
 ---
 # kube-vip static pod manifest for control-plane VIP
 # Reference: FR-011 (control-plane VIP)
+# Updated for kube-vip v1.1.2
 apiVersion: v1
 kind: Pod
 metadata:
@@ -8,56 +9,68 @@ metadata:
   namespace: kube-system
   labels:
     app.kubernetes.io/name: kube-vip
+    app.kubernetes.io/version: "{{ kube_vip_version }}"
 spec:
   containers:
   - name: kube-vip
-    image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version | default('v0.6.4') }}
+    image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version | default('v1.1.2') }}
     imagePullPolicy: IfNotPresent
     args:
     - manager
     env:
-    - name: vip_arp
+    - name: VIP_ARP
       value: "true"
-    - name: vip_interface
+    - name: VIP_INTERFACE
       value: "{{ kube_vip_interface }}"
-    - name: port
+    - name: VIP_PORT
       value: "{{ api_port }}"
-    - name: vip_cidr
+    - name: VIP_CIDR
       value: "32"
-    - name: cp_enable
+    - name: CP_ENABLE
       value: "true"
-    - name: cp_namespace
+    - name: CP_NAMESPACE
       value: kube-system
-    - name: vip_ddns
+    - name: VIP_DDNS
       value: "false"
-    - name: vip_leaderelection
+    - name: VIP_LEADERELECTION
       value: "true"
-    - name: vip_leaseduration
+    - name: VIP_LEASEDURATION
       value: "15"
-    - name: vip_renewdeadline
+    - name: VIP_RENEWDEADLINE
       value: "10"
-    - name: vip_retryperiod
+    - name: VIP_RETRYPERIOD
       value: "2"
-    - name: address
+    - name: ADDRESS
       value: "{{ control_plane_vip }}"
+    - name: VIP_STARTLEADER
+      value: "true"
+    - name: PACKET_INTERFACE
+      value: "{{ kube_vip_interface }}"
 {% if kube_vip_lb_enable | default(false) %}
-    - name: svc_enable
+    - name: SVC_ENABLE
       value: "true"
-    - name: lb_enable
+    - name: LB_ENABLE
       value: "true"
-    - name: lb_port
+    - name: LB_PORT
       value: "6443"
+    - name: LB_NFTABLES
+      value: "true"
 {% endif %}
     securityContext:
       capabilities:
         add:
         - NET_ADMIN
         - NET_RAW
+        - SYS_TIME
+      runAsUser: 0
+      allowPrivilegeEscalation: true
     volumeMounts:
     - name: kubeconfig
       mountPath: /etc/kubernetes/admin.conf
       readOnly: true
   hostNetwork: true
+  hostPID: true
+  priorityClassName: system-cluster-critical
   volumes:
   - name: kubeconfig
     hostPath:

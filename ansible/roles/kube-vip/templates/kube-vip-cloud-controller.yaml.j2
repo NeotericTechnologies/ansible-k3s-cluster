@@ -1,6 +1,7 @@
 ---
 # kube-vip cloud controller for LoadBalancer services
 # Reference: FR-012 (service load balancing)
+# Updated for kube-vip v1.1.2
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -18,6 +19,9 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -39,6 +43,7 @@ metadata:
   namespace: kube-system
   labels:
     app.kubernetes.io/name: kube-vip-cloud-controller
+    app.kubernetes.io/version: "{{ kube_vip_cloud_provider_version }}"
 spec:
   replicas: 1
   selector:
@@ -50,12 +55,30 @@ spec:
         app.kubernetes.io/name: kube-vip-cloud-controller
     spec:
       serviceAccountName: kube-vip-cloud-controller
+      priorityClassName: system-cluster-critical
       containers:
       - name: kube-vip-cloud-controller
-        image: ghcr.io/kube-vip/kube-vip-cloud-provider:v0.0.7
+        image: ghcr.io/kube-vip/kube-vip-cloud-provider:{{ kube_vip_cloud_provider_version | default('v0.2.1') }}
         imagePullPolicy: IfNotPresent
         env:
         - name: KUBEVIP_NAMESPACE
           value: kube-system
         - name: KUBEVIP_CONFIG_MAP
           value: kubevip
+        - name: KUBEVIP_CIDR
+          value: "{{ kube_vip_lb_ip_range }}"
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
