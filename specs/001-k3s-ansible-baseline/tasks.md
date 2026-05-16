@@ -26,7 +26,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Purpose**: Project initialization, dependency declarations, and base configuration structure
 
-- [ ] T001 Create Ansible collections requirements file in ansible/requirements.yml (kubernetes.core, community.kubernetes)
+- [ ] T001 Create Ansible collections requirements file in ansible/requirements.yml (kubernetes.core, community.kubernetes); document that custom roles (k3s-server, k3s-agent, k3s-common) supersede k3s-io/k3s-ansible with patterns reused per research R-005
 - [ ] T002 [P] Define cluster-wide variable defaults (ClusterConfig, NetworkConfig) in ansible/group_vars/all.yml
 - [ ] T003 [P] Define server-specific variable defaults in ansible/group_vars/k3s_servers.yml
 - [ ] T004 [P] Define agent-specific variable defaults in ansible/group_vars/k3s_agents.yml
@@ -186,6 +186,8 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T074 [P] Write role-level README for cert-manager in ansible/roles/cert-manager/README.md
 - [ ] T075 Validate all playbooks and roles pass ansible-lint with no errors
 - [ ] T076 Run quickstart.md validation (verify documented commands match actual playbook paths and variable names)
+- [ ] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against Synology StorageClass, bind, write data, verify availability — validates SC-005)
+- [ ] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
 
 ---
 
@@ -197,14 +199,14 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - **Foundational (Phase 2)**: Depends on Setup completion — BLOCKS all user stories
 - **User Story 1 (Phase 3)**: Depends on Foundational phase completion
 - **User Story 2 (Phase 4)**: Depends on User Story 1 (needs roles to exist before adding idempotent guards)
-- **User Story 3 (Phase 5)**: Depends on Foundational phase completion (core roles must exist); can run in parallel with US2
+- **User Story 3 (Phase 5)**: Depends on User Story 1 (requires k3s-server and k3s-agent roles); can run in parallel with US2
 - **Polish (Final Phase)**: Depends on all user stories being complete
 
 ### User Story Dependencies
 
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2) — no dependencies on other stories
 - **User Story 2 (P2)**: Depends on US1 role implementations existing (adds convergence logic to those roles)
-- **User Story 3 (P3)**: Can start after Foundational (Phase 2) — independent of US2; relies on k3s-server and k3s-agent roles from US1
+- **User Story 3 (P3)**: Depends on US1 completion (requires k3s-server and k3s-agent roles) — independent of US2; can run in parallel with US2
 
 ### Within Each User Story
 

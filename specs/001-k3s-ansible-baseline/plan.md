@@ -97,7 +97,9 @@ tests/
         ├── smoke.yml             # Basic cluster health
         ├── idempotence-test.yml  # Re-run safety
         ├── scale-test.yml        # Node join/remove
-        └── upgrade-test.yml      # Version upgrade
+        ├── upgrade-test.yml      # Version upgrade
+        ├── synology-pvc-test.yml # Synology CSI PVC validation (SC-005)
+        └── dns-provider-switch-test.yml  # DNS-01 provider switch (SC-007)
 
 docs/
 ├── ansible-k3s-baseline.md      # Architecture overview
