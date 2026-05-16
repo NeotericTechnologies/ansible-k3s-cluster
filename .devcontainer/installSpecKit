@@ -1,0 +1,16 @@
+if command -v specify &>/dev/null; then
+    echo "specify already installed — skipping"
+else
+    if ! command -v uv &>/dev/null; then
+        echo "uv not found - Please add the uv feature to your devContainer; ghcr.io/devcontainers-extra/features/uv:1"
+        exit 1
+    fi
+
+    pushd "${SCRIPT_DIR}"
+    # Install specify-cli from toml
+    uv sync
+    # Install specify-cli as a tool - using the installed version.
+    export SPECIFY_CLI_VERSION=$(uv pip show specify-cli | grep Version | awk '{print $2}')
+    uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v${SPECIFY_CLI_VERSION}
+    popd
+fi

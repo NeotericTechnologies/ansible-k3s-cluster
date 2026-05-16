@@ -1,24 +1,12 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
+export SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
 
 echo "[post-create] Upgrading pip ..."
 python3 -m pip install --upgrade pip
 
-# Install Spec Kit CLI (specify)
-echo "[post-create] Installing specify CLI (spec-kit)"
-if command -v specify &>/dev/null; then
-    echo "specify already installed — skipping"
-else
-    # Ensure uv is available (needed for uv tool install)
-    if ! command -v uv &>/dev/null; then
-        echo "uv not found - Please add the uv feature to your devContainer; ghcr.io/devcontainers-extra/features/uv:1"
-        exit 1
-    fi
-    uv tool install specify-cli --from "git+https://github.com/github/spec-kit.git"
-fi
+echo "[post-create] Installing specify CLI (spec-kit) ..."
+source "${SCRIPT_DIR}/installSpecKit"
 
-# Install testConnection
-sudo curl https://raw.githubusercontent.com/bcgov/openshift-developer-tools/refs/heads/master/bin/testConnection -O
-sudo mv testConnection /usr/local/bin/
-sudo chmod +x /usr/local/bin/testConnection
+echo "[post-create] Installing Test Connection ..."
+source "${SCRIPT_DIR}/installTestConnection"
