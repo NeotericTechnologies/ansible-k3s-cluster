@@ -125,6 +125,12 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - [ ] T048 [P] Add upgrade smoke scenario in tests/ansible/smoke/upgrade-test.yml
 - [ ] T049 [P] Add cross-story smoke orchestration updates in tests/ansible/smoke/smoke.yml
 - [ ] T050 Perform final security and secret-handling review across ansible/group_vars/all.yml and ansible/roles/
+- [ ] T051 [P] Add explicit k3s-ansible reuse mapping and decisions in docs/ansible-k3s-baseline.md and role README files under ansible/roles/
+- [ ] T052 [P] Add ansible-lint quality-gate execution steps in tests/ansible/smoke/smoke.yml and document expected pass criteria in docs/ansible-structure.md
+- [ ] T053 [P] Add ansible-playbook --syntax-check validation steps for lifecycle playbooks in tests/ansible/smoke/smoke.yml
+- [ ] T054 [P] Add ansible-playbook --check validation workflow for core and add-ons in tests/ansible/smoke/idempotence-test.yml
+- [ ] T055 [P] Add Synology CSI stateful workload validation scenario (PVC bind and read/write verification) in tests/ansible/smoke/synology-storage-test.yml
+- [ ] T056 [P] Add dual DNS-01 provider switch validation scenario for staging and production issuers in tests/ansible/smoke/idempotence-test.yml
 
 ---
 
@@ -159,6 +165,7 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 - US2: T030-T035 can run in parallel, then T036 and T037 follow.
 - US3: T038-T040 can run in parallel, then T041-T043 follow.
 - Final: T044, T045, T047, T048, and T049 can run in parallel.
+- Final: T051, T052, T053, T054, T055, and T056 can run in parallel.
 
 ## Parallel Example: User Story 1
 
