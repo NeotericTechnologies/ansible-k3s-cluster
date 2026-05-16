@@ -26,7 +26,7 @@ spec:
       value: "{{ api_port }}"
     - name: VIP_CIDR
       value: "32"
-    - name: CP_ENABLE
+    - name: VIP_CONTROLPLANE
       value: "true"
     - name: CP_NAMESPACE
       value: kube-system
@@ -47,7 +47,7 @@ spec:
     - name: PACKET_INTERFACE
       value: "{{ kube_vip_interface }}"
 {% if kube_vip_lb_enable | default(false) %}
-    - name: SVC_ENABLE
+    - name: VIP_SERVICES
       value: "true"
     - name: LB_ENABLE
       value: "true"
