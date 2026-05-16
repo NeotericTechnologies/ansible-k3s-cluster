@@ -11,10 +11,12 @@ This document maps user actions to Ansible playbook entrypoints and describes th
   - Core + add-ons: `ansible-playbook -i ansible/inventories/examples/ha-cluster ansible/playbooks/cluster-core.yml && ansible-playbook -i ansible/inventories/examples/ha-cluster ansible/playbooks/cluster-addons.yml`
 - **Required Inputs**:
   - Inventory with `k3s_servers` and `k3s_agents` groups populated.
-  - Group/host vars defining `ClusterConfig`, `NetworkConfig`, and (optionally) `AddonConfig` (including cert-manager, multus, Rancher, rancher-monitoring, Traefik, and Synology CSI).
+  - Group/host vars defining `ClusterConfig`, `NetworkConfig`, and (optionally) `AddonConfig` (including kube-vip, cert-manager, multus, Rancher, rancher-monitoring, Traefik, and Synology CSI).
+  - kube-vip variables that explicitly set deployment mode to DaemonSet and define control-plane VIP/service LB address behavior.
 - **Expected Outcomes**:
   - New k3s cluster created with embedded etcd HA.
-  - Control-plane reachable via configured VIP/DNS via kube-vip or equivalent.
+  - kube-vip is installed and running as a DaemonSet.
+  - Control-plane reachable via configured VIP/DNS through kube-vip.
   - When the add-ons playbook is executed with add-ons enabled, required add-ons are deployed and healthy.
   - Playbooks can be safely re-run without recreating the cluster.
 
@@ -27,9 +29,10 @@ This document maps user actions to Ansible playbook entrypoints and describes th
   - Core + add-ons: `ansible-playbook -i <existing-inventory> ansible/playbooks/cluster-core.yml && ansible-playbook -i <existing-inventory> ansible/playbooks/cluster-addons.yml`
 - **Required Inputs**:
   - Existing inventory and vars representing current desired state.
-  - Updated vars for core cluster settings (including kube-vip VIP/service LB configuration) and for cert-manager, Rancher, Traefik, multus, monitoring, or Synology CSI.
+  - Updated vars for core cluster settings (including kube-vip DaemonSet VIP/service LB configuration) and for cert-manager, Rancher, Traefik, multus, monitoring, or Synology CSI.
 - **Expected Outcomes**:
   - Only changed resources are updated; cluster and workloads remain available.
+  - kube-vip remains managed as a DaemonSet after updates and converges to desired state.
   - No recreation of the cluster or unnecessary node reboots.
 
 ## Contract C-003: Scale Nodes (Add/Remove Servers and Agents)

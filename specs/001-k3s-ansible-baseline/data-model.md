@@ -18,6 +18,7 @@ Represents the desired state of a single k3s cluster.
   - `control_plane_vip`: Virtual IP or DNS name used for control-plane access.
   - `api_port`: Port exposed on the VIP for the Kubernetes API.
   - `ha_mode`: Enum: `single-node` | `embedded-etcd-ha`.
+  - `kube_vip_mode`: Enum: `daemonset` (baseline-required).
   - `addons`: Composite field enabling/disabling add-ons (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI).
 
 - **Relationships**:
@@ -71,13 +72,26 @@ Represents a single VLAN-backed secondary network for pods via multus.
 Enables and configures cluster add-ons.
 
 - **Fields**:
+  - `kube_vip`: `KubeVipConfig`.
   - `cert_manager`: `CertManagerConfig`.
   - `rancher`: `RancherConfig`.
   - `rancher_monitoring`: `RancherMonitoringConfig`.
   - `traefik`: `TraefikConfig`.
   - `synology_csi`: `SynologyCsiConfig` (optional).
 
-### 6. CertManagerConfig
+### 6. KubeVipConfig
+
+Configuration for kube-vip control-plane and service endpoint behavior.
+
+- **Fields**:
+  - `enabled`: Boolean.
+  - `deployment_mode`: Enum: `daemonset`.
+  - `control_plane_vip`: IP/FQDN used for API-server endpoint.
+  - `service_lb_cidr_or_range`: Address range used for `LoadBalancer` Services.
+  - `interface`: Host network interface kube-vip should bind.
+  - `arp_enabled`: Boolean for ARP advertisement mode.
+
+### 7. CertManagerConfig
 
 Configuration for cert-manager and its issuers.
 
@@ -89,7 +103,7 @@ Configuration for cert-manager and its issuers.
   - `staging_issuer_name`: Name of the staging ClusterIssuer.
   - `production_issuer_name`: Name of the production ClusterIssuer.
 
-### 7. RancherConfig
+### 8. RancherConfig
 
 Configuration for Rancher deployment.
 
@@ -99,7 +113,7 @@ Configuration for Rancher deployment.
   - `ingress_class`: Ingress class to use (e.g., Traefik).
   - `tls_source`: Source of TLS certs (e.g., cert-manager issuer).
 
-### 8. RancherMonitoringConfig
+### 9. RancherMonitoringConfig
 
 Configuration for rancher-monitoring.
 
@@ -108,7 +122,7 @@ Configuration for rancher-monitoring.
   - `retention`: Metric retention period (high-level).
   - `scrape_targets_overrides`: Optional overrides for scraping.
 
-### 9. TraefikConfig
+### 10. TraefikConfig
 
 Configuration for Traefik ingress controller.
 
@@ -117,7 +131,7 @@ Configuration for Traefik ingress controller.
   - `service_type`: Service type (e.g., `LoadBalancer` or `NodePort` depending on kube-vip usage).
   - `entrypoints`: High-level list of entrypoints/ports.
 
-### 10. SynologyCsiConfig
+### 11. SynologyCsiConfig
 
 Optional configuration for Synology CSI integration.
 
@@ -145,6 +159,7 @@ Optional configuration for Synology CSI integration.
 
 - `ha_mode = embedded-etcd-ha` requires an odd number of control-plane nodes (recommended 3) in the inventory.
 - `control_plane_vip` must resolve or be reachable from all nodes defined in the cluster.
+- When `kube_vip.enabled = true`, `deployment_mode` must be `daemonset` for this baseline.
 - When `cert_manager.enabled = true`, both staging and production issuers must be fully specified (provider, credentials, email).
 - When `synology_csi.enabled = true`, endpoint and credentials must be present, and at least one StorageClass must be defined.
 - multus VLAN definitions must reference valid interfaces and non-overlapping CIDRs relative to the base cluster networks.

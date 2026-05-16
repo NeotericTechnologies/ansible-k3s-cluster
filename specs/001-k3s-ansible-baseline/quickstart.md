@@ -22,7 +22,7 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
   - Cluster name and k3s version.
   - Control-plane VIP and API port.
   - Cluster and service CIDRs.
-  - kube-vip (or equivalent) configuration for the control-plane VIP and service load balancer addresses.
+  - kube-vip configuration for the control-plane VIP and service load balancer addresses, with kube-vip deployment mode set to DaemonSet.
   - Add-on configurations (cert-manager, multus VLANs, Rancher, rancher-monitoring, Traefik, optional Synology CSI, DNS provider).
 
 ## 4. Provision a New HA Cluster
@@ -34,6 +34,7 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
 - Verify:
   - `kubectl get nodes` shows all control-plane and worker nodes.
   - Control-plane is reachable via the VIP endpoint configured via kube-vip (or equivalent).
+  - `kubectl -n kube-system get daemonset kube-vip` reports desired and ready pods for kube-vip.
   - If you ran the add-ons playbook, core add-ons (cert-manager, multus, Rancher, monitoring, Traefik) are deployed and healthy.
 
 ## 5. Update Cluster Configuration

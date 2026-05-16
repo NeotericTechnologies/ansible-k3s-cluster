@@ -69,9 +69,10 @@
 
 ## R-010: kube-vip and Service Load Balancing
 
-- **Decision**: Treat kube-vip (or an equivalent VIP/load-balancer solution) as the default pattern and model its configuration via variables for the control-plane VIP and service load-balancer addresses. The playbook will be responsible for deploying and configuring kube-vip manifests/Helm where appropriate.
-- **Rationale**: This aligns with the spec’s requirement for VIP-based access to control-plane and services and reflects common on-prem k3s setups without external cloud load balancers.
+- **Decision**: Standardize kube-vip installation as a DaemonSet and model its configuration via variables for the control-plane VIP and service load-balancer addresses.
+- **Rationale**: DaemonSet mode provides a clear operational model for node-local kube-vip pods and aligns with the updated planning directive to install kube-vip as DaemonSet while preserving variable-driven endpoint control.
 - **Alternatives Considered**:
+  - **Static pod mode for kube-vip**: Rejected for this baseline because the updated planning direction requires DaemonSet deployment.
   - **Rely solely on external, manually managed load balancers**: Rejected because it would reduce reproducibility and break the "single playbook" expectation.
 
 ## R-011: Synology CSI Integration
