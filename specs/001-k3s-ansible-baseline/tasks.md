@@ -7,142 +7,124 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 # Tasks: Baseline k3s Ansible Cluster Lifecycle
 
 **Input**: Design documents from `/specs/001-k3s-ansible-baseline/`
-**Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/
 
-**Tests**: Not explicitly requested in the specification; this tasks list focuses on implementation and smoke-validation tasks, not full TDD.
+**Prerequisites**: plan.md (required), spec.md (required), research.md, data-model.md, contracts/, quickstart.md
 
-**Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
+**Tests**: Test tasks are limited to smoke and validation workflows because full TDD was not explicitly requested.
 
-## Phase 1: Setup (Shared Infrastructure)
+**Organization**: Tasks are grouped by user story to enable independent implementation and verification.
 
-**Purpose**: Repository and Ansible project scaffolding, aligned with the implementation plan.
+## Phase 1: Setup (Project Initialization)
 
-- [X] T001 Create Ansible project root and base folders under ansible/
-- [X] T002 [P] Create ansible/inventories/examples/ and ansible/inventories/production/ directories
-- [X] T003 [P] Create ansible/group_vars/ and ansible/host_vars/ directories
-- [X] T004 [P] Initialize ansible/playbooks/ directory with empty cluster-core.yml, cluster-addons.yml, scale-nodes.yml, and upgrade-k3s.yml placeholders
-- [X] T005 [P] Initialize tests/ansible/ and tests/ansible/inventories/ and tests/ansible/smoke/ directories
+**Purpose**: Ensure entrypoint playbooks, role skeletons, and inventory scaffolding are aligned to the updated plan.
+
+- [ ] T001 Normalize core and add-on playbook entrypoints in ansible/playbooks/cluster-core.yml and ansible/playbooks/cluster-addons.yml
+- [ ] T002 [P] Normalize lifecycle playbook entrypoints in ansible/playbooks/scale-nodes.yml and ansible/playbooks/upgrade-k3s.yml
+- [ ] T003 [P] Align baseline inventory examples in ansible/inventories/examples/ha-cluster/hosts.ini and ansible/inventories/examples/single-node/hosts.ini
+- [ ] T004 [P] Align baseline group variables in ansible/group_vars/all.yml, ansible/group_vars/k3s_servers.yml, and ansible/group_vars/k3s_agents.yml
+- [ ] T005 Refresh smoke inventory defaults in tests/ansible/inventories/local
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Core structure that all user stories depend on (inventory model, base roles, and validation tooling).
+**Purpose**: Implement shared prerequisites that all user stories depend on.
 
-**Note**: No user story work should begin until these tasks are complete.
+**CRITICAL**: Complete this phase before starting user story implementation.
 
-- [X] T006 Define example HA inventory in ansible/inventories/examples/ha-cluster with k3s_servers and k3s_agents groups
-- [X] T007 Define example single-node inventory in ansible/inventories/examples/single-node with k3s_servers only
-- [X] T008 Create base group_vars files for cluster-wide settings in ansible/group_vars/all.yml
-- [X] T009 [P] Create base group_vars for k3s_servers and k3s_agents in ansible/group_vars/k3s_servers.yml and ansible/group_vars/k3s_agents.yml
- - [X] T010 [P] Add README for Ansible layout, supported platforms, and host prerequisites in docs/ansible-structure.md
-- [X] T011 Add minimal ansible-lint configuration in .ansible-lint.yml at repo root
-- [X] T012 Add basic smoke playbook and inventory for tests in tests/ansible/smoke/smoke.yml and tests/ansible/inventories/local
-- [X] T056 [P] Implement host prerequisite checks (supported OS, CPU/memory, required packages, ports, and network connectivity) in ansible/roles/k3s-common/ so playbooks fail fast with clear messages when requirements are not met
+- [ ] T006 Implement fail-fast host prerequisite validation in ansible/roles/k3s-common/tasks/prerequisites.yml
+- [ ] T007 Add shared dependency preparation tasks in ansible/roles/k3s-common/tasks/dependencies.yml
+- [ ] T008 [P] Wire prerequisite and dependency includes in ansible/roles/k3s-common/tasks/main.yml
+- [ ] T009 Define shared kubeconfig and API endpoint defaults in ansible/roles/k3s-server/defaults/main.yml
+- [ ] T010 [P] Define shared agent join defaults in ansible/roles/k3s-agent/defaults/main.yml
+- [ ] T011 Add common lifecycle assertions in ansible/playbooks/cluster-core.yml for platform support, role groups, and required variables
 
-**Checkpoint**: Foundation ready – inventories, vars layout, and validation tooling exist.
+**Checkpoint**: Foundation complete; user stories can proceed.
 
 ---
 
-## Phase 3: User Story 1 - Provision new HA k3s cluster (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Provision new HA k3s cluster (Priority: P1)
 
-**Goal**: The core cluster playbook (cluster-core.yml) provisions a new HA k3s cluster with embedded etcd and a VIP-exposed control plane, while a separate add-ons playbook (cluster-addons.yml) applies selected platform add-ons (Traefik, cert-manager with DNS-01 issuers, multus, Rancher, rancher-monitoring, optional Synology CSI). Quickstart documentation demonstrates running only the core playbook for a minimal cluster and running both playbooks for the full baseline experience.
+**Goal**: Provision a new HA embedded-etcd k3s cluster and optional add-ons, with kube-vip installed as a DaemonSet for stable control-plane and service endpoints.
 
-**Independent Test**: Run cluster-core.yml against the example HA inventory and verify core cluster creation and accessibility (including control-plane VIP via kube-vip or equivalent); when validating platform add-ons, additionally run cluster-addons.yml with add-ons enabled and verify add-on health and idempotent re-runs.
+**Independent Test**: Run ansible/playbooks/cluster-core.yml against the HA example inventory, verify cluster health and kube-vip DaemonSet readiness, then run ansible/playbooks/cluster-addons.yml with enabled add-ons and verify component availability.
 
 ### Implementation for User Story 1
 
-- [X] T013 [P] [US1] Scaffold k3s-common, k3s-server, and k3s-agent roles in ansible/roles/k3s-common/, ansible/roles/k3s-server/, ansible/roles/k3s-agent/
-- [X] T014 [P] [US1] Integrate upstream k3s-io/k3s-ansible patterns into ansible/roles/k3s-common/ for host preparation tasks
-- [X] T015 [P] [US1] Implement k3s-server role tasks for embedded etcd HA in ansible/roles/k3s-server/tasks/main.yml
-- [X] T016 [P] [US1] Implement k3s-agent role tasks for joining worker nodes in ansible/roles/k3s-agent/tasks/main.yml
-- [X] T017 [US1] Implement cluster-core.yml playbook to orchestrate k3s-common, k3s-server, and k3s-agent roles in ansible/playbooks/cluster-core.yml
-- [X] T018 [P] [US1] Scaffold cert-manager role directory in ansible/roles/cert-manager/
-- [X] T019 [P] [US1] Implement cert-manager installation and CRDs deployment tasks in ansible/roles/cert-manager/tasks/main.yml
-- [X] T020 [P] [US1] Implement DNS-01 provider-agnostic ClusterIssuer templates in ansible/roles/cert-manager/templates/ with variables from ansible/group_vars/
-- [X] T021 [P] [US1] Scaffold multus role directory in ansible/roles/multus/
-- [X] T022 [P] [US1] Implement multus installation and NetworkAttachmentDefinition rendering in ansible/roles/multus/tasks/main.yml
-- [X] T023 [P] [US1] Scaffold Rancher role directory in ansible/roles/rancher/
-- [X] T024 [P] [US1] Implement Rancher Helm-based deployment tasks in ansible/roles/rancher/tasks/main.yml
-- [X] T025 [P] [US1] Scaffold rancher-monitoring role directory in ansible/roles/rancher-monitoring/
-- [X] T026 [P] [US1] Implement rancher-monitoring Helm-based deployment tasks in ansible/roles/rancher-monitoring/tasks/main.yml
-- [X] T027 [P] [US1] Scaffold Traefik role directory in ansible/roles/traefik/
-- [X] T028 [P] [US1] Implement Traefik configuration and deployment tasks in ansible/roles/traefik/tasks/main.yml
-- [X] T029 [P] [US1] Scaffold optional Synology CSI role directory in ansible/roles/synology-csi/
-- [X] T030 [P] [US1] Implement Synology CSI deployment and StorageClass configuration tasks in ansible/roles/synology-csi/tasks/main.yml
-- [X] T031 [US1] Implement cluster-addons.yml playbook to orchestrate add-on roles (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) in ansible/playbooks/cluster-addons.yml
-- [X] T032 [US1] Add validation tasks in cluster-core.yml and cluster-addons.yml to check node readiness, cluster state, add-on health, and VIP accessibility (control-plane and service load balancers)
-- [X] T057 [P] [US1] Scaffold kube-vip role directory in ansible/roles/kube-vip/ for control-plane VIP and service load balancer configuration
-- [X] T058 [P] [US1] Implement kube-vip deployment and configuration tasks (control-plane VIP, service LB address pool) in ansible/roles/kube-vip/tasks/main.yml driven by variables
-- [X] T059 [US1] Wire kube-vip role into cluster-core.yml (for control-plane VIP) and, where appropriate, cluster-addons.yml or Traefik configuration (for service load balancer behavior)
-- [X] T033 [US1] Document example HA and single-node flows in specs/001-k3s-ansible-baseline/quickstart.md (update with final role and playbook names)
+- [ ] T012 [P] [US1] Implement server installation workflow in ansible/roles/k3s-server/tasks/install.yml
+- [ ] T013 [P] [US1] Implement server role orchestration in ansible/roles/k3s-server/tasks/main.yml
+- [ ] T014 [P] [US1] Implement kubeconfig materialization for operators in ansible/roles/k3s-server/tasks/kubeconfig.yml
+- [ ] T015 [P] [US1] Implement agent installation workflow in ansible/roles/k3s-agent/tasks/install.yml
+- [ ] T016 [P] [US1] Implement agent role orchestration in ansible/roles/k3s-agent/tasks/main.yml
+- [ ] T017 [P] [US1] Define kube-vip DaemonSet defaults in ansible/roles/kube-vip/defaults/main.yml
+- [ ] T018 [P] [US1] Implement kube-vip DaemonSet install workflow in ansible/roles/kube-vip/tasks/install.yml
+- [ ] T019 [US1] Wire kube-vip DaemonSet role execution in ansible/roles/kube-vip/tasks/main.yml
+- [ ] T020 [US1] Integrate k3s-common, k3s-server, k3s-agent, and kube-vip roles in ansible/playbooks/cluster-core.yml
+- [ ] T021 [P] [US1] Implement cert-manager install workflow in ansible/roles/cert-manager/tasks/install.yml
+- [ ] T022 [P] [US1] Implement provider-agnostic issuer rendering in ansible/roles/cert-manager/templates/clusterissuer-staging.yaml.j2 and ansible/roles/cert-manager/templates/clusterissuer-production.yaml.j2
+- [ ] T023 [P] [US1] Implement multus install and NAD rendering in ansible/roles/multus/tasks/main.yml
+- [ ] T024 [P] [US1] Implement Traefik deployment workflow in ansible/roles/traefik/tasks/main.yml
+- [ ] T025 [P] [US1] Implement Rancher deployment workflow in ansible/roles/rancher/tasks/main.yml
+- [ ] T026 [P] [US1] Implement rancher-monitoring deployment workflow in ansible/roles/rancher-monitoring/tasks/main.yml
+- [ ] T027 [P] [US1] Implement optional Synology CSI deployment workflow in ansible/roles/synology-csi/tasks/main.yml
+- [ ] T028 [US1] Integrate add-on roles with enablement guards in ansible/playbooks/cluster-addons.yml
+- [ ] T029 [US1] Add provisioning smoke scenario for HA plus add-ons in tests/ansible/smoke/smoke.yml
 
-**Checkpoint**: User Story 1 can be validated independently using example inventories and quickstart instructions.
+**Checkpoint**: US1 is independently deliverable and verifiable.
 
 ---
 
 ## Phase 4: User Story 2 - Update existing cluster configuration (Priority: P2)
 
-**Goal**: Re-running cluster-core.yml and/or cluster-addons.yml with updated variables applies configuration changes to core cluster settings and to add-ons (cert-manager, multus, Rancher, monitoring, Traefik, optional Synology CSI) without recreating the cluster.
+**Goal**: Apply configuration changes safely by re-running core and/or add-on playbooks without rebuilding clusters.
 
-**Independent Test**: Change selected variables (e.g., DNS-01 provider settings, Rancher hostname, multus VLANs, kube-vip VIP or address pool) and run cluster-core.yml and/or cluster-addons.yml, as appropriate, to verify in-place updates only.
+**Independent Test**: Modify variables for DNS provider, kube-vip address settings, and selected add-on values, rerun playbooks, and verify only intended resources converge.
 
 ### Implementation for User Story 2
 
-- [X] T034 [P] [US2] Ensure cert-manager role uses idempotent module calls and `state: present` semantics in ansible/roles/cert-manager/tasks/main.yml
-- [X] T035 [P] [US2] Add tasks to update existing ClusterIssuer resources on variable changes in ansible/roles/cert-manager/tasks/main.yml
-- [X] T036 [P] [US2] Ensure multus NetworkAttachmentDefinitions are rendered and updated from vars without destructive recreation in ansible/roles/multus/tasks/main.yml
-- [X] T037 [P] [US2] Implement Rancher configuration updates (hostname, TLS, values) through Helm upgrade semantics in ansible/roles/rancher/tasks/main.yml
-- [X] T038 [P] [US2] Implement rancher-monitoring configuration updates via Helm upgrade in ansible/roles/rancher-monitoring/tasks/main.yml
-- [X] T039 [P] [US2] Implement Traefik configuration updates via Helm upgrade or manifest patching in ansible/roles/traefik/tasks/main.yml
-- [X] T040 [P] [US2] Implement Synology CSI configuration updates (storage classes, parameters) in ansible/roles/synology-csi/tasks/main.yml
-- [X] T041 [US2] Add variable-driven guards in cluster-addons.yml to ensure add-on roles run conditionally based on enabled components in ansible/playbooks/cluster-addons.yml
-- [X] T042 [US2] Add idempotence-focused smoke scenario in tests/ansible/smoke/smoke.yml to run cluster-core.yml and cluster-addons.yml twice and verify clean convergence
+- [ ] T030 [P] [US2] Implement cert-manager reconciliation for issuer updates in ansible/roles/cert-manager/tasks/main.yml
+- [ ] T031 [P] [US2] Implement multus reconciliation for VLAN and NAD updates in ansible/roles/multus/tasks/main.yml
+- [ ] T032 [P] [US2] Implement Traefik Helm values reconciliation in ansible/roles/traefik/tasks/main.yml
+- [ ] T033 [P] [US2] Implement Rancher Helm values reconciliation in ansible/roles/rancher/tasks/main.yml
+- [ ] T034 [P] [US2] Implement rancher-monitoring values reconciliation in ansible/roles/rancher-monitoring/tasks/main.yml
+- [ ] T035 [P] [US2] Implement Synology CSI storage class reconciliation in ansible/roles/synology-csi/tasks/main.yml
+- [ ] T036 [US2] Implement kube-vip DaemonSet update reconciliation in ansible/roles/kube-vip/tasks/main.yml
+- [ ] T037 [US2] Add idempotence and reconfiguration smoke scenario in tests/ansible/smoke/idempotence-test.yml
 
-**Checkpoint**: User Story 2 validated by modifying vars and re-running cluster-core.yml and, where needed, cluster-addons.yml without disruptive changes.
+**Checkpoint**: US2 is independently deliverable and verifiable.
 
 ---
 
 ## Phase 5: User Story 3 - Manage control-plane and worker nodes (Priority: P3)
 
-**Goal**: Add and remove control-plane and worker nodes through inventory and vars using scale-nodes.yml, while maintaining cluster health and etcd quorum where applicable.
+**Goal**: Scale nodes up and down safely while preserving control-plane and etcd quorum guarantees.
 
-**Independent Test**: Start from a working cluster, adjust inventory to add/remove nodes, run scale-nodes.yml, and verify cluster membership changes as expected.
+**Independent Test**: Add and remove server/agent hosts in inventory and run ansible/playbooks/scale-nodes.yml to verify correct joins, drains, removals, and cluster health.
 
 ### Implementation for User Story 3
 
-- [X] T043 [P] [US3] Implement logic in scale-nodes.yml to detect new vs removed nodes from inventory in ansible/playbooks/scale-nodes.yml
-- [X] T044 [P] [US3] Add tasks to join new control-plane nodes using k3s-server role in ansible/playbooks/scale-nodes.yml
-- [X] T045 [P] [US3] Add tasks to join new worker nodes using k3s-agent role in ansible/playbooks/scale-nodes.yml
-- [X] T046 [P] [US3] Implement node drain and cordon behavior for removal candidates in ansible/playbooks/scale-nodes.yml
-- [X] T047 [US3] Add safeguards and checks to preserve embedded etcd quorum when removing control-plane nodes in ansible/playbooks/scale-nodes.yml
-- [X] T048 [US3] Add validation tasks to confirm updated node list and scheduling on new workers in ansible/playbooks/scale-nodes.yml
-- [X] T049 [US3] Add scale-related smoke scenario in tests/ansible/smoke/smoke.yml to exercise add/remove flows
+- [ ] T038 [P] [US3] Implement inventory delta detection for node add/remove in ansible/playbooks/scale-nodes.yml
+- [ ] T039 [P] [US3] Implement server join flow reuse from k3s-server role in ansible/playbooks/scale-nodes.yml
+- [ ] T040 [P] [US3] Implement agent join flow reuse from k3s-agent role in ansible/playbooks/scale-nodes.yml
+- [ ] T041 [US3] Implement drain and safe removal workflow in ansible/playbooks/scale-nodes.yml
+- [ ] T042 [US3] Implement etcd quorum guardrails for server removal in ansible/playbooks/scale-nodes.yml
+- [ ] T043 [US3] Add scaling smoke scenario in tests/ansible/smoke/scale-test.yml
 
-**Checkpoint**: User Story 3 validated by inventory-driven add/remove operations on control-plane and worker nodes.
-
----
-
-## Phase 6: Polish & Cross-Cutting Concerns
-
-**Purpose**: Cross-story improvements, documentation, and hardening.
-
- - [X] T050 [P] Add detailed README for the Ansible project in docs/ansible-k3s-baseline.md, including supported environments, scale assumptions, and explicit non-goals (e.g., full DR orchestration)
-- [X] T051 [P] Refine example inventories and vars to match real-world defaults in ansible/inventories/examples/ and ansible/group_vars/
-- [X] T052 Code cleanup and role refactoring across ansible/roles/* for consistency and reuse
-- [X] T053 [P] Add additional smoke validations (e.g., basic kubectl checks) in tests/ansible/smoke/smoke.yml
-- [X] T054 [P] Verify quickstart flows end-to-end and update specs/001-k3s-ansible-baseline/quickstart.md as needed
-- [X] T055 Security and hardening pass (review of secrets handling, TLS defaults, firewall assumptions) across ansible/ roles and playbooks
+**Checkpoint**: US3 is independently deliverable and verifiable.
 
 ---
 
-## Phase 7: Minor/Patch Upgrade Flow
+## Final Phase: Polish & Cross-Cutting Concerns
 
-**Purpose**: Implement and validate the dedicated minor/patch k3s upgrade playbook.
+**Purpose**: Complete documentation, upgrade flow, security hardening, and end-to-end validation.
 
-- [X] T060 [P] Implement upgrade-k3s.yml playbook in ansible/playbooks/upgrade-k3s.yml to perform rolling minor/patch upgrades based on a k3s_version variable, ensuring only compatible version changes are attempted
-- [X] T061 [P] Add upgrade tasks to verify node readiness and confirm that all servers and agents report the desired k3s_version after upgrade in ansible/playbooks/upgrade-k3s.yml
-- [X] T062 [P] Add an upgrade-focused smoke scenario in tests/ansible/smoke/smoke.yml that runs upgrade-k3s.yml against an example inventory and asserts successful completion without prolonged control-plane downtime
+- [ ] T044 [P] Update operator baseline documentation in docs/ansible-k3s-baseline.md
+- [ ] T045 [P] Update repository structure and variable guidance in docs/ansible-structure.md
+- [ ] T046 Update feature quickstart verification steps in specs/001-k3s-ansible-baseline/quickstart.md
+- [ ] T047 [P] Implement controlled minor/patch rolling upgrade flow in ansible/playbooks/upgrade-k3s.yml
+- [ ] T048 [P] Add upgrade smoke scenario in tests/ansible/smoke/upgrade-test.yml
+- [ ] T049 [P] Add cross-story smoke orchestration updates in tests/ansible/smoke/smoke.yml
+- [ ] T050 Perform final security and secret-handling review across ansible/group_vars/all.yml and ansible/roles/
 
 ---
 
@@ -150,51 +132,60 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ### Phase Dependencies
 
-- **Phase 1 – Setup**: No dependencies; must be completed before foundational wiring and user story implementation.
-- **Phase 2 – Foundational**: Depends on Phase 1; blocks all user stories until inventories, vars, and lint/smoke scaffolding exist.
-- **Phase 3 – User Story 1 (P1)**: Depends on Phase 2; establishes the MVP cluster provisioning path.
-- **Phase 4 – User Story 2 (P2)**: Depends on completion of User Story 1; operates on clusters already provisioned by the core cluster playbook (cluster-core.yml).
-- **Phase 5 – User Story 3 (P3)**: Depends on completion of User Story 1; uses the same roles to scale nodes.
-- **Phase 6 – Polish**: Depends on all targeted user stories being implemented.
+- Phase 1 (Setup) has no dependencies.
+- Phase 2 (Foundational) depends on Phase 1 and blocks all user story work.
+- Phase 3 (US1) depends on Phase 2.
+- Phase 4 (US2) depends on Phase 3.
+- Phase 5 (US3) depends on Phase 3.
+- Final Phase depends on completion of targeted user stories.
 
 ### User Story Dependencies
 
-- **US1 (Provision new HA k3s cluster)**: Depends only on Setup and Foundational phases; can be implemented independently.
-- **US2 (Update existing cluster configuration)**: Depends on US1, since it assumes a cluster created and managed by the core cluster playbook (cluster-core.yml).
-- **US3 (Manage control-plane and worker nodes)**: Depends on US1, as it reuses k3s roles and the baseline cluster lifecycle path.
+- US1: Starts after Foundational completion; no dependency on other user stories.
+- US2: Depends on US1 because it updates an existing provisioned cluster.
+- US3: Depends on US1 because it scales an existing provisioned cluster.
 
-### Within Each User Story
+### Dependency Graph
 
-- Core roles and playbooks (k3s-common, k3s-server, k3s-agent, cluster-core.yml) must be in place before enabling higher-level add-ons and scale/upgrade flows.
-- Add-ons (cert-manager, multus, Rancher, monitoring, Traefik, Synology CSI) can be developed largely in parallel once the cluster lifecycle roles are available.
-- Scale operations (US3) must be wired after core cluster provisioning is stable.
+- Setup -> Foundational -> US1 -> US2
+- Setup -> Foundational -> US1 -> US3
+- US2 + US3 -> Final Phase
 
-### Parallel Execution Examples
+### Parallel Opportunities
 
-- During **Phase 1–2**, tasks marked [P] (T002–T005, T009–T010) can be implemented in parallel, as they touch different directories.
-- For **US1**, role scaffolding and implementations for cert-manager, multus, Rancher, rancher-monitoring, Traefik, and Synology CSI (T018–T030) can proceed in parallel while T017 and T031 integrate them via cluster-core.yml and cluster-addons.yml.
-- For **US2**, idempotence updates across roles (T034–T040) can be done in parallel, then add-ons playbook wiring (T041) and the smoke scenario (T042) follow.
-- For **US3**, joining/removal logic tasks (T043–T046) can be worked on in parallel before adding safeguards and validations (T047–T048).
+- Setup: T002, T003, and T004 can run in parallel.
+- Foundational: T008 and T010 can run in parallel after T006 and T007 begin.
+- US1: T012-T018 and T021-T027 are mostly parallel role-level work across separate files.
+- US2: T030-T035 can run in parallel, then T036 and T037 follow.
+- US3: T038-T040 can run in parallel, then T041-T043 follow.
+- Final: T044, T045, T047, T048, and T049 can run in parallel.
 
----
+## Parallel Example: User Story 1
+
+```bash
+# Parallel role implementation tasks for US1
+Task T012 in ansible/roles/k3s-server/tasks/install.yml
+Task T015 in ansible/roles/k3s-agent/tasks/install.yml
+Task T018 in ansible/roles/kube-vip/tasks/install.yml
+Task T021 in ansible/roles/cert-manager/tasks/install.yml
+Task T023 in ansible/roles/multus/tasks/main.yml
+Task T024 in ansible/roles/traefik/tasks/main.yml
+Task T025 in ansible/roles/rancher/tasks/main.yml
+Task T026 in ansible/roles/rancher-monitoring/tasks/main.yml
+Task T027 in ansible/roles/synology-csi/tasks/main.yml
+```
 
 ## Implementation Strategy
 
-### MVP First (User Story 1 Only)
+### MVP First (US1)
 
-1. Complete Phase 1 (Setup) and Phase 2 (Foundational).
-2. Implement Phase 3 (US1) tasks T013–T033 and T057–T059 to achieve a working HA k3s cluster using cluster-core.yml for the core cluster, kube-vip for VIP/LB behavior, and cluster-addons.yml for optional baseline add-ons.
-3. Validate using example inventories and quickstart instructions.
+1. Complete Phase 1 and Phase 2.
+2. Complete all US1 tasks (T012-T029).
+3. Validate independent US1 acceptance before moving forward.
 
 ### Incremental Delivery
 
-1. Deliver US1 as the initial MVP.
-2. Add US2 to support configuration updates via re-running cluster-core.yml and cluster-addons.yml, including kube-vip VIP/LB and add-on configuration.
-3. Add US3 to support inventory-driven scaling of control-plane and worker nodes.
-4. Apply Phase 6 polish tasks for documentation, refactoring, and security review.
-
-### Team Parallelization
-
-- One contributor can focus on k3s core roles and cluster-core.yml (T013–T017, T031–T032, T059).
-- Others can implement add-on roles (T018–T030) in parallel.
-- Subsequent contributors can focus on update behavior (US2) and scaling logic (US3) while the core path stabilizes.
+1. Deliver US1 provisioning baseline with kube-vip DaemonSet.
+2. Deliver US2 update/reconciliation behavior.
+3. Deliver US3 node scaling behavior.
+4. Complete polish and upgrade flow.
