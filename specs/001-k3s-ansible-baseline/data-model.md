@@ -18,7 +18,6 @@ Represents the desired state of a single k3s cluster.
   - `control_plane_vip`: Virtual IP or DNS name used for control-plane access.
   - `api_port`: Port exposed on the VIP for the Kubernetes API.
   - `ha_mode`: Enum: `single-node` | `embedded-etcd-ha`.
-  - `kube_vip_mode`: Enum: `daemonset` (baseline-required).
   - `addons`: Composite field enabling/disabling add-ons (cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI).
 
 - **Relationships**:
