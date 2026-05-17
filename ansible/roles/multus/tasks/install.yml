@@ -11,10 +11,13 @@
   register: multus_deploy
   changed_when: "'created' in multus_deploy.stdout or 'configured' in multus_deploy.stdout"
 
-- name: Patch multus DaemonSet for k3s CNI path
+- name: Patch multus DaemonSet for k3s CNI and bin paths
   ansible.builtin.command: >-
     kubectl patch daemonset kube-multus-ds -n kube-system --type=json
-    -p='[{"op":"replace","path":"/spec/template/spec/containers/0/volumeMounts/0/mountPath","value":"/host/etc/cni/net.d"},{"op":"replace","path":"/spec/template/spec/volumes/0/hostPath/path","value":"/var/lib/rancher/k3s/agent/etc/cni/net.d"}]'
+    -p='[
+      {"op":"replace","path":"/spec/template/spec/volumes/0/hostPath/path","value":"/var/lib/rancher/k3s/agent/etc/cni/net.d"},
+      {"op":"replace","path":"/spec/template/spec/volumes/1/hostPath/path","value":"/var/lib/rancher/k3s/data/cni"}
+    ]'
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: multus_patch
