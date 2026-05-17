@@ -292,3 +292,11 @@ With multiple developers:
 - kube-vip MUST be deployed as DaemonSet per planning directive (docs/ai-prompts/plan.md)
 - Secrets (tokens, DNS credentials, Synology credentials) must NEVER be committed — use Ansible Vault or external secret management
 - Commit after each task or logical group
+
+## k3s Deployment Compatibility Constraints (Cross-Cutting)
+
+All tasks MUST comply with these constraints per R-013:
+
+1. **No symlinks on nodes** — roles must not create symlinks on target nodes for any deployment artifact
+2. **No file copies to nodes for runtime workloads** — add-ons (kube-vip, cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests via `kubernetes.core` modules), not by copying files to the node filesystem
+3. **No modification of default k3s paths** — roles must not remove, rename, or alter paths managed by k3s (`/var/lib/rancher/k3s`, `/etc/rancher/k3s`, etc.)
