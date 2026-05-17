@@ -163,3 +163,13 @@ Optional configuration for Synology CSI integration.
 - When `cert_manager.enabled = true`, both staging and production issuers must be fully specified (provider, credentials, email).
 - When `synology_csi.enabled = true`, endpoint and credentials must be present, and at least one StorageClass must be defined.
 - multus VLAN definitions must reference valid interfaces and non-overlapping CIDRs relative to the base cluster networks.
+
+## k3s Deployment Compatibility Constraints
+
+All add-on deployments managed by the playbooks MUST adhere to these constraints:
+
+1. **No symlinks on nodes**: Roles and tasks must not create symlinks on target nodes for any deployment artifact.
+2. **No file copies to nodes for runtime workloads**: Add-ons (kube-vip, cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests applied via `kubernetes.core` modules), not by copying files to the node filesystem.
+3. **No modification of default k3s paths**: Roles must not remove, rename, or alter paths managed by k3s (e.g., `/var/lib/rancher/k3s`, `/etc/rancher/k3s`, the k3s data directory structure).
+
+These constraints ensure that k3s upgrade paths remain intact and the k3s service manager retains full control of its runtime environment.

@@ -88,3 +88,14 @@
 - **Rationale**: Follows the constitution’s requirement for clear inventory and node roles, and aligns with typical Ansible practice and k3s-ansible patterns.
 - **Alternatives Considered**:
   - **Role flags only in host vars without groups**: Rejected because it reduces clarity and makes targeting groups of nodes harder.
+## R-013: k3s Deployment Compatibility Constraints
+
+- **Decision**: All Kubernetes workload deployments managed by the playbooks (kube-vip, cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) must be deployed in a manner compatible with k3s's opinionated runtime. Specifically, deployments MUST NOT:
+  1. Create or rely on symlinks on cluster nodes.
+  2. Copy files to cluster nodes outside of the Ansible provisioning flow.
+  3. Remove or change any of the default paths that k3s uses (e.g., `/var/lib/rancher/k3s`, `/etc/rancher/k3s`, k3s data directories).
+- **Rationale**: k3s uses a self-contained binary with specific path conventions. Modifying these paths or introducing symlinks/file copies breaks upgrade paths, confuses the k3s service manager, and creates drift between what k3s expects and what exists on disk. All add-ons should be deployed as in-cluster resources (Helm charts, manifests applied via kubectl/Ansible modules) rather than by manipulating the node filesystem.
+- **Alternatives Considered**:
+  - **Static pod manifests placed on disk**: Rejected because it requires file copies to nodes and conflicts with the no-file-copy constraint; DaemonSet deployments via the API are preferred (e.g., kube-vip as DaemonSet).
+  - **Symlinked configuration directories**: Rejected because k3s manages its own paths and symlinks can interfere with k3s upgrades and the embedded containerd runtime.
+  - **Modifying k3s default paths via flags**: Rejected because it deviates from documented k3s behavior and complicates troubleshooting and community support.

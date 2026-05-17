@@ -2,6 +2,14 @@
 
 This document maps user actions to Ansible playbook entrypoints and describes the inputs and observable outcomes.
 
+## Cross-Cutting Constraints
+
+All contracts below are subject to these k3s deployment compatibility rules:
+
+- **No symlinks on nodes**: No role or task may create symlinks on target nodes for deployment artifacts.
+- **No runtime file copies to nodes**: Add-ons must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests via `kubernetes.core` modules), not by copying files to the node filesystem.
+- **No modification of default k3s paths**: Roles must not remove, rename, or alter paths managed by k3s (`/var/lib/rancher/k3s`, `/etc/rancher/k3s`, etc.).
+
 ## Contract C-001: Provision New HA k3s Cluster
 
 - **User Action**: "Provision a new HA k3s cluster with optional platform add-ons."
