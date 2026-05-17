@@ -81,14 +81,15 @@
           Service CIDR: {{ service_cidr }}
 
     - name: Verify control-plane VIP is accessible
-      ansible.builtin.uri:
-        url: "https://{{ control_plane_vip }}:{{ api_port }}/healthz"
-        validate_certs: false
-        status_code: 200
+      ansible.builtin.command: >-
+        kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
+        --server https://{{ control_plane_vip }}:{{ api_port }}
+        get --raw /healthz
       register: vip_health
       retries: 3
       delay: 5
-      until: vip_health.status == 200
+      until: vip_health.rc == 0
+      changed_when: false
 
     - name: Cluster deployment summary
       ansible.builtin.debug:
