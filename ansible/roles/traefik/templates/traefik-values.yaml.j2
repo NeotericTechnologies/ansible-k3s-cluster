@@ -14,8 +14,6 @@ ports:
     port: 8443
     exposedPort: 443
     protocol: TCP
-    tls:
-      enabled: true
 
 {% if traefik_additional_entrypoints is defined %}
 additionalArguments:
