@@ -116,6 +116,6 @@
       - DNS Provider: {{ cert_manager_dns_provider }}
       - Staging Issuer: {{ cert_manager_staging_issuer }}
       - Production Issuer: {{ cert_manager_production_issuer }}
-      
+
       ClusterIssuers:
       {{ clusterissuers.stdout }}

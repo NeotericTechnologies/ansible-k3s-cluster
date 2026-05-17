@@ -26,13 +26,13 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Purpose**: Project initialization, dependency declarations, and base configuration structure
 
-- [ ] T001 Create Ansible collections requirements file in ansible/requirements.yml (kubernetes.core, community.kubernetes); document that custom roles (k3s-server, k3s-agent, k3s-common) supersede k3s-io/k3s-ansible with patterns reused per research R-005
-- [ ] T002 [P] Define cluster-wide variable defaults (ClusterConfig, NetworkConfig) in ansible/group_vars/all.yml
-- [ ] T003 [P] Define server-specific variable defaults in ansible/group_vars/k3s_servers.yml
-- [ ] T004 [P] Define agent-specific variable defaults in ansible/group_vars/k3s_agents.yml
-- [ ] T005 [P] Create HA cluster example inventory in ansible/inventories/examples/ha-cluster/hosts.ini
-- [ ] T006 [P] Create single-node example inventory in ansible/inventories/examples/single-node/hosts.ini
-- [ ] T007 Verify ansible.cfg configuration at repository root (collections paths, roles path, inventory defaults)
+- [X] T001 Create Ansible collections requirements file in ansible/requirements.yml (kubernetes.core, community.kubernetes); document that custom roles (k3s-server, k3s-agent, k3s-common) supersede k3s-io/k3s-ansible with patterns reused per research R-005
+- [X] T002 [P] Define cluster-wide variable defaults (ClusterConfig, NetworkConfig) in ansible/group_vars/all.yml
+- [X] T003 [P] Define server-specific variable defaults in ansible/group_vars/k3s_servers.yml
+- [X] T004 [P] Define agent-specific variable defaults in ansible/group_vars/k3s_agents.yml
+- [X] T005 [P] Create HA cluster example inventory in ansible/inventories/examples/ha-cluster/hosts.ini
+- [X] T006 [P] Create single-node example inventory in ansible/inventories/examples/single-node/hosts.ini
+- [X] T007 Verify ansible.cfg configuration at repository root (collections paths, roles path, inventory defaults)
 
 ---
 
@@ -42,10 +42,10 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T008 Define k3s-common role defaults in ansible/roles/k3s-common/defaults/main.yml (k3s_version pin, supported OS list, required ports)
-- [ ] T009 Implement prerequisite validation tasks in ansible/roles/k3s-common/tasks/prerequisites.yml (OS check, architecture check, systemd check, fail-fast on unsupported)
-- [ ] T010 Implement dependency installation tasks in ansible/roles/k3s-common/tasks/dependencies.yml (required packages, kernel modules, sysctl settings)
-- [ ] T011 Implement k3s-common main task file in ansible/roles/k3s-common/tasks/main.yml (orchestrate prerequisites and dependencies)
+- [X] T008 Define k3s-common role defaults in ansible/roles/k3s-common/defaults/main.yml (k3s_version pin, supported OS list, required ports)
+- [X] T009 Implement prerequisite validation tasks in ansible/roles/k3s-common/tasks/prerequisites.yml (OS check, architecture check, systemd check, fail-fast on unsupported)
+- [X] T010 Implement dependency installation tasks in ansible/roles/k3s-common/tasks/dependencies.yml (required packages, kernel modules, sysctl settings)
+- [X] T011 Implement k3s-common main task file in ansible/roles/k3s-common/tasks/main.yml (orchestrate prerequisites and dependencies)
 
 **Checkpoint**: Foundation ready — user story implementation can now begin in parallel
 
@@ -59,70 +59,70 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ### Core Cluster Roles
 
-- [ ] T012 [P] [US1] Define k3s-server role defaults in ansible/roles/k3s-server/defaults/main.yml (version, token, cluster-init flags, embedded etcd settings)
-- [ ] T013 [P] [US1] Define k3s-agent role defaults in ansible/roles/k3s-agent/defaults/main.yml (version, token, server URL, labels, taints)
-- [ ] T014 [US1] Implement k3s server installation tasks in ansible/roles/k3s-server/tasks/install.yml (download, systemd unit, initial server bootstrap, join additional servers)
-- [ ] T015 [US1] Implement kubeconfig retrieval tasks in ansible/roles/k3s-server/tasks/kubeconfig.yml (fetch kubeconfig, rewrite server URL to VIP)
-- [ ] T016 [US1] Implement k3s-server main task file in ansible/roles/k3s-server/tasks/main.yml (orchestrate install + kubeconfig)
-- [ ] T017 [US1] Implement k3s agent installation tasks in ansible/roles/k3s-agent/tasks/install.yml (download, systemd unit, join cluster)
-- [ ] T018 [US1] Implement k3s-agent main task file in ansible/roles/k3s-agent/tasks/main.yml (orchestrate agent install)
+- [X] T012 [P] [US1] Define k3s-server role defaults in ansible/roles/k3s-server/defaults/main.yml (version, token, cluster-init flags, embedded etcd settings)
+- [X] T013 [P] [US1] Define k3s-agent role defaults in ansible/roles/k3s-agent/defaults/main.yml (version, token, server URL, labels, taints)
+- [X] T014 [US1] Implement k3s server installation tasks in ansible/roles/k3s-server/tasks/install.yml (download, systemd unit, initial server bootstrap, join additional servers)
+- [X] T015 [US1] Implement kubeconfig retrieval tasks in ansible/roles/k3s-server/tasks/kubeconfig.yml (fetch kubeconfig, rewrite server URL to VIP)
+- [X] T016 [US1] Implement k3s-server main task file in ansible/roles/k3s-server/tasks/main.yml (orchestrate install + kubeconfig)
+- [X] T017 [US1] Implement k3s agent installation tasks in ansible/roles/k3s-agent/tasks/install.yml (download, systemd unit, join cluster)
+- [X] T018 [US1] Implement k3s-agent main task file in ansible/roles/k3s-agent/tasks/main.yml (orchestrate agent install)
 
 ### kube-vip Role (DaemonSet Mode)
 
-- [ ] T019 [P] [US1] Define kube-vip DaemonSet defaults in ansible/roles/kube-vip/defaults/main.yml (VIP address, interface, ARP mode, service LB range, deployment_mode: daemonset)
-- [ ] T020 [US1] Create kube-vip DaemonSet manifest template in ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2
-- [ ] T021 [P] [US1] Create kube-vip cloud-controller manifest template in ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2
-- [ ] T022 [US1] Implement kube-vip DaemonSet install tasks in ansible/roles/kube-vip/tasks/install.yml (RBAC, DaemonSet apply, cloud-controller for service LB)
-- [ ] T023 [US1] Implement kube-vip main task file in ansible/roles/kube-vip/tasks/main.yml
-- [ ] T024 [US1] Implement kube-vip handler for DaemonSet restart in ansible/roles/kube-vip/handlers/main.yml
+- [X] T019 [P] [US1] Define kube-vip DaemonSet defaults in ansible/roles/kube-vip/defaults/main.yml (VIP address, interface, ARP mode, service LB range, deployment_mode: daemonset)
+- [X] T020 [US1] Create kube-vip DaemonSet manifest template in ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2
+- [X] T021 [P] [US1] Create kube-vip cloud-controller manifest template in ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2
+- [X] T022 [US1] Implement kube-vip DaemonSet install tasks in ansible/roles/kube-vip/tasks/install.yml (RBAC, DaemonSet apply, cloud-controller for service LB)
+- [X] T023 [US1] Implement kube-vip main task file in ansible/roles/kube-vip/tasks/main.yml
+- [X] T024 [US1] Implement kube-vip handler for DaemonSet restart in ansible/roles/kube-vip/handlers/main.yml
 
 ### Core Cluster Playbook
 
-- [ ] T025 [US1] Implement cluster-core playbook in ansible/playbooks/cluster-core.yml (k3s-common → k3s-server → kube-vip → k3s-agent orchestration)
+- [X] T025 [US1] Implement cluster-core playbook in ansible/playbooks/cluster-core.yml (k3s-common → k3s-server → kube-vip → k3s-agent orchestration)
 
 ### Add-on Roles: cert-manager
 
-- [ ] T026 [P] [US1] Define cert-manager role defaults in ansible/roles/cert-manager/defaults/main.yml (enabled flag, email, dns_provider, issuer names)
-- [ ] T027 [P] [US1] Create DNS provider credentials secret template in ansible/roles/cert-manager/templates/dns-provider-secret.yaml.j2
-- [ ] T028 [P] [US1] Create staging ClusterIssuer template in ansible/roles/cert-manager/templates/clusterissuer-staging.yaml.j2
-- [ ] T029 [P] [US1] Create production ClusterIssuer template in ansible/roles/cert-manager/templates/clusterissuer-production.yaml.j2
-- [ ] T030 [US1] Implement cert-manager install tasks in ansible/roles/cert-manager/tasks/install.yml (Helm chart deploy, wait for readiness)
-- [ ] T031 [US1] Implement cert-manager main tasks in ansible/roles/cert-manager/tasks/main.yml (install + issuers + secrets)
+- [X] T026 [P] [US1] Define cert-manager role defaults in ansible/roles/cert-manager/defaults/main.yml (enabled flag, email, dns_provider, issuer names)
+- [X] T027 [P] [US1] Create DNS provider credentials secret template in ansible/roles/cert-manager/templates/dns-provider-secret.yaml.j2
+- [X] T028 [P] [US1] Create staging ClusterIssuer template in ansible/roles/cert-manager/templates/clusterissuer-staging.yaml.j2
+- [X] T029 [P] [US1] Create production ClusterIssuer template in ansible/roles/cert-manager/templates/clusterissuer-production.yaml.j2
+- [X] T030 [US1] Implement cert-manager install tasks in ansible/roles/cert-manager/tasks/install.yml (Helm chart deploy, wait for readiness)
+- [X] T031 [US1] Implement cert-manager main tasks in ansible/roles/cert-manager/tasks/main.yml (install + issuers + secrets)
 
 ### Add-on Roles: multus
 
-- [ ] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, vlan_networks list)
-- [ ] T033 [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/net-attach-def.yaml.j2
-- [ ] T034 [US1] Implement multus install and configuration tasks in ansible/roles/multus/tasks/main.yml (deploy multus, create NetworkAttachmentDefinitions from variables)
+- [X] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, vlan_networks list)
+- [X] T033 [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/net-attach-def.yaml.j2
+- [X] T034 [US1] Implement multus install and configuration tasks in ansible/roles/multus/tasks/main.yml (deploy multus, create NetworkAttachmentDefinitions from variables)
 
 ### Add-on Roles: Traefik
 
-- [ ] T035 [P] [US1] Define traefik role defaults in ansible/roles/traefik/defaults/main.yml (enabled flag, service type, entrypoints)
-- [ ] T036 [P] [US1] Create Traefik Helm values template in ansible/roles/traefik/templates/traefik-values.yaml.j2
-- [ ] T037 [US1] Implement Traefik install tasks in ansible/roles/traefik/tasks/main.yml (Helm chart deploy with values, wait for readiness)
+- [X] T035 [P] [US1] Define traefik role defaults in ansible/roles/traefik/defaults/main.yml (enabled flag, service type, entrypoints)
+- [X] T036 [P] [US1] Create Traefik Helm values template in ansible/roles/traefik/templates/traefik-values.yaml.j2
+- [X] T037 [US1] Implement Traefik install tasks in ansible/roles/traefik/tasks/main.yml (Helm chart deploy with values, wait for readiness)
 
 ### Add-on Roles: Rancher
 
-- [ ] T038 [P] [US1] Define rancher role defaults in ansible/roles/rancher/defaults/main.yml (enabled flag, hostname, ingress class, TLS source)
-- [ ] T039 [P] [US1] Create Rancher Helm values template in ansible/roles/rancher/templates/rancher-values.yaml.j2
-- [ ] T040 [US1] Implement Rancher install tasks in ansible/roles/rancher/tasks/main.yml (Helm chart deploy, wait for readiness, verify ingress reachable)
+- [X] T038 [P] [US1] Define rancher role defaults in ansible/roles/rancher/defaults/main.yml (enabled flag, hostname, ingress class, TLS source)
+- [X] T039 [P] [US1] Create Rancher Helm values template in ansible/roles/rancher/templates/rancher-values.yaml.j2
+- [X] T040 [US1] Implement Rancher install tasks in ansible/roles/rancher/tasks/main.yml (Helm chart deploy, wait for readiness, verify ingress reachable)
 
 ### Add-on Roles: rancher-monitoring
 
-- [ ] T041 [P] [US1] Define rancher-monitoring role defaults in ansible/roles/rancher-monitoring/defaults/main.yml (enabled flag, retention, scrape overrides)
-- [ ] T042 [P] [US1] Create rancher-monitoring Helm values template in ansible/roles/rancher-monitoring/templates/monitoring-values.yaml.j2
-- [ ] T043 [US1] Implement rancher-monitoring install tasks in ansible/roles/rancher-monitoring/tasks/main.yml (Helm chart deploy, verify Prometheus/Grafana readiness)
+- [X] T041 [P] [US1] Define rancher-monitoring role defaults in ansible/roles/rancher-monitoring/defaults/main.yml (enabled flag, retention, scrape overrides)
+- [X] T042 [P] [US1] Create rancher-monitoring Helm values template in ansible/roles/rancher-monitoring/templates/monitoring-values.yaml.j2
+- [X] T043 [US1] Implement rancher-monitoring install tasks in ansible/roles/rancher-monitoring/tasks/main.yml (Helm chart deploy, verify Prometheus/Grafana readiness)
 
 ### Add-on Roles: Synology CSI (Optional)
 
-- [ ] T044 [P] [US1] Define synology-csi role defaults in ansible/roles/synology-csi/defaults/main.yml (enabled flag, endpoint, storage classes)
-- [ ] T045 [P] [US1] Create Synology CSI credentials secret template in ansible/roles/synology-csi/templates/synology-csi-secret.yaml.j2
-- [ ] T046 [P] [US1] Create StorageClass template in ansible/roles/synology-csi/templates/storageclass.yaml.j2
-- [ ] T047 [US1] Implement synology-csi install tasks in ansible/roles/synology-csi/tasks/main.yml (deploy CSI driver, create secret, create StorageClasses)
+- [X] T044 [P] [US1] Define synology-csi role defaults in ansible/roles/synology-csi/defaults/main.yml (enabled flag, endpoint, storage classes)
+- [X] T045 [P] [US1] Create Synology CSI credentials secret template in ansible/roles/synology-csi/templates/synology-csi-secret.yaml.j2
+- [X] T046 [P] [US1] Create StorageClass template in ansible/roles/synology-csi/templates/storageclass.yaml.j2
+- [X] T047 [US1] Implement synology-csi install tasks in ansible/roles/synology-csi/tasks/main.yml (deploy CSI driver, create secret, create StorageClasses)
 
 ### Add-ons Playbook
 
-- [ ] T048 [US1] Implement cluster-addons playbook in ansible/playbooks/cluster-addons.yml (cert-manager → traefik → rancher → rancher-monitoring → multus → synology-csi orchestration, each gated by enabled flag)
+- [X] T048 [US1] Implement cluster-addons playbook in ansible/playbooks/cluster-addons.yml (cert-manager → traefik → rancher → rancher-monitoring → multus → synology-csi orchestration, each gated by enabled flag)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional — a new HA cluster can be provisioned end-to-end with all add-ons via `cluster-core.yml` + `cluster-addons.yml`.
 
@@ -136,15 +136,15 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ### Implementation for User Story 2
 
-- [ ] T049 [US2] Add idempotent change-detection guards to ansible/roles/k3s-server/tasks/install.yml (skip re-install when version matches, notify handlers on config change only)
-- [ ] T050 [P] [US2] Add idempotent convergence logic to ansible/roles/kube-vip/tasks/install.yml (template diff detection, notify handler on DaemonSet manifest change)
-- [ ] T051 [P] [US2] Add idempotent convergence logic to ansible/roles/cert-manager/tasks/install.yml (Helm upgrade with changed values only, issuer update on variable change)
-- [ ] T052 [P] [US2] Add idempotent convergence logic to ansible/roles/traefik/tasks/main.yml (Helm upgrade idempotence)
-- [ ] T053 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher/tasks/main.yml (Helm upgrade idempotence)
-- [ ] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
-- [ ] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/main.yml (NetworkAttachmentDefinition update without recreation)
-- [ ] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/main.yml (StorageClass and secret update without recreation)
-- [ ] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
+- [X] T049 [US2] Add idempotent change-detection guards to ansible/roles/k3s-server/tasks/install.yml (skip re-install when version matches, notify handlers on config change only)
+- [X] T050 [P] [US2] Add idempotent convergence logic to ansible/roles/kube-vip/tasks/install.yml (template diff detection, notify handler on DaemonSet manifest change)
+- [X] T051 [P] [US2] Add idempotent convergence logic to ansible/roles/cert-manager/tasks/install.yml (Helm upgrade with changed values only, issuer update on variable change)
+- [X] T052 [P] [US2] Add idempotent convergence logic to ansible/roles/traefik/tasks/main.yml (Helm upgrade idempotence)
+- [X] T053 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher/tasks/main.yml (Helm upgrade idempotence)
+- [X] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
+- [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/main.yml (NetworkAttachmentDefinition update without recreation)
+- [X] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/main.yml (StorageClass and secret update without recreation)
+- [X] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
 
 **Checkpoint**: At this point, User Story 2 should be fully functional — re-running playbooks with changed variables updates only the affected resources.
 
@@ -158,11 +158,11 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ### Implementation for User Story 3
 
-- [ ] T058 [US3] Implement node join logic for new servers in ansible/playbooks/scale-nodes.yml (detect new k3s_servers entries, run k3s-common + k3s-server roles on them)
-- [ ] T059 [US3] Implement node join logic for new agents in ansible/playbooks/scale-nodes.yml (detect new k3s_agents entries, run k3s-common + k3s-agent roles on them)
-- [ ] T060 [US3] Implement node drain and removal logic in ansible/playbooks/scale-nodes.yml (cordon, drain, stop k3s service, remove node from cluster)
-- [ ] T061 [US3] Add etcd quorum safety check before control-plane node removal in ansible/playbooks/scale-nodes.yml (assert remaining servers maintain quorum)
-- [ ] T062 [P] [US3] Add node removal variable/marker pattern documentation in ansible/inventories/examples/ha-cluster/hosts.ini (commented example showing node_state=absent)
+- [X] T058 [US3] Implement node join logic for new servers in ansible/playbooks/scale-nodes.yml (detect new k3s_servers entries, run k3s-common + k3s-server roles on them)
+- [X] T059 [US3] Implement node join logic for new agents in ansible/playbooks/scale-nodes.yml (detect new k3s_agents entries, run k3s-common + k3s-agent roles on them)
+- [X] T060 [US3] Implement node drain and removal logic in ansible/playbooks/scale-nodes.yml (cordon, drain, stop k3s service, remove node from cluster)
+- [X] T061 [US3] Add etcd quorum safety check before control-plane node removal in ansible/playbooks/scale-nodes.yml (assert remaining servers maintain quorum)
+- [X] T062 [P] [US3] Add node removal variable/marker pattern documentation in ansible/inventories/examples/ha-cluster/hosts.ini (commented example showing node_state=absent)
 
 **Checkpoint**: All user stories should now be independently functional — provision, update, and scale operations all work.
 
@@ -172,22 +172,22 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 **Purpose**: Upgrade workflow, documentation, linting compliance, and smoke tests
 
-- [ ] T063 Implement k3s upgrade playbook in ansible/playbooks/upgrade-k3s.yml (rolling server upgrade → rolling agent upgrade, version variable override)
-- [ ] T064 [P] Create smoke test playbook in tests/ansible/smoke/smoke.yml (verify nodes ready, kube-vip DaemonSet running, API reachable via VIP)
-- [ ] T065 [P] Create idempotence test playbook in tests/ansible/smoke/idempotence-test.yml (run cluster-core twice, assert no changed tasks on second run)
-- [ ] T066 [P] Create scale test playbook in tests/ansible/smoke/scale-test.yml (add/remove a node, verify cluster health)
-- [ ] T067 [P] Create upgrade test playbook in tests/ansible/smoke/upgrade-test.yml (change k3s_version, run upgrade, verify new version)
-- [ ] T068 [P] Write architecture overview documentation in docs/ansible-k3s-baseline.md
-- [ ] T069 [P] Write repository layout documentation in docs/ansible-structure.md
-- [ ] T070 [P] Write role-level README for k3s-common in ansible/roles/k3s-common/README.md
-- [ ] T071 [P] Write role-level README for k3s-server in ansible/roles/k3s-server/README.md
-- [ ] T072 [P] Write role-level README for k3s-agent in ansible/roles/k3s-agent/README.md
-- [ ] T073 [P] Write role-level README for kube-vip in ansible/roles/kube-vip/README.md
-- [ ] T074 [P] Write role-level README for cert-manager in ansible/roles/cert-manager/README.md
-- [ ] T075 Validate all playbooks and roles pass ansible-lint with no errors
-- [ ] T076 Run quickstart.md validation (verify documented commands match actual playbook paths and variable names)
-- [ ] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against Synology StorageClass, bind, write data, verify availability — validates SC-005)
-- [ ] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
+- [X] T063 Implement k3s upgrade playbook in ansible/playbooks/upgrade-k3s.yml (rolling server upgrade → rolling agent upgrade, version variable override)
+- [X] T064 [P] Create smoke test playbook in tests/ansible/smoke/smoke.yml (verify nodes ready, kube-vip DaemonSet running, API reachable via VIP)
+- [X] T065 [P] Create idempotence test playbook in tests/ansible/smoke/idempotence-test.yml (run cluster-core twice, assert no changed tasks on second run)
+- [X] T066 [P] Create scale test playbook in tests/ansible/smoke/scale-test.yml (add/remove a node, verify cluster health)
+- [X] T067 [P] Create upgrade test playbook in tests/ansible/smoke/upgrade-test.yml (change k3s_version, run upgrade, verify new version)
+- [X] T068 [P] Write architecture overview documentation in docs/ansible-k3s-baseline.md
+- [X] T069 [P] Write repository layout documentation in docs/ansible-structure.md
+- [X] T070 [P] Write role-level README for k3s-common in ansible/roles/k3s-common/README.md
+- [X] T071 [P] Write role-level README for k3s-server in ansible/roles/k3s-server/README.md
+- [X] T072 [P] Write role-level README for k3s-agent in ansible/roles/k3s-agent/README.md
+- [X] T073 [P] Write role-level README for kube-vip in ansible/roles/kube-vip/README.md
+- [X] T074 [P] Write role-level README for cert-manager in ansible/roles/cert-manager/README.md
+- [X] T075 Validate all playbooks and roles pass ansible-lint with no errors
+- [X] T076 Run quickstart.md validation (verify documented commands match actual playbook paths and variable names)
+- [X] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against Synology StorageClass, bind, write data, verify availability — validates SC-005)
+- [X] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
 
 ---
 

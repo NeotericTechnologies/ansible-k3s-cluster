@@ -19,7 +19,7 @@
 
 - name: Gather cluster state and inventory facts
   hosts: k3s_servers[0]
-  gather_facts: yes
+  gather_facts: true
   tasks:
     - name: Get current cluster nodes
       ansible.builtin.command:
@@ -67,12 +67,12 @@
           nodes_to_add: "{{ nodes_to_add }}"
           nodes_to_remove: "{{ nodes_to_remove }}"
       delegate_to: localhost
-      delegate_facts: yes
+      delegate_facts: true
 
 # Add new control-plane nodes
 - name: Add new control-plane nodes
   hosts: k3s_servers
-  gather_facts: yes
+  gather_facts: true
   serial: 1
   tasks:
     - name: Check if this node needs to be added
@@ -83,6 +83,7 @@
       ansible.builtin.include_role:
         name: k3s-server
       when: should_add | bool
+      tags: ['k3s-server']
 
     - name: Wait for new control-plane node to be Ready
       ansible.builtin.command:
@@ -96,7 +97,7 @@
 # Add new worker nodes
 - name: Add new worker nodes
   hosts: k3s_agents
-  gather_facts: yes
+  gather_facts: true
   tasks:
     - name: Check if this node needs to be added
       ansible.builtin.set_fact:
@@ -106,6 +107,7 @@
       ansible.builtin.include_role:
         name: k3s-agent
       when: should_add | bool
+      tags: ['k3s-agent']
 
     - name: Wait for new worker node to be Ready
       ansible.builtin.command:
@@ -119,7 +121,7 @@
 # Remove nodes no longer in inventory
 - name: Remove nodes from cluster
   hosts: k3s_servers[0]
-  gather_facts: no
+  gather_facts: false
   tasks:
     - name: Get nodes to remove
       ansible.builtin.set_fact:
@@ -200,7 +202,7 @@
 # Validate final cluster state
 - name: Validate updated cluster state
   hosts: k3s_servers[0]
-  gather_facts: no
+  gather_facts: false
   tasks:
     - name: Wait for all nodes to be Ready
       ansible.builtin.command:

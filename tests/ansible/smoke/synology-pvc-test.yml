@@ -1,0 +1,103 @@
+---
+# Synology CSI PVC Validation Smoke Test
+# Purpose: Validate PVC creation against Synology StorageClass (SC-005)
+# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/synology-pvc-test.yml
+
+- name: Synology CSI PVC Smoke Test
+  hosts: k3s_servers[0]
+  gather_facts: false
+  vars:
+    test_namespace: synology-pvc-test
+    test_pvc_name: smoke-test-pvc
+    test_pod_name: smoke-test-writer
+  tasks:
+    - name: Create test namespace
+      ansible.builtin.command: kubectl create namespace {{ test_namespace }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: test_ns
+      changed_when: "'created' in test_ns.stdout"
+      failed_when: test_ns.rc != 0 and 'AlreadyExists' not in test_ns.stderr
+
+    - name: Create PVC against Synology StorageClass
+      ansible.builtin.command: >-
+        kubectl apply -n {{ test_namespace }} -f -
+      args:
+        stdin: |
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: {{ test_pvc_name }}
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            storageClassName: {{ synology_csi_default_storage_class | default('synology-iscsi') }}
+            resources:
+              requests:
+                storage: 1Gi
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: pvc_create
+      changed_when: "'created' in pvc_create.stdout or 'configured' in pvc_create.stdout"
+
+    - name: Wait for PVC to bind
+      ansible.builtin.command: >-
+        kubectl wait --for=jsonpath='{.status.phase}'=Bound
+        pvc/{{ test_pvc_name }} -n {{ test_namespace }}
+        --timeout=120s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: pvc_bound
+      changed_when: false
+
+    - name: Create writer pod to validate data write
+      ansible.builtin.command: >-
+        kubectl apply -n {{ test_namespace }} -f -
+      args:
+        stdin: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: {{ test_pod_name }}
+          spec:
+            containers:
+            - name: writer
+              image: busybox:latest
+              command: ["sh", "-c", "echo 'smoke-test-data' > /data/test.txt && sleep 30"]
+              volumeMounts:
+              - name: test-vol
+                mountPath: /data
+            volumes:
+            - name: test-vol
+              persistentVolumeClaim:
+                claimName: {{ test_pvc_name }}
+            restartPolicy: Never
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: pod_create
+      changed_when: "'created' in pod_create.stdout or 'configured' in pod_create.stdout"
+
+    - name: Wait for writer pod to complete
+      ansible.builtin.command: >-
+        kubectl wait --for=condition=Ready pod/{{ test_pod_name }}
+        -n {{ test_namespace }} --timeout=120s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: pod_ready
+      changed_when: false
+
+    - name: Verify data was written
+      ansible.builtin.command: >-
+        kubectl exec -n {{ test_namespace }} {{ test_pod_name }} -- cat /data/test.txt
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: data_verify
+      changed_when: false
+      failed_when: "'smoke-test-data' not in data_verify.stdout"
+
+    - name: Cleanup test resources
+      ansible.builtin.command: kubectl delete namespace {{ test_namespace }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: true
+      failed_when: false

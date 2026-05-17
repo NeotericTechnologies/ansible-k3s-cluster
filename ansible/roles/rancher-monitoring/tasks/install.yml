@@ -12,18 +12,29 @@
   changed_when: "'created' in monitoring_ns.stdout"
   failed_when: monitoring_ns.rc != 0 and 'AlreadyExists' not in monitoring_ns.stderr
 
+- name: Generate monitoring Helm values
+  ansible.builtin.template:
+    src: monitoring-values.yaml.j2
+    dest: /tmp/monitoring-values.yaml
+    mode: '0644'
+
 - name: Install rancher-monitoring via Helm
   ansible.builtin.shell: |
     helm repo add rancher-charts https://charts.rancher.io
     helm repo update
     helm upgrade --install rancher-monitoring rancher-charts/rancher-monitoring \
       --namespace cattle-monitoring-system \
-      --set prometheus.prometheusSpec.retention={{ rancher_monitoring_retention }} \
+      --values /tmp/monitoring-values.yaml \
       --version {{ rancher_monitoring_version }}
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: monitoring_install
   changed_when: "'deployed' in monitoring_install.stdout or 'upgraded' in monitoring_install.stdout"
+
+- name: Clean up temporary values file
+  ansible.builtin.file:
+    path: /tmp/monitoring-values.yaml
+    state: absent
 
 - name: Wait for rancher-monitoring to be ready
   ansible.builtin.command: >-
@@ -38,11 +49,3 @@
   delay: 30
   until: monitoring_ready.rc == 0
   changed_when: false
-
-- name: rancher-monitoring deployment summary
-  ansible.builtin.debug:
-    msg: |
-      rancher-monitoring deployed successfully:
-      - Version: {{ rancher_monitoring_version }}
-      - Retention: {{ rancher_monitoring_retention }}
-      - Prometheus and Grafana are available via Rancher UI
