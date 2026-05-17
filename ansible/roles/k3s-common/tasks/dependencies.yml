@@ -25,3 +25,16 @@
 - name: Ensure systemd is running
   ansible.builtin.systemd:
     daemon_reload: true
+
+- name: Check if Helm is installed
+  ansible.builtin.command: helm version --short
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Helm
+  ansible.builtin.shell: |
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+  when: helm_check.rc != 0
