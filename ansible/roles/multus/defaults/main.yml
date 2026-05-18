@@ -1,13 +1,26 @@
 ---
 multus_enabled: false
-multus_version: "v4.0.2"
-multus_vlan_networks: []
+multus_namespace: kube-system
 multus_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 
-# Candidate host paths; first existing path is selected at runtime.
-multus_cni_conf_dir_candidates:
-  - "/var/lib/rancher/k3s/agent/etc/cni/net.d"
-  - "/etc/cni/net.d"
+# Helm chart settings (official multus Helm chart)
+multus_helm_repo_name: k8snetworkplumbingwg
+multus_helm_repo_url: "https://k8snetworkplumbingwg.github.io/helm-charts"
+multus_helm_chart_name: multus
+multus_helm_chart_version: "4.1.2"
+multus_helm_release_name: multus
 
-# k3s hash bin directory detection (actual CNI plugin location)
-multus_k3s_bin_glob: "/var/lib/rancher/k3s/data/*/bin"
+# k3s-compatible host path overrides (set via Helm values)
+multus_cni_conf_dir: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+multus_cni_bin_dir: "/var/lib/rancher/k3s/data/current/bin"
+
+# VLAN network definitions for NetworkAttachmentDefinitions
+multus_vlan_networks: []
+# Example:
+# multus_vlan_networks:
+#   - name: storage-vlan
+#     namespace: default
+#     interface: eth0
+#     vlan_id: 100
+#     cidr: 10.10.100.0/24
+#     gateway: 10.10.100.1

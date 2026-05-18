@@ -90,6 +90,16 @@ For larger scale requirements, consider:
 - kubeadm-based clusters
 - Managed Kubernetes services (EKS, AKS, GKE)
 
+## Relationship to k3s-io/k3s-ansible
+
+This project uses [k3s-io/k3s-ansible](https://github.com/k3s-io/k3s-ansible) as an upstream reference (per research decision R-005). Patterns from that project informed the structure of the `k3s-server`, `k3s-agent`, and `k3s-common` roles (host preparation, service installation, token handling). However, this project's roles supersede k3s-ansible directly because:
+
+- Additional integrations are required (kube-vip DaemonSet, cert-manager, multus Helm chart, Rancher, Synology CSI)
+- k3s deployment compatibility constraints (no symlinks, no file copies, no path modification) require tighter control
+- The playbook lifecycle (scale, upgrade, add-ons) extends beyond k3s-ansible's scope
+
+The `ansible/requirements.yml` documents the `kubernetes.core` and `community.kubernetes` collections used in place of upstream role dependencies.
+
 ## Explicit Non-Goals
 
 This baseline intentionally does NOT include:

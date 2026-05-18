@@ -1,155 +1,57 @@
 ---
 # ansible/roles/multus/tasks/install.yml
-# Purpose: Install multus CNI and configure NetworkAttachmentDefinitions
-# Reference: FR-006 (multus for VLAN secondary networking)
+# Purpose: Install multus CNI via official Helm chart and configure NetworkAttachmentDefinitions
+# Reference: FR-006, R-008
 
-- name: Deploy multus DaemonSet
-  ansible.builtin.command: >-
-    kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/{{ multus_version }}/deployments/multus-daemonset-thick.yml
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  register: multus_deploy
-  changed_when: "'created' in multus_deploy.stdout or 'configured' in multus_deploy.stdout"
+- name: Add multus Helm repository
+  kubernetes.core.helm_repository:
+    name: "{{ multus_helm_repo_name }}"
+    repo_url: "{{ multus_helm_repo_url }}"
+    state: present
 
-- name: Check candidate multus CNI config directories
-  ansible.builtin.stat:
-    path: "{{ item }}"
-  loop: "{{ multus_cni_conf_dir_candidates }}"
-  register: multus_cni_conf_dir_stats
-
-- name: Select multus CNI config directory
+- name: Template multus Helm values
   ansible.builtin.set_fact:
-    multus_cni_conf_dir: >-
-      {{
-        (multus_cni_conf_dir_stats.results
-        | selectattr('stat.exists', 'equalto', true)
-        | map(attribute='item')
-        | list
-        | first)
-        | default('')
-      }}
+    multus_helm_values: "{{ lookup('template', 'multus-values.yaml.j2') | from_yaml }}"
 
-# Place this after both facts are set and asserted
+- name: Deploy multus via Helm chart
+  kubernetes.core.helm:
+    name: "{{ multus_helm_release_name }}"
+    chart_ref: "{{ multus_helm_repo_name }}/{{ multus_helm_chart_name }}"
+    chart_version: "{{ multus_helm_chart_version }}"
+    release_namespace: "{{ multus_namespace }}"
+    create_namespace: false
+    values: "{{ multus_helm_values }}"
+    kubeconfig: "{{ multus_kubeconfig }}"
+    state: present
+    wait: true
+    wait_timeout: "180s"
+  register: multus_helm_result
 
-- name: Assert multus CNI config directory was detected
-  ansible.builtin.assert:
-    that:
-      - multus_cni_conf_dir | length > 0
-    fail_msg: >-
-      No valid CNI config directory found for multus. Checked:
-      {{ multus_cni_conf_dir_candidates | join(', ') }}
-
-- name: Find k3s hash bin directory
-  ansible.builtin.shell: |
-    set -o pipefail
-    ls -d {{ multus_k3s_bin_glob }} 2>/dev/null | head -n1
-  args:
-    executable: /bin/bash
-  register: multus_k3s_bin_dir_shell
-  changed_when: false
-
-- name: Set k3s bin dir fact
-  ansible.builtin.set_fact:
-    multus_k3s_bin_dir: "{{ multus_k3s_bin_dir_shell.stdout | trim }}"
-
-- name: Assert k3s bin dir exists and is not empty
-  ansible.builtin.assert:
-    that:
-      - multus_k3s_bin_dir | length > 0
-    fail_msg: >-
-      Could not detect k3s hash bin directory. No match for {{ multus_k3s_bin_glob }}
-
-- name: Verify flannel plugin exists in k3s bin dir
-  ansible.builtin.stat:
-    path: "{{ multus_k3s_bin_dir }}/flannel"
-  register: multus_flannel_bin
-
-- name: Assert flannel plugin exists for multus delegation
-  ansible.builtin.assert:
-    that:
-      - multus_flannel_bin.stat.exists
-    fail_msg: >-
-      flannel binary not found at {{ multus_k3s_bin_dir }}/flannel.
-
-      Multus cannot delegate default CNI without it.
-
-- name: Prepare multus DaemonSet volume patch payload
-  ansible.builtin.set_fact:
-    multus_daemonset_patch_payload:
-      spec:
-        template:
-          spec:
-            volumes:
-              - name: cni
-                hostPath:
-                  path: "{{ multus_cni_conf_dir }}"
-              - name: cnibin
-                hostPath:
-                  path: "{{ multus_k3s_bin_dir }}"
-
-- name: Patch multus DaemonSet volumes for detected k3s paths
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - patch
-      - daemonset
-      - kube-multus-ds
-      - -n
-      - kube-system
-      - --type=strategic
-      - -p
-      - "{{ multus_daemonset_patch_payload | to_json }}"
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  register: multus_vol_patch
-  changed_when: "'patched' in multus_vol_patch.stdout"
-  failed_when: multus_vol_patch.rc != 0 and 'not patched' not in multus_vol_patch.stdout
-
-- name: Apply multus daemon configuration ConfigMap
-  ansible.builtin.command: kubectl apply -f -
-  args:
-    stdin: "{{ lookup('template', 'multus-daemon-config.yaml.j2') }}"
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  register: multus_cm_apply
-  changed_when: "'created' in multus_cm_apply.stdout or 'configured' in multus_cm_apply.stdout"
-
-- name: Restart multus pods to pick up config and volume changes
+- name: Wait for multus DaemonSet to be ready
   ansible.builtin.command: >-
-    kubectl rollout restart daemonset/kube-multus-ds -n kube-system
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  changed_when: true
-  when: multus_vol_patch.changed or (multus_cm_apply is defined and multus_cm_apply.changed)
-
-- name: Wait for multus to be ready
-  ansible.builtin.command: >-
-    kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=180s
+    kubectl rollout status daemonset/multus -n {{ multus_namespace }} --timeout=180s
   environment:
     KUBECONFIG: "{{ multus_kubeconfig }}"
   register: multus_ready
-  retries: 5
+  retries: 3
   delay: 10
   until: multus_ready.rc == 0
   changed_when: false
+  when: multus_helm_result.changed  # noqa: no-handler
 
-- name: Apply NetworkAttachment Definitions
-  ansible.builtin.command: kubectl apply -f -
-  args:
-    stdin: "{{ lookup('template', 'network-attachment-definition.yaml.j2') }}"
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
+- name: Apply NetworkAttachmentDefinitions
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'network-attachment-definition.yaml.j2') }}"
+    kubeconfig: "{{ multus_kubeconfig }}"
   loop: "{{ multus_vlan_networks }}"
   when: multus_vlan_networks | default([]) | length > 0
-  register: multus_nad_apply
-  changed_when: "'created' in multus_nad_apply.stdout or 'configured' in multus_nad_apply.stdout"
 
-
-- name: multus deployment summary
+- name: Multus deployment summary
   ansible.builtin.debug:
     msg: |
-      multus deployed successfully:
-      - Version: {{ multus_version }}
-      - CNI config dir: {{ multus_cni_conf_dir }}
-      - CNI bin dir: {{ multus_k3s_bin_dir }}
+      multus deployed successfully via Helm:
+      - Chart: {{ multus_helm_repo_name }}/{{ multus_helm_chart_name }}:{{ multus_helm_chart_version }}
+      - CNI conf dir: {{ multus_cni_conf_dir }}
+      - CNI bin dir: {{ multus_cni_bin_dir }}
       - VLAN Networks: {{ multus_vlan_networks | map(attribute='name') | list | join(', ') if multus_vlan_networks else 'None' }}
