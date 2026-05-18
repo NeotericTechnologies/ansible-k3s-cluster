@@ -97,12 +97,12 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T030 [US1] Implement cert-manager install tasks in ansible/roles/cert-manager/tasks/install.yml (Helm chart deploy, wait for readiness)
 - [X] T031 [US1] Implement cert-manager main tasks in ansible/roles/cert-manager/tasks/main.yml (install + issuers + secrets)
 
-### Add-on Roles: multus (Helm Chart, DaemonSet)
+### Add-on Roles: multus (Helm Chart, Thick Plugin, DaemonSet)
 
-- [X] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, Helm chart repo URL, chart version, k3s CNI conf dir override, k3s CNI bin dir override, vlan_networks list)
-- [X] T033 [P] [US1] Create multus Helm values template in ansible/roles/multus/templates/multus-values.yaml.j2 (hostPath overrides for cni-conf-dir and cni-bin-dir pointing to k3s paths)
+- [X] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, Helm chart repo URL, chart version, k3s CNI conf dir override `/var/lib/rancher/k3s/agent/etc/cni/net.d`, k3s CNI bin dir override `/var/lib/rancher/k3s/data/current/bin`, vlan_networks list)
+- [X] T033 [P] [US1] Create multus Helm values template in ansible/roles/multus/templates/multus-values.yaml.j2 (hostPath overrides for cni-conf-dir and cni-bin-dir pointing to k3s paths, thick plugin image tag)
 - [X] T033b [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2
-- [X] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (add Helm repo, install multus via official Helm chart with k3s path values, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
+- [X] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (add Helm repo, install multus via official Helm chart with k3s path values and thick plugin, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
 - [X] T034b [US1] Implement multus main task file in ansible/roles/multus/tasks/main.yml (gate on enabled flag, include install.yml)
 
 ### Add-on Roles: Traefik
@@ -257,7 +257,7 @@ Task: T021 "Create kube-vip cloud-controller manifest template"
 Task: T027 "Create DNS provider credentials secret template"
 Task: T028 "Create staging ClusterIssuer template"
 Task: T029 "Create production ClusterIssuer template"
-Task: T033 "Create multus Helm values template"
+Task: T033 "Create multus Helm values template (thick plugin, k3s paths)"
 Task: T033b "Create NetworkAttachmentDefinition template"
 ```
 
@@ -302,6 +302,7 @@ With multiple developers:
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - kube-vip MUST be deployed as DaemonSet per planning directive (docs/ai-prompts/plan.md)
-- Multus MUST be installed via official Helm chart (`https://k8snetworkplumbingwg.github.io/helm-charts`) with k3s host path overrides configured in Helm values per R-008
+- Multus MUST be installed via official Helm chart (`https://k8snetworkplumbingwg.github.io/helm-charts`) using the **thick plugin** variant with k3s host path overrides configured in Helm values per R-008
+- All add-on deployments MUST comply with k3s compatibility constraints: no symlinks on nodes, no file copies for runtime workloads, no modification of default k3s paths
 - Secrets (tokens, DNS credentials, Synology credentials) must NEVER be committed — use Ansible Vault or external secret management
 - Commit after each task or logical group
