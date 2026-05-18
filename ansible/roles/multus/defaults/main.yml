@@ -9,6 +9,13 @@ multus_cni_conf_dir_candidates:
   - "/var/lib/rancher/k3s/agent/etc/cni/net.d"
   - "/etc/cni/net.d"
 
-multus_cni_bin_dir_candidates:
+# Directory where delegated CNI binaries (for example flannel) are available.
+multus_delegate_cni_bin_dir_candidates:
   - "/var/lib/rancher/k3s/data/current/bin"
+  - "/var/lib/rancher/k3s/data/cni"
+  - "/opt/cni/bin"
+
+# Directory where kubelet looks for top-level CNI plugins (for example multus-shim).
+multus_install_cni_bin_dir_candidates:
+  - "/var/lib/rancher/k3s/data/cni"
   - "/opt/cni/bin"

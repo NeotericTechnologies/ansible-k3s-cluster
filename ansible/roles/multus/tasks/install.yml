@@ -37,17 +37,17 @@
       No valid CNI config directory found for multus. Checked:
       {{ multus_cni_conf_dir_candidates | join(', ') }}
 
-- name: Check candidate multus CNI binary directories
+- name: Check candidate multus delegate CNI binary directories
   ansible.builtin.stat:
     path: "{{ item }}/flannel"
-  loop: "{{ multus_cni_bin_dir_candidates }}"
-  register: multus_cni_bin_dir_stats
+  loop: "{{ multus_delegate_cni_bin_dir_candidates }}"
+  register: multus_delegate_cni_bin_dir_stats
 
-- name: Select multus CNI binary directory
+- name: Select multus delegate CNI binary directory
   ansible.builtin.set_fact:
-    multus_cni_bin_dir: >-
+    multus_delegate_cni_bin_dir: >-
       {{
-        (multus_cni_bin_dir_stats.results
+        (multus_delegate_cni_bin_dir_stats.results
         | selectattr('stat.exists', 'equalto', true)
         | map(attribute='item')
         | map('regex_replace', '/flannel$', '')
@@ -56,13 +56,31 @@
         | default('')
       }}
 
-- name: Assert multus CNI binary directory was detected
+- name: Assert multus delegate CNI binary directory was detected
   ansible.builtin.assert:
     that:
-      - multus_cni_bin_dir | length > 0
+      - multus_delegate_cni_bin_dir | length > 0
     fail_msg: >-
-      No valid CNI binary directory found for multus. Checked:
-      {{ multus_cni_bin_dir_candidates | join(', ') }}
+      No valid delegated CNI binary directory found for multus. Checked:
+      {{ multus_delegate_cni_bin_dir_candidates | join(', ') }}
+
+- name: Check candidate multus install CNI binary directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ multus_install_cni_bin_dir_candidates }}"
+  register: multus_install_cni_bin_dir_stats
+
+- name: Select multus install CNI binary directory
+  ansible.builtin.set_fact:
+    multus_install_cni_bin_dir: >-
+      {{
+        (multus_install_cni_bin_dir_stats.results
+        | selectattr('stat.exists', 'equalto', true)
+        | map(attribute='item')
+        | list
+        | first)
+        | default(multus_delegate_cni_bin_dir)
+      }}
 
 - name: Apply multus daemon config for detected k3s paths
   ansible.builtin.command: kubectl apply -f -
@@ -85,7 +103,7 @@
                   path: "{{ multus_cni_conf_dir }}"
               - name: cnibin
                 hostPath:
-                  path: "{{ multus_cni_bin_dir }}"
+                  path: "{{ multus_install_cni_bin_dir }}"
 
 - name: Patch multus DaemonSet volumes for detected k3s paths
   ansible.builtin.command:
@@ -141,5 +159,6 @@
       multus deployed successfully:
       - Version: {{ multus_version }}
       - CNI config dir: {{ multus_cni_conf_dir }}
-      - CNI bin dir: {{ multus_cni_bin_dir }}
+      - CNI install bin dir: {{ multus_install_cni_bin_dir }}
+      - CNI delegate bin dir: {{ multus_delegate_cni_bin_dir }}
       - VLAN Networks: {{ multus_vlan_networks | map(attribute='name') | list | join(', ') if multus_vlan_networks else 'None' }}

@@ -14,5 +14,5 @@ data:
       "cniConfigDir": "/host/etc/cni/net.d",
       "multusConfigFile": "auto",
       "multusAutoconfigDir": "/host/etc/cni/net.d",
-      "binDir": "/host/opt/cni/bin"
+      "binDir": "/hostroot{{ multus_delegate_cni_bin_dir }}"
     }
