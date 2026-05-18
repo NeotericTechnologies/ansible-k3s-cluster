@@ -58,7 +58,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
       - name: kube-vip-cloud-controller
-        image: ghcr.io/kube-vip/kube-vip-cloud-provider:{{ kube_vip_cloud_provider_version | default('v0.2.1') }}
+        image: ghcr.io/kube-vip/kube-vip-cloud-provider:{{ kube_vip_cloud_provider_version | default('v0.0.12') }}
         imagePullPolicy: IfNotPresent
         env:
         - name: KUBEVIP_NAMESPACE

@@ -321,7 +321,7 @@ api_port: 6443
 control_plane_vip: 192.168.1.100
 ha_mode: true
 kube_vip_version: v1.1.2
-kube_vip_cloud_provider_version: v0.2.1
+kube_vip_cloud_provider_version: v0.0.12
 ```
 
 **group_vars/all.yml - LoadBalancer IP Pool:**

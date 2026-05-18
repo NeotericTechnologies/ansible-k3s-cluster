@@ -23,7 +23,7 @@ ha_mode: "embedded-etcd-ha"
 # kube-vip configuration for control-plane VIP and service load balancing
 kube_vip_enabled: true
 kube_vip_version: "v1.1.2"
-kube_vip_cloud_provider_version: "v0.2.1"
+kube_vip_cloud_provider_version: "v0.0.12"
 kube_vip_interface: "eth0"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"

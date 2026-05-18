@@ -32,9 +32,21 @@
   changed_when: false
   failed_when: false
 
+- name: Download Helm install script
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    dest: /tmp/get-helm-3.sh
+    mode: '0755'
+  when: helm_check.rc != 0
+
 - name: Install Helm
-  ansible.builtin.shell: |
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  ansible.builtin.command: /tmp/get-helm-3.sh
   args:
     creates: /usr/local/bin/helm
+  when: helm_check.rc != 0
+
+- name: Remove Helm install script
+  ansible.builtin.file:
+    path: /tmp/get-helm-3.sh
+    state: absent
   when: helm_check.rc != 0

@@ -11,25 +11,57 @@
   register: multus_deploy
   changed_when: "'created' in multus_deploy.stdout or 'configured' in multus_deploy.stdout"
 
-- name: Patch multus DaemonSet for k3s CNI and bin paths
-  ansible.builtin.command: >-
-    kubectl patch daemonset kube-multus-ds -n kube-system --type=json
-    -p='[
-      {"op":"replace","path":"/spec/template/spec/volumes/0/hostPath/path","value":"/var/lib/rancher/k3s/agent/etc/cni/net.d"},
-      {"op":"replace","path":"/spec/template/spec/volumes/1/hostPath/path","value":"/var/lib/rancher/k3s/data/cni"}
-    ]'
+- name: Patch multus daemon config for k3s CNI paths
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - patch
+      - configmap
+      - multus-daemon-config
+      - -n
+      - kube-system
+      - --type=merge
+      - -p
+      - >-
+        {"data":{"daemon-config.json":"{\n    \"chrootDir\": \"/hostroot\",\n    \"confDir\": \"/host/var/lib/rancher/k3s/agent/etc/cni/net.d\",\n    \"logLevel\": \"verbose\",\n    \"socketDir\": \"/host/run/multus/\",\n    \"cniVersion\": \"0.3.1\",\n    \"cniConfigDir\": \"/host/var/lib/rancher/k3s/agent/etc/cni/net.d\",\n    \"multusConfigFile\": \"auto\",\n    \"multusAutoconfigDir\": \"/host/var/lib/rancher/k3s/agent/etc/cni/net.d\"\n}\n"}}
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: multus_patch
-  changed_when: "'patched' in multus_patch.stdout"
-  failed_when: multus_patch.rc != 0 and 'not patched' not in multus_patch.stdout
+  register: multus_config_patch
+  changed_when: "'patched' in multus_config_patch.stdout"
+  failed_when: multus_config_patch.rc != 0 and 'not patched' not in multus_config_patch.stdout
+
+- name: Patch multus DaemonSet volumes for k3s paths
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - patch
+      - daemonset
+      - kube-multus-ds
+      - -n
+      - kube-system
+      - --type=strategic
+      - -p
+      - >-
+        {"spec":{"template":{"spec":{"volumes":[{"name":"cni","hostPath":{"path":"/var/lib/rancher/k3s/agent/etc/cni/net.d"}},{"name":"cnibin","hostPath":{"path":"/var/lib/rancher/k3s/data/current/bin"}}]}}}}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: multus_vol_patch
+  changed_when: "'patched' in multus_vol_patch.stdout"
+  failed_when: multus_vol_patch.rc != 0 and 'not patched' not in multus_vol_patch.stdout
+
+- name: Restart multus pods to pick up config and volume changes
+  ansible.builtin.command: >-
+    kubectl rollout restart daemonset/kube-multus-ds -n kube-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: true
 
 - name: Wait for multus to be ready
   ansible.builtin.command: >-
     kubectl wait --for=condition=ready pod
     -l app=multus
     -n kube-system
-    --timeout=300s
+    --timeout=60s
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: multus_ready
