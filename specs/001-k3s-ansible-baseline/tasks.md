@@ -97,11 +97,13 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T030 [US1] Implement cert-manager install tasks in ansible/roles/cert-manager/tasks/install.yml (Helm chart deploy, wait for readiness)
 - [X] T031 [US1] Implement cert-manager main tasks in ansible/roles/cert-manager/tasks/main.yml (install + issuers + secrets)
 
-### Add-on Roles: multus
+### Add-on Roles: multus (Helm Chart, DaemonSet)
 
-- [X] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, vlan_networks list)
-- [X] T033 [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/net-attach-def.yaml.j2
-- [X] T034 [US1] Implement multus install and configuration tasks in ansible/roles/multus/tasks/main.yml (deploy multus, create NetworkAttachmentDefinitions from variables)
+- [ ] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, Helm chart repo URL, chart version, k3s CNI conf dir override, k3s CNI bin dir override, vlan_networks list)
+- [ ] T033 [P] [US1] Create multus Helm values template in ansible/roles/multus/templates/multus-values.yaml.j2 (hostPath overrides for cni-conf-dir and cni-bin-dir pointing to k3s paths)
+- [ ] T033b [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2
+- [ ] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (add Helm repo, install multus via official Helm chart with k3s path values, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
+- [ ] T034b [US1] Implement multus main task file in ansible/roles/multus/tasks/main.yml (gate on enabled flag, include install.yml)
 
 ### Add-on Roles: Traefik
 
@@ -150,7 +152,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T052 [P] [US2] Add idempotent convergence logic to ansible/roles/traefik/tasks/main.yml (Helm upgrade idempotence)
 - [X] T053 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher/tasks/main.yml (Helm upgrade idempotence)
 - [X] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
-- [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/main.yml (NetworkAttachmentDefinition update without recreation)
+- [ ] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/install.yml (Helm upgrade with changed values only, NetworkAttachmentDefinition update without recreation)
 - [X] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/main.yml (StorageClass and secret update without recreation)
 - [X] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
 
@@ -255,6 +257,8 @@ Task: T021 "Create kube-vip cloud-controller manifest template"
 Task: T027 "Create DNS provider credentials secret template"
 Task: T028 "Create staging ClusterIssuer template"
 Task: T029 "Create production ClusterIssuer template"
+Task: T033 "Create multus Helm values template"
+Task: T033b "Create NetworkAttachmentDefinition template"
 ```
 
 ---
@@ -298,5 +302,6 @@ With multiple developers:
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - kube-vip MUST be deployed as DaemonSet per planning directive (docs/ai-prompts/plan.md)
+- Multus MUST be installed via official Helm chart (`https://k8snetworkplumbingwg.github.io/helm-charts`) with k3s host path overrides configured in Helm values per R-008
 - Secrets (tokens, DNS credentials, Synology credentials) must NEVER be committed — use Ansible Vault or external secret management
 - Commit after each task or logical group
