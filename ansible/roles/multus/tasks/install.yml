@@ -13,11 +13,19 @@
   loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
 
 - name: Deploy multus thick plugin DaemonSet and RBAC
-  kubernetes.core.k8s:
-    state: present
-    definition: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') | from_yaml_all | list }}"
-    kubeconfig: "{{ multus_kubeconfig }}"
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - -
+    stdin: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') }}"
+  environment:
+    KUBECONFIG: "{{ multus_kubeconfig }}"
   register: multus_deploy_result
+  changed_when: >-
+    'created' in multus_deploy_result.stdout or
+    'configured' in multus_deploy_result.stdout
 
 - name: Wait for multus DaemonSet to be ready
   ansible.builtin.command: >-
@@ -32,11 +40,20 @@
   when: multus_deploy_result is defined and multus_deploy_result.changed
 
 - name: Apply NetworkAttachmentDefinitions
-  kubernetes.core.k8s:
-    state: present
-    definition: "{{ lookup('template', 'network-attachment-definition.yaml.j2') }}"
-    kubeconfig: "{{ multus_kubeconfig }}"
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - -
+    stdin: "{{ lookup('template', 'network-attachment-definition.yaml.j2') }}"
+  environment:
+    KUBECONFIG: "{{ multus_kubeconfig }}"
   loop: "{{ multus_vlan_networks }}"
+  register: multus_nad_apply
+  changed_when: >-
+    multus_nad_apply.stdout is defined and
+    ('created' in multus_nad_apply.stdout or 'configured' in multus_nad_apply.stdout)
   when: multus_vlan_networks | default([]) | length > 0
 
 - name: Multus deployment summary

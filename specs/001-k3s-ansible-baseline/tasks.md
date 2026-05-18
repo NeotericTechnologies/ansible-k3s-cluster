@@ -100,7 +100,7 @@ All tasks MUST comply with these constraints per R-013:
 ### Add-on Roles: multus (Helm Chart, Thick Plugin, DaemonSet)
 
 - [X] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, Helm chart repo URL, chart version, k3s CNI conf dir override `/var/lib/rancher/k3s/agent/etc/cni/net.d`, k3s CNI bin dir override `/var/lib/rancher/k3s/data/current/bin`, vlan_networks list)
-- [X] T033 [P] [US1] Create multus Helm values template in ansible/roles/multus/templates/multus-values.yaml.j2 (hostPath overrides for cni-conf-dir and cni-bin-dir pointing to k3s paths, thick plugin image tag)
+- [X] T033 [P] [US1] Create multus daemon config template in ansible/roles/multus/templates/multus-daemon-config.json.j2 (k3s CNI path overrides and thick plugin daemon settings)
 - [X] T033b [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2
 - [X] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (add Helm repo, install multus via official Helm chart with k3s path values and thick plugin, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
 - [X] T034b [US1] Implement multus main task file in ansible/roles/multus/tasks/main.yml (gate on enabled flag, include install.yml)
