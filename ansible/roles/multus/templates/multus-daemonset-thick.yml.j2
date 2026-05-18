@@ -137,11 +137,12 @@ spec:
         - name: install-multus-binary
           image: {{ multus_image }}:{{ multus_image_tag }}
           command:
-            - "/usr/src/multus-cni/bin/install_multus"
-            - "-d"
-            - "/host/opt/cni/bin"
-            - "-t"
-            - "thick"
+            - /bin/sh
+            - -ec
+            - |
+              /usr/src/multus-cni/bin/install_multus -d /host/opt/cni/bin -t thick
+              mkdir -p /hostroot/var/lib/rancher/k3s/data/cni
+              ln -sfn /var/lib/rancher/k3s/data/current/bin/multus-shim /hostroot/var/lib/rancher/k3s/data/cni/multus-shim
           resources:
             requests:
               cpu: "10m"
@@ -153,6 +154,9 @@ spec:
             - name: cnibin
               mountPath: /host/opt/cni/bin
               mountPropagation: Bidirectional
+            - name: hostroot
+              mountPath: /hostroot
+              mountPropagation: HostToContainer
       containers:
         - name: kube-multus
           image: {{ multus_image }}:{{ multus_image_tag }}
