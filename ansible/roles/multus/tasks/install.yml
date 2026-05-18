@@ -29,6 +29,8 @@
         | default('')
       }}
 
+# Place this after both facts are set and asserted
+
 - name: Assert multus CNI config directory was detected
   ansible.builtin.assert:
     that:
@@ -37,59 +39,39 @@
       No valid CNI config directory found for multus. Checked:
       {{ multus_cni_conf_dir_candidates | join(', ') }}
 
-- name: Check candidate multus delegate CNI binary directories
-  ansible.builtin.stat:
-    path: "{{ item }}/flannel"
-  loop: "{{ multus_delegate_cni_bin_dir_candidates }}"
-  register: multus_delegate_cni_bin_dir_stats
+- name: Find k3s hash bin directory
+  ansible.builtin.shell: |
+    set -o pipefail
+    ls -d {{ multus_k3s_bin_glob }} 2>/dev/null | head -n1
+  args:
+    executable: /bin/bash
+  register: multus_k3s_bin_dir_shell
+  changed_when: false
 
-- name: Select multus delegate CNI binary directory
+- name: Set k3s bin dir fact
   ansible.builtin.set_fact:
-    multus_delegate_cni_bin_dir: >-
-      {{
-        (multus_delegate_cni_bin_dir_stats.results
-        | selectattr('stat.exists', 'equalto', true)
-        | map(attribute='item')
-        | map('regex_replace', '/flannel$', '')
-        | list
-        | first)
-        | default('')
-      }}
+    multus_k3s_bin_dir: "{{ multus_k3s_bin_dir_shell.stdout | trim }}"
 
-- name: Assert multus delegate CNI binary directory was detected
+- name: Assert k3s bin dir exists and is not empty
   ansible.builtin.assert:
     that:
-      - multus_delegate_cni_bin_dir | length > 0
+      - multus_k3s_bin_dir | length > 0
     fail_msg: >-
-      No valid delegated CNI binary directory found for multus. Checked:
-      {{ multus_delegate_cni_bin_dir_candidates | join(', ') }}
+      Could not detect k3s hash bin directory. No match for {{ multus_k3s_bin_glob }}
 
-- name: Check candidate multus install CNI binary directories
+- name: Verify flannel plugin exists in k3s bin dir
   ansible.builtin.stat:
-    path: "{{ item }}"
-  loop: "{{ multus_install_cni_bin_dir_candidates }}"
-  register: multus_install_cni_bin_dir_stats
+    path: "{{ multus_k3s_bin_dir }}/flannel"
+  register: multus_flannel_bin
 
-- name: Select multus install CNI binary directory
-  ansible.builtin.set_fact:
-    multus_install_cni_bin_dir: >-
-      {{
-        (multus_install_cni_bin_dir_stats.results
-        | selectattr('stat.exists', 'equalto', true)
-        | map(attribute='item')
-        | list
-        | first)
-        | default(multus_delegate_cni_bin_dir)
-      }}
+- name: Assert flannel plugin exists for multus delegation
+  ansible.builtin.assert:
+    that:
+      - multus_flannel_bin.stat.exists
+    fail_msg: >-
+      flannel binary not found at {{ multus_k3s_bin_dir }}/flannel.
 
-- name: Apply multus daemon config for detected k3s paths
-  ansible.builtin.command: kubectl apply -f -
-  args:
-    stdin: "{{ lookup('template', 'multus-daemon-config.yaml.j2') }}"
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  register: multus_cm_apply
-  changed_when: "'created' in multus_cm_apply.stdout or 'configured' in multus_cm_apply.stdout"
+      Multus cannot delegate default CNI without it.
 
 - name: Prepare multus DaemonSet volume patch payload
   ansible.builtin.set_fact:
@@ -103,7 +85,7 @@
                   path: "{{ multus_cni_conf_dir }}"
               - name: cnibin
                 hostPath:
-                  path: "{{ multus_install_cni_bin_dir }}"
+                  path: "{{ multus_k3s_bin_dir }}"
 
 - name: Patch multus DaemonSet volumes for detected k3s paths
   ansible.builtin.command:
@@ -123,13 +105,22 @@
   changed_when: "'patched' in multus_vol_patch.stdout"
   failed_when: multus_vol_patch.rc != 0 and 'not patched' not in multus_vol_patch.stdout
 
+- name: Apply multus daemon configuration ConfigMap
+  ansible.builtin.command: kubectl apply -f -
+  args:
+    stdin: "{{ lookup('template', 'multus-daemon-config.yaml.j2') }}"
+  environment:
+    KUBECONFIG: "{{ multus_kubeconfig }}"
+  register: multus_cm_apply
+  changed_when: "'created' in multus_cm_apply.stdout or 'configured' in multus_cm_apply.stdout"
+
 - name: Restart multus pods to pick up config and volume changes
   ansible.builtin.command: >-
     kubectl rollout restart daemonset/kube-multus-ds -n kube-system
   environment:
     KUBECONFIG: "{{ multus_kubeconfig }}"
   changed_when: true
-  when: multus_cm_apply.changed or multus_vol_patch.changed
+  when: multus_vol_patch.changed or (multus_cm_apply is defined and multus_cm_apply.changed)
 
 - name: Wait for multus to be ready
   ansible.builtin.command: >-
@@ -153,12 +144,12 @@
   register: multus_nad_apply
   changed_when: "'created' in multus_nad_apply.stdout or 'configured' in multus_nad_apply.stdout"
 
+
 - name: multus deployment summary
   ansible.builtin.debug:
     msg: |
       multus deployed successfully:
       - Version: {{ multus_version }}
       - CNI config dir: {{ multus_cni_conf_dir }}
-      - CNI install bin dir: {{ multus_install_cni_bin_dir }}
-      - CNI delegate bin dir: {{ multus_delegate_cni_bin_dir }}
+      - CNI bin dir: {{ multus_k3s_bin_dir }}
       - VLAN Networks: {{ multus_vlan_networks | map(attribute='name') | list | join(', ') if multus_vlan_networks else 'None' }}

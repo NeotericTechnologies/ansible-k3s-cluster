@@ -7,6 +7,7 @@ metadata:
 data:
   daemon-config.json: |
     {
+      "chrootDir": "/hostroot",
       "confDir": "/host/etc/cni/net.d",
       "logLevel": "verbose",
       "socketDir": "/host/run/multus/",
@@ -14,5 +15,5 @@ data:
       "cniConfigDir": "/host/etc/cni/net.d",
       "multusConfigFile": "auto",
       "multusAutoconfigDir": "/host/etc/cni/net.d",
-      "binDir": "/hostroot{{ multus_delegate_cni_bin_dir }}"
+      "binDir": "{{ multus_k3s_bin_dir }}"
     }
