@@ -18,7 +18,7 @@
       - kubectl
       - apply
       - -f
-      - -
+      - "-"
     stdin: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') }}"
   environment:
     KUBECONFIG: "{{ multus_kubeconfig }}"
@@ -45,7 +45,7 @@
       - kubectl
       - apply
       - -f
-      - -
+      - "-"
     stdin: "{{ lookup('template', 'network-attachment-definition.yaml.j2') }}"
   environment:
     KUBECONFIG: "{{ multus_kubeconfig }}"
