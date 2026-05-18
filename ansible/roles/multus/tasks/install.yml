@@ -1,35 +1,27 @@
 ---
 # ansible/roles/multus/tasks/install.yml
-# Purpose: Install multus CNI via official Helm chart and configure NetworkAttachmentDefinitions
+# Purpose: Install multus CNI thick plugin via DaemonSet manifest and configure NetworkAttachmentDefinitions
 # Reference: FR-006, R-008
+# Documentation: https://github.com/k8snetworkplumbingwg/multus-cni/tree/master/docs
 
-- name: Add multus Helm repository
-  kubernetes.core.helm_repository:
-    name: "{{ multus_helm_repo_name }}"
-    repo_url: "{{ multus_helm_repo_url }}"
+- name: Ensure multus CNI config directory exists on nodes
+  ansible.builtin.file:
+    path: "{{ multus_cni_conf_dir }}/multus.d"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+
+- name: Deploy multus thick plugin DaemonSet and RBAC
+  kubernetes.core.k8s:
     state: present
-
-- name: Template multus Helm values
-  ansible.builtin.set_fact:
-    multus_helm_values: "{{ lookup('template', 'multus-values.yaml.j2') | from_yaml }}"
-
-- name: Deploy multus via Helm chart
-  kubernetes.core.helm:
-    name: "{{ multus_helm_release_name }}"
-    chart_ref: "{{ multus_helm_repo_name }}/{{ multus_helm_chart_name }}"
-    chart_version: "{{ multus_helm_chart_version }}"
-    release_namespace: "{{ multus_namespace }}"
-    create_namespace: false
-    values: "{{ multus_helm_values }}"
+    definition: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') | from_yaml_all | list }}"
     kubeconfig: "{{ multus_kubeconfig }}"
-    state: present
-    wait: true
-    wait_timeout: "180s"
-  register: multus_helm_result
+  register: multus_deploy_result
 
 - name: Wait for multus DaemonSet to be ready
   ansible.builtin.command: >-
-    kubectl rollout status daemonset/multus -n {{ multus_namespace }} --timeout=180s
+    kubectl rollout status daemonset/kube-multus-ds -n {{ multus_namespace }} --timeout=180s
   environment:
     KUBECONFIG: "{{ multus_kubeconfig }}"
   register: multus_ready
@@ -37,7 +29,7 @@
   delay: 10
   until: multus_ready.rc == 0
   changed_when: false
-  when: multus_helm_result.changed  # noqa: no-handler
+  when: multus_deploy_result is defined and multus_deploy_result.changed
 
 - name: Apply NetworkAttachmentDefinitions
   kubernetes.core.k8s:
@@ -50,8 +42,8 @@
 - name: Multus deployment summary
   ansible.builtin.debug:
     msg: |
-      multus deployed successfully via Helm:
-      - Chart: {{ multus_helm_repo_name }}/{{ multus_helm_chart_name }}:{{ multus_helm_chart_version }}
+      multus thick plugin deployed successfully via DaemonSet manifest:
+      - Image: {{ multus_image }}:{{ multus_image_tag }}
       - CNI conf dir: {{ multus_cni_conf_dir }}
       - CNI bin dir: {{ multus_cni_bin_dir }}
       - VLAN Networks: {{ multus_vlan_networks | map(attribute='name') | list | join(', ') if multus_vlan_networks else 'None' }}

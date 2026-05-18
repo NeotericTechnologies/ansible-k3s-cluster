@@ -3,16 +3,20 @@ multus_enabled: false
 multus_namespace: kube-system
 multus_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 
-# Helm chart settings (official multus Helm chart)
-multus_helm_repo_name: k8snetworkplumbingwg
-multus_helm_repo_url: "https://k8snetworkplumbingwg.github.io/helm-charts"
-multus_helm_chart_name: multus
-multus_helm_chart_version: "4.1.2"
-multus_helm_release_name: multus
+# Multus image (thick plugin variant)
+# Reference: https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/deployments/multus-daemonset-thick.yml
+multus_image: "ghcr.io/k8snetworkplumbingwg/multus-cni"
+multus_image_tag: "v4.1.2-thick"
 
-# k3s-compatible host path overrides (set via Helm values)
+# k3s-compatible host path overrides
+# These override the default /etc/cni/net.d and /opt/cni/bin paths
+# for k3s which uses its own directory structure
 multus_cni_conf_dir: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
 multus_cni_bin_dir: "/var/lib/rancher/k3s/data/current/bin"
+
+# Multus daemon configuration
+multus_log_level: "error"
+multus_log_to_stderr: true
 
 # VLAN network definitions for NetworkAttachmentDefinitions
 multus_vlan_networks: []
