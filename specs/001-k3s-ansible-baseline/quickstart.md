@@ -24,6 +24,7 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
   - Cluster and service CIDRs.
   - kube-vip configuration for the control-plane VIP and service load balancer addresses, with kube-vip deployment mode set to DaemonSet.
   - Add-on configurations (cert-manager, multus VLANs, Rancher, rancher-monitoring, Traefik, optional Synology CSI, DNS provider).
+  - Note: All add-ons are deployed as in-cluster resources (Helm/Kubernetes API). Multus uses the thick plugin. Kube-vip runs as a DaemonSet. No symlinks, file copies to nodes, or k3s path modifications are performed.
 
 ## 4. Provision a New HA Cluster
 

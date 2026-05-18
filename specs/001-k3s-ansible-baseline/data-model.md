@@ -49,8 +49,9 @@ Describes cluster networking beyond the base k3s defaults.
   - `multus_enabled`: Boolean.
   - `multus_version`: Helm chart version for Multus deployment.
   - `multus_install_method`: Installation method (must be `helm`).
-  - `multus_cni_conf_dir`: CNI config directory (k3s-specific path override).
-  - `multus_cni_bin_dir`: CNI binary directory (k3s-specific path override).
+  - `multus_plugin_type`: Plugin variant (must be `thick` — bundles all CNI functionality into a single binary).
+  - `multus_cni_conf_dir`: CNI config directory (k3s-specific path override: `/var/lib/rancher/k3s/agent/etc/cni/net.d`).
+  - `multus_cni_bin_dir`: CNI binary directory (k3s-specific path override: `/var/lib/rancher/k3s/data/current/bin`).
   - `vlan_networks`: List of `VlanNetwork` definitions used by multus.
 
 - **Relationships**:
@@ -163,6 +164,7 @@ Optional configuration for Synology CSI integration.
 - `ha_mode = embedded-etcd-ha` requires an odd number of control-plane nodes (recommended 3) in the inventory.
 - `control_plane_vip` must resolve or be reachable from all nodes defined in the cluster.
 - When `kube_vip.enabled = true`, `deployment_mode` must be `daemonset` for this baseline.
+- When `multus_enabled = true`, `multus_plugin_type` must be `thick` and installation must use the official Helm chart.
 - When `cert_manager.enabled = true`, both staging and production issuers must be fully specified (provider, credentials, email).
 - When `synology_csi.enabled = true`, endpoint and credentials must be present, and at least one StorageClass must be defined.
 - multus VLAN definitions must reference valid interfaces and non-overlapping CIDRs relative to the base cluster networks.

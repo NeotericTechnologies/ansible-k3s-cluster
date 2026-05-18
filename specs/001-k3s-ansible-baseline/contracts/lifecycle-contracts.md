@@ -9,7 +9,8 @@ All contracts below are subject to these k3s deployment compatibility rules:
 - **No symlinks on nodes**: No role or task may create symlinks on target nodes for deployment artifacts.
 - **No runtime file copies to nodes**: Add-ons must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests via `kubernetes.core` modules), not by copying files to the node filesystem.
 - **No modification of default k3s paths**: Roles must not remove, rename, or alter paths managed by k3s (`/var/lib/rancher/k3s`, `/etc/rancher/k3s`, etc.).
-- **Multus deployment via Helm**: Multus CNI must be installed using the official Helm chart from `https://k8snetworkplumbingwg.github.io/helm-charts`, with Helm values configuring k3s-compatible host paths for CNI config and binary directories.
+- **Multus deployment via Helm (thick plugin)**: Multus CNI must be installed as a DaemonSet using the official Helm chart from `https://k8snetworkplumbingwg.github.io/helm-charts`, with the thick plugin variant and Helm values configuring k3s-compatible host paths for CNI config and binary directories.
+- **Kube-vip as DaemonSet**: Kube-vip must be deployed as a DaemonSet (not static pod) for both control-plane VIP and service load balancing.
 
 ## Contract C-001: Provision New HA k3s Cluster
 

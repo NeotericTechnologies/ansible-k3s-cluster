@@ -9,6 +9,9 @@
     - Remove or change any of the default paths that K3S uses.
 
 ## Multus CNI Plugin
-- Install Multus CNI plugin as DaemonSet
-- Install using the offical helm chart
-- Ensure host paths are updated as needed for k3s compatibility.
+- Install
+    - As a DaemonSet
+    - Using the Thick Plugin
+    - Using the documentation here as a reference; https://github.com/k8snetworkplumbingwg/multus-cni/tree/master/docs
+- Configuration
+    - Ensure host paths are added/updated as needed for k3s compatibility.
