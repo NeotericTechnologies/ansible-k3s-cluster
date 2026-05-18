@@ -23,12 +23,11 @@
       - --type=merge
       - -p
       - >-
-        {"data":{"daemon-config.json":"{\n    \"chrootDir\": \"/hostroot\",\n    \"confDir\": \"/host/var/lib/rancher/k3s/agent/etc/cni/net.d\",\n    \"logLevel\": \"verbose\",\n    \"socketDir\": \"/host/run/multus/\",\n    \"cniVersion\": \"0.3.1\",\n    \"cniConfigDir\": \"/host/var/lib/rancher/k3s/agent/etc/cni/net.d\",\n    \"multusConfigFile\": \"auto\",\n    \"multusAutoconfigDir\": \"/host/var/lib/rancher/k3s/agent/etc/cni/net.d\"\n}\n"}}
+        {"data":{"daemon-config.json":"{\"confDir\":\"/host/etc/cni/net.d\",\"logLevel\":\"verbose\",\"socketDir\":\"/host/run/multus/\",\"cniVersion\":\"0.3.1\",\"cniConfigDir\":\"/host/etc/cni/net.d\",\"multusConfigFile\":\"auto\",\"multusAutoconfigDir\":\"/host/etc/cni/net.d\",\"binDir\":\"/host/opt/cni/bin\"}"}}
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: multus_config_patch
-  changed_when: "'patched' in multus_config_patch.stdout"
-  failed_when: multus_config_patch.rc != 0 and 'not patched' not in multus_config_patch.stdout
+  register: multus_cm_patch
+  changed_when: "'patched' in multus_cm_patch.stdout"
 
 - name: Patch multus DaemonSet volumes for k3s paths
   ansible.builtin.command:
