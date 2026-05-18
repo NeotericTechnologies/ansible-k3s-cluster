@@ -2,3 +2,13 @@
 multus_enabled: false
 multus_version: "v4.0.2"
 multus_vlan_networks: []
+multus_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+
+# Candidate host paths; first existing path is selected at runtime.
+multus_cni_conf_dir_candidates:
+  - "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+  - "/etc/cni/net.d"
+
+multus_cni_bin_dir_candidates:
+  - "/var/lib/rancher/k3s/data/current/bin"
+  - "/opt/cni/bin"

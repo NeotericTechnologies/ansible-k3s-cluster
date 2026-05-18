@@ -7,29 +7,87 @@
   ansible.builtin.command: >-
     kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/{{ multus_version }}/deployments/multus-daemonset-thick.yml
   environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    KUBECONFIG: "{{ multus_kubeconfig }}"
   register: multus_deploy
   changed_when: "'created' in multus_deploy.stdout or 'configured' in multus_deploy.stdout"
 
-- name: Patch multus daemon config for k3s CNI paths
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - patch
-      - configmap
-      - multus-daemon-config
-      - -n
-      - kube-system
-      - --type=merge
-      - -p
-      - >-
-        {"data":{"daemon-config.json":"{\"confDir\":\"/host/etc/cni/net.d\",\"logLevel\":\"verbose\",\"socketDir\":\"/host/run/multus/\",\"cniVersion\":\"0.3.1\",\"cniConfigDir\":\"/host/etc/cni/net.d\",\"multusConfigFile\":\"auto\",\"multusAutoconfigDir\":\"/host/etc/cni/net.d\",\"binDir\":\"/host/opt/cni/bin\"}"}}
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: multus_cm_patch
-  changed_when: "'patched' in multus_cm_patch.stdout"
+- name: Check candidate multus CNI config directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ multus_cni_conf_dir_candidates }}"
+  register: multus_cni_conf_dir_stats
 
-- name: Patch multus DaemonSet volumes for k3s paths
+- name: Select multus CNI config directory
+  ansible.builtin.set_fact:
+    multus_cni_conf_dir: >-
+      {{
+        (multus_cni_conf_dir_stats.results
+        | selectattr('stat.exists', 'equalto', true)
+        | map(attribute='item')
+        | list
+        | first)
+        | default('')
+      }}
+
+- name: Assert multus CNI config directory was detected
+  ansible.builtin.assert:
+    that:
+      - multus_cni_conf_dir | length > 0
+    fail_msg: >-
+      No valid CNI config directory found for multus. Checked:
+      {{ multus_cni_conf_dir_candidates | join(', ') }}
+
+- name: Check candidate multus CNI binary directories
+  ansible.builtin.stat:
+    path: "{{ item }}/flannel"
+  loop: "{{ multus_cni_bin_dir_candidates }}"
+  register: multus_cni_bin_dir_stats
+
+- name: Select multus CNI binary directory
+  ansible.builtin.set_fact:
+    multus_cni_bin_dir: >-
+      {{
+        (multus_cni_bin_dir_stats.results
+        | selectattr('stat.exists', 'equalto', true)
+        | map(attribute='item')
+        | map('regex_replace', '/flannel$', '')
+        | list
+        | first)
+        | default('')
+      }}
+
+- name: Assert multus CNI binary directory was detected
+  ansible.builtin.assert:
+    that:
+      - multus_cni_bin_dir | length > 0
+    fail_msg: >-
+      No valid CNI binary directory found for multus. Checked:
+      {{ multus_cni_bin_dir_candidates | join(', ') }}
+
+- name: Apply multus daemon config for detected k3s paths
+  ansible.builtin.command: kubectl apply -f -
+  args:
+    stdin: "{{ lookup('template', 'multus-daemon-config.yaml.j2') }}"
+  environment:
+    KUBECONFIG: "{{ multus_kubeconfig }}"
+  register: multus_cm_apply
+  changed_when: "'created' in multus_cm_apply.stdout or 'configured' in multus_cm_apply.stdout"
+
+- name: Prepare multus DaemonSet volume patch payload
+  ansible.builtin.set_fact:
+    multus_daemonset_patch_payload:
+      spec:
+        template:
+          spec:
+            volumes:
+              - name: cni
+                hostPath:
+                  path: "{{ multus_cni_conf_dir }}"
+              - name: cnibin
+                hostPath:
+                  path: "{{ multus_cni_bin_dir }}"
+
+- name: Patch multus DaemonSet volumes for detected k3s paths
   ansible.builtin.command:
     argv:
       - kubectl
@@ -40,10 +98,9 @@
       - kube-system
       - --type=strategic
       - -p
-      - >-
-        {"spec":{"template":{"spec":{"volumes":[{"name":"cni","hostPath":{"path":"/var/lib/rancher/k3s/agent/etc/cni/net.d"}},{"name":"cnibin","hostPath":{"path":"/var/lib/rancher/k3s/data/current/bin"}}]}}}}
+      - "{{ multus_daemonset_patch_payload | to_json }}"
   environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    KUBECONFIG: "{{ multus_kubeconfig }}"
   register: multus_vol_patch
   changed_when: "'patched' in multus_vol_patch.stdout"
   failed_when: multus_vol_patch.rc != 0 and 'not patched' not in multus_vol_patch.stdout
@@ -52,51 +109,37 @@
   ansible.builtin.command: >-
     kubectl rollout restart daemonset/kube-multus-ds -n kube-system
   environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    KUBECONFIG: "{{ multus_kubeconfig }}"
   changed_when: true
+  when: multus_cm_apply.changed or multus_vol_patch.changed
 
 - name: Wait for multus to be ready
   ansible.builtin.command: >-
-    kubectl wait --for=condition=ready pod
-    -l app=multus
-    -n kube-system
-    --timeout=60s
+    kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=180s
   environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    KUBECONFIG: "{{ multus_kubeconfig }}"
   register: multus_ready
   retries: 5
   delay: 10
   until: multus_ready.rc == 0
   changed_when: false
 
-- name: Create NetworkAttachmentDefinitions for VLAN networks
-  ansible.builtin.template:
-    src: network-attachment-definition.yaml.j2
-    dest: "/tmp/nad-{{ item.name }}.yaml"
-    mode: '0644'
-  loop: "{{ multus_vlan_networks }}"
-  when: multus_vlan_networks | default([]) | length > 0
-
 - name: Apply NetworkAttachment Definitions
-  ansible.builtin.command: >-
-    kubectl apply -f /tmp/nad-{{ item.name }}.yaml
+  ansible.builtin.command: kubectl apply -f -
+  args:
+    stdin: "{{ lookup('template', 'network-attachment-definition.yaml.j2') }}"
   environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+    KUBECONFIG: "{{ multus_kubeconfig }}"
   loop: "{{ multus_vlan_networks }}"
   when: multus_vlan_networks | default([]) | length > 0
   register: multus_nad_apply
   changed_when: "'created' in multus_nad_apply.stdout or 'configured' in multus_nad_apply.stdout"
-
-- name: Clean up temporary NetworkAttachmentDefinition files
-  ansible.builtin.file:
-    path: "/tmp/nad-{{ item.name }}.yaml"
-    state: absent
-  loop: "{{ multus_vlan_networks }}"
-  when: multus_vlan_networks | default([]) | length > 0
 
 - name: multus deployment summary
   ansible.builtin.debug:
     msg: |
       multus deployed successfully:
       - Version: {{ multus_version }}
+      - CNI config dir: {{ multus_cni_conf_dir }}
+      - CNI bin dir: {{ multus_cni_bin_dir }}
       - VLAN Networks: {{ multus_vlan_networks | map(attribute='name') | list | join(', ') if multus_vlan_networks else 'None' }}
