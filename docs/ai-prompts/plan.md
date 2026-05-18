@@ -7,3 +7,8 @@
     - use symlinks on nodes.
     - copy files on nodes.
     - Remove or change any of the default paths that K3S uses.
+
+## Multus CNI Plugin
+- Install Multus CNI plugin as DaemonSet
+- Install using the offical helm chart
+- Ensure host paths are updated as needed for k3s compatibility.

@@ -55,9 +55,10 @@
 
 ## R-008: multus VLAN Networking Pattern
 
-- **Decision**: Configure multus using a set of `NetworkAttachmentDefinition` templates driven by variables describing VLAN IDs and corresponding CNI configurations. The base CNI will be the default chosen by k3s (e.g., flannel/canal), with multus adding secondary interfaces.
-- **Rationale**: This follows common multus patterns, keeps the base cluster simple, and allows operators to define VLAN mappings declaratively.
+- **Decision**: Install Multus CNI as a DaemonSet using the official Helm chart (`https://k8snetworkplumbingwg.github.io/helm-charts`), with Helm values overriding host paths for k3s compatibility (CNI config dir, CNI bin dir). Configure secondary VLAN networks via `NetworkAttachmentDefinition` resources driven by variables. The base CNI remains the default chosen by k3s (flannel), with multus adding secondary interfaces.
+- **Rationale**: The official Helm chart is the upstream-recommended installation method, provides structured configuration of volumes/paths via values, simplifies upgrades, and ensures DaemonSet deployment. Overriding host paths in Helm values (rather than post-deploy patching) is cleaner and idempotent. This keeps the base cluster simple while allowing operators to define VLAN mappings declaratively.
 - **Alternatives Considered**:
+  - **Raw manifest apply from GitHub**: Rejected because it requires post-deployment patching of volumes for k3s path compatibility and is harder to manage idempotently.
   - **Replace the default CNI entirely with a more complex stack**: Rejected for baseline to avoid over-complicating network setup.
 
 ## R-009: Rancher and rancher-monitoring on k3s

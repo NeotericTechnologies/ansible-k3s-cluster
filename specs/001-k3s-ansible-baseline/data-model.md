@@ -47,6 +47,10 @@ Describes cluster networking beyond the base k3s defaults.
 - **Fields**:
   - `base_cni`: The default CNI used by k3s.
   - `multus_enabled`: Boolean.
+  - `multus_version`: Helm chart version for Multus deployment.
+  - `multus_install_method`: Installation method (must be `helm`).
+  - `multus_cni_conf_dir`: CNI config directory (k3s-specific path override).
+  - `multus_cni_bin_dir`: CNI binary directory (k3s-specific path override).
   - `vlan_networks`: List of `VlanNetwork` definitions used by multus.
 
 - **Relationships**:
