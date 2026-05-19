@@ -14,7 +14,7 @@ metadata:
   name: kube-vip-cloud-controller
 rules:
 - apiGroups: [""]
-  resources: ["services", "endpoints", "nodes"]
+  resources: ["services", "services/status", "endpoints", "nodes"]
   verbs: ["get", "list", "watch", "update", "patch"]
 - apiGroups: [""]
   resources: ["configmaps"]
@@ -22,6 +22,9 @@ rules:
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["create", "patch"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["list", "get", "watch", "update", "create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
