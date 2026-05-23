@@ -104,7 +104,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T033b [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2
 - [X] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (apply thick plugin DaemonSet manifest via kubernetes.core.k8s with k3s path overrides, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
 - [X] T034b [US1] Implement multus main task file in ansible/roles/multus/tasks/main.yml (gate on enabled flag, include install.yml)
-- [ ] T090 [P] [US1] Add multus_dhcp_daemon_enabled variable to ansible/roles/multus/defaults/main.yml (default: true when any vlan_network uses ipam_type: dhcp)
+- [ ] T090 [P] [US1] Add multus_dhcp_daemon_enabled variable to ansible/roles/multus/defaults/main.yml (explicit boolean, defaults to `true`; operator may override to `false` to skip DHCP daemon even when dhcp IPAM is configured — runtime Jinja2 conditional in install.yml gates actual deployment)
 - [ ] T091 [P] [US1] Create multus DHCP daemon DaemonSet template in ansible/roles/multus/templates/multus-dhcp-daemon.yaml.j2 (runs DHCP daemon pod on each node, listens on UNIX socket for DHCP proxy requests)
 - [ ] T092 [US1] Update NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2 to support ipam_type: dhcp (render `"ipam": {"type": "dhcp"}` when vlan_network.ipam_type is dhcp)
 - [ ] T093 [US1] Update multus install tasks in ansible/roles/multus/tasks/install.yml to deploy DHCP daemon DaemonSet when multus_dhcp_daemon_enabled is true
@@ -326,7 +326,7 @@ With multiple developers:
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - kube-vip MUST be deployed as DaemonSet per planning directive (docs/ai-prompts/plan.md)
-- Multus MUST be installed via official Helm chart (`https://k8snetworkplumbingwg.github.io/helm-charts`) using the **thick plugin** variant with k3s host path overrides configured in Helm values per R-008
+- Multus MUST be installed via the upstream thick plugin DaemonSet manifest (templated for k3s CNI path overrides) applied via `kubernetes.core.k8s`, per R-008
 - All add-on deployments MUST comply with k3s compatibility constraints: no symlinks on nodes, no file copies for runtime workloads, no modification of default k3s paths
 - Synology CSI deployment includes: namespace, client-info secret (HTTPS:8443, self-signed), node DaemonSet, controller, snapshotter (optional), iSCSI and/or NFS StorageClasses, VolumeSnapshotClass (optional)
 - Secrets (tokens, DNS credentials, Synology credentials) must NEVER be committed — use Ansible Vault or external secret management
