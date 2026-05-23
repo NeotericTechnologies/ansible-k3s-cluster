@@ -104,6 +104,10 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T033b [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2
 - [X] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (apply thick plugin DaemonSet manifest via kubernetes.core.k8s with k3s path overrides, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
 - [X] T034b [US1] Implement multus main task file in ansible/roles/multus/tasks/main.yml (gate on enabled flag, include install.yml)
+- [ ] T090 [P] [US1] Add multus_dhcp_daemon_enabled variable to ansible/roles/multus/defaults/main.yml (default: true when any vlan_network uses ipam_type: dhcp)
+- [ ] T091 [P] [US1] Create multus DHCP daemon DaemonSet template in ansible/roles/multus/templates/multus-dhcp-daemon.yaml.j2 (runs DHCP daemon pod on each node, listens on UNIX socket for DHCP proxy requests)
+- [ ] T092 [US1] Update NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2 to support ipam_type: dhcp (render `"ipam": {"type": "dhcp"}` when vlan_network.ipam_type is dhcp)
+- [ ] T093 [US1] Update multus install tasks in ansible/roles/multus/tasks/install.yml to deploy DHCP daemon DaemonSet when multus_dhcp_daemon_enabled is true
 
 ### Add-on Roles: Traefik
 
@@ -168,6 +172,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T053 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher/tasks/main.yml (Helm upgrade idempotence)
 - [X] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
 - [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/install.yml (manifest template diff detection, DaemonSet update on change, NetworkAttachmentDefinition update without recreation)
+- [ ] T094 [P] [US2] Add idempotent convergence logic for DHCP daemon in ansible/roles/multus/tasks/install.yml (deploy/remove DHCP daemon DaemonSet based on multus_dhcp_daemon_enabled, update NADs when ipam_type changes)
 - [X] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/install.yml (namespace, secret, DaemonSet, controller, snapshotter, StorageClass, and VolumeSnapshotClass update without recreation)
 - [X] T084 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (Helm upgrade with changed values only, StorageClass update without recreation)
 - [X] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
@@ -277,6 +282,7 @@ Task: T028 "Create staging ClusterIssuer template"
 Task: T029 "Create production ClusterIssuer template"
 Task: T033 "Create multus DaemonSet manifest template (thick plugin, k3s paths)"
 Task: T033b "Create NetworkAttachmentDefinition template"
+Task: T091 "Create multus DHCP daemon DaemonSet template"
 ```
 
 ---
