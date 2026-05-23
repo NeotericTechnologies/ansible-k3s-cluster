@@ -31,7 +31,7 @@
           spec:
             accessModes:
               - ReadWriteOnce
-            storageClassName: {{ synology_csi_default_storage_class | default('synology-iscsi') }}
+            storageClassName: "{{ (synology_csi_storage_classes | selectattr('protocol', 'equalto', 'iscsi') | first).name }}"
             resources:
               requests:
                 storage: 1Gi

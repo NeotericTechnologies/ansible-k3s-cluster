@@ -71,9 +71,28 @@ traefik_entrypoints:
   - websecure
 
 # Synology CSI configuration (when enabled)
+# See ansible/roles/synology-csi/defaults/main.yml for full variable reference
 synology_csi_version: "v1.3.0"
+synology_csi_namespace: "synology-csi"
 synology_csi_endpoint: ""
+synology_csi_port: 8443
+synology_csi_tls_verify: false
 synology_csi_username: ""
 synology_csi_password: ""  # Store in Ansible Vault
-synology_csi_default_storage_class: "synology-iscsi"
-synology_csi_additional_storage_classes: []
+synology_csi_snapshots_enabled: false
+synology_csi_storage_classes:
+  - name: "synology-iscsi-retain"
+    protocol: "iscsi"
+    is_default: true
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    parameters:
+      fsType: "ext4"
+      location: "/volume1"
+  - name: "synology-nfs-retain"
+    protocol: "nfs"
+    is_default: false
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    parameters:
+      location: "/volume1"

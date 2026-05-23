@@ -347,12 +347,31 @@ multus_enabled: false
 rancher_enabled: false
 rancher_monitoring_enabled: false
 traefik_enabled: true
-synology_csi_enabled: false
+synology_csi_enabled: true
 synology_csi_version: "v1.3.0"
+synology_csi_namespace: "synology-csi"
 synology_csi_endpoint: "synology.example.com"
-synology_csi_username: "admin"
-synology_csi_password: "<vaulted>"
-synology_csi_default_storage_class: "synology-iscsi"
+synology_csi_port: 8443
+synology_csi_tls_verify: false
+synology_csi_username: "{{ vault_synology_username }}"
+synology_csi_password: "{{ vault_synology_password }}"
+synology_csi_snapshots_enabled: true
+synology_csi_storage_classes:
+  - name: "synology-iscsi-retain"
+    protocol: "iscsi"
+    is_default: true
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    parameters:
+      fsType: "ext4"
+      location: "/volume1"
+  - name: "synology-nfs-delete"
+    protocol: "nfs"
+    is_default: false
+    reclaim_policy: "Delete"
+    volume_binding_mode: "Immediate"
+    parameters:
+      location: "/volume1"
 ```
 
 ### cert-manager Configuration
@@ -407,6 +426,8 @@ vault_synology_password: "secret_password"
 # Reference in group_vars/all.yml:
 cert_manager_dns_provider_credentials:
   api_token: "{{ vault_cert_manager_api_token }}"
+synology_csi_username: "{{ vault_synology_username }}"
+synology_csi_password: "{{ vault_synology_password }}"
 
 # Run playbooks with vault:
 ansible-playbook ... --ask-vault-pass
