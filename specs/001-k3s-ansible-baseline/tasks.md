@@ -220,6 +220,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against both iSCSI and NFS StorageClasses, bind, write data, verify availability; optionally test VolumeSnapshot creation — validates SC-005)
 - [X] T085 [P] Update Synology PVC smoke test in tests/ansible/smoke/synology-pvc-test.yml to also validate csi-driver-nfs nfs-subdir StorageClass (create PVC, verify sub-directory created on NFS share, bind, write data)
 - [X] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
+- [ ] T095 [P] Create multus DHCP smoke test in tests/ansible/smoke/multus-dhcp-test.yml (deploy a pod with a NetworkAttachmentDefinition using ipam_type: dhcp, verify pod gets a secondary interface with a DHCP-assigned IP, verify DHCP daemon DaemonSet is running)
 
 ---
 
