@@ -348,6 +348,11 @@ rancher_enabled: false
 rancher_monitoring_enabled: false
 traefik_enabled: true
 synology_csi_enabled: false
+synology_csi_version: "v1.3.0"
+synology_csi_endpoint: "synology.example.com"
+synology_csi_username: "admin"
+synology_csi_password: "<vaulted>"
+synology_csi_default_storage_class: "synology-iscsi"
 ```
 
 ### cert-manager Configuration

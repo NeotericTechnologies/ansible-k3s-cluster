@@ -1,5 +1,6 @@
 ---
 synology_csi_enabled: false
+synology_csi_version: "v1.3.0"
 synology_csi_endpoint: ""
 synology_csi_username: ""
 synology_csi_password: ""  # Store in Ansible Vault

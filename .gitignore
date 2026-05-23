@@ -1,4 +1,5 @@
 .ssh
+test-cluster/
 
 # Python
 __pycache__/

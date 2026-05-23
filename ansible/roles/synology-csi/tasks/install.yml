@@ -35,8 +35,8 @@
 
 - name: Deploy Synology CSI driver
   ansible.builtin.shell: |
-    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/main/deploy/kubernetes/v1.20/namespace.yaml
-    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/main/deploy/kubernetes/v1.20/synology-csi-driver.yaml
+    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/{{ synology_csi_version }}/deploy/kubernetes/v1.20/namespace.yml
+    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/{{ synology_csi_version }}/deploy/kubernetes/v1.20/csi-driver.yml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: synology_deploy
@@ -65,5 +65,6 @@
   ansible.builtin.debug:
     msg: |
       Synology CSI deployed successfully:
+      - Version: {{ synology_csi_version }}
       - Endpoint: {{ synology_csi_endpoint }}
       - Default StorageClass: {{ synology_csi_default_storage_class }}

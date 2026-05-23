@@ -141,6 +141,7 @@ Optional configuration for Synology CSI integration.
 
 - **Fields**:
   - `enabled`: Boolean (implied by presence of Synology variables).
+  - `version`: Synology CSI manifest version or tag to apply from upstream.
   - `endpoint`: Synology NAS endpoint.
   - `username`: Username for storage authentication (secret-managed).
   - `password`: Password or token (secret-managed).
