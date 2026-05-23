@@ -29,6 +29,7 @@
     - Templates for storage classes
       - iSCSI
       - NFS
+        - Support provisioning NFS volumes in a pre-existing volume, using kubernetes-csi/csi-driver-nfs.
 - Use https to connect to NAS
     - Port 8443
     - Certificates are self signed

@@ -73,14 +73,15 @@ All contracts below are subject to these k3s deployment compatibility rules:
 
 ## Contract C-005: Optional Synology CSI Enablement
 
-- **User Action**: "Enable Synology CSI-backed persistent storage with iSCSI and/or NFS."
+- **User Action**: "Enable Synology CSI-backed persistent storage with iSCSI and/or NFS, optionally with NFS sub-directory provisioning via csi-driver-nfs."
 - **Playbook**: `ansible/playbooks/cluster-addons.yml` (behavior gated by vars)
 - **Invocation (example)**:
   - `ansible-playbook -i <inventory> ansible/playbooks/cluster-addons.yml`
 - **Required Inputs**:
   - Synology-specific variables: endpoint (FQDN/IP), port (default 8443), credentials (username/password via Vault), TLS verification setting (default false for self-signed), CSI driver version.
-  - At least one StorageClass definition specifying protocol (`iscsi` or `nfs`), reclaim policy, and optional parameters.
+  - At least one StorageClass definition specifying protocol (`iscsi`, `nfs`, or `nfs-subdir`), reclaim policy, and optional parameters.
   - Optional: `snapshots_enabled: true` to deploy snapshotter and VolumeSnapshotClass.
+  - Optional: `csi_nfs_enabled: true` with `csi_nfs_server`, `csi_nfs_share`, and `csi_nfs_version` to deploy csi-driver-nfs for sub-directory provisioning within a pre-existing NFS volume.
 - **Expected Outcomes**:
   - Dedicated namespace created for Synology CSI components.
   - Client info secret deployed with NAS endpoint, HTTPS:8443, and self-signed cert acceptance.
@@ -89,4 +90,5 @@ All contracts below are subject to these k3s deployment compatibility rules:
   - Snapshotter controller deployed when snapshots are enabled.
   - StorageClass resources created per configuration (iSCSI and/or NFS).
   - VolumeSnapshotClass created when snapshots are enabled.
+  - When `csi_nfs_enabled: true`: csi-driver-nfs (`nfs.csi.k8s.io`) is deployed via Helm, and a StorageClass of type `nfs-subdir` is created that provisions PVCs as sub-directories within the configured parent NFS share on the Synology NAS.
   - Clusters without Synology variables remain unchanged and compliant when only the core cluster playbook is run.

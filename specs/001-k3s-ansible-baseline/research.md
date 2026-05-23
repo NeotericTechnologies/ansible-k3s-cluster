@@ -86,6 +86,15 @@
   - **iSCSI-only storage classes**: Rejected; NFS is a common access mode for shared volumes and read-write-many workloads.
   - **Require trusted certificates for NAS connection**: Rejected; most homelab/small-production Synology NAS units use self-signed certificates on port 8443, and requiring trusted certs adds unnecessary friction.
 
+## R-014: NFS Sub-Directory Provisioning via csi-driver-nfs
+
+- **Decision**: Deploy `kubernetes-csi/csi-driver-nfs` (CSI plugin name: `nfs.csi.k8s.io`, latest GA release v4.13.2) alongside the Synology CSI driver to support dynamic provisioning of NFS PersistentVolumes as sub-directories within a pre-existing Synology NFS volume. The driver is installed via its Helm chart managed by Ansible, and a dedicated StorageClass is created that references the Synology NFS server and an existing parent share path. Each PVC creates a new sub-directory under that share. Variables use the `csi_nfs_` prefix (e.g., `csi_nfs_enabled`, `csi_nfs_server`, `csi_nfs_share`, `csi_nfs_version`) to clearly identify their association with csi-driver-nfs.
+- **Rationale**: The Synology CSI driver provisions new LUNs or new NFS volumes on the NAS per PVC. For use cases requiring many small volumes within a single pre-existing NFS export (e.g., application config, shared data directories), csi-driver-nfs provides lightweight sub-directory provisioning without creating new volumes on the NAS. This is the upstream Kubernetes SIG-Storage recommended approach for NFS sub-directory provisioning, is GA-stable, and compatible with k3s 1.21+.
+- **Alternatives Considered**:
+  - **nfs-subdir-external-provisioner (legacy)**: Rejected; superseded by csi-driver-nfs which is the official CSI-based replacement with broader feature support (snapshots, volume cloning).
+  - **Synology CSI NFS provisioner only**: Insufficient; it creates new NFS volumes on the NAS per PVC rather than sub-directories within an existing volume.
+  - **hostPath or local-path-provisioner**: Rejected; these are node-local and do not provide shared storage semantics.
+
 ## R-012: Inventory and Node Role Modeling
 
 - **Decision**: Represent node roles via inventory groups such as `k3s_servers` (control-plane), `k3s_agents` (workers), and optional groups for infrastructure-related nodes if needed, with host-specific labels/taints defined in host vars.

@@ -149,13 +149,17 @@ Optional configuration for Synology CSI integration.
   - `username`: Username for storage authentication (secret-managed).
   - `password`: Password or token (secret-managed).
   - `snapshots_enabled`: Boolean to deploy the snapshotter controller and VolumeSnapshotClass.
+  - `csi_nfs_enabled`: Boolean to deploy kubernetes-csi/csi-driver-nfs for sub-directory provisioning within a pre-existing NFS volume.
+  - `csi_nfs_version`: Version/tag of the csi-driver-nfs Helm chart to deploy (e.g., `v4.13.2`).
+  - `csi_nfs_server`: NFS server address (FQDN or IP) for the parent NFS export (defaults to `endpoint` if on Synology NAS).
+  - `csi_nfs_share`: Path of the pre-existing NFS share on the server (e.g., `/volume1/k8s-nfs`).
   - `storage_classes`: List of StorageClass definitions, each specifying:
     - `name`: StorageClass name.
-    - `protocol`: Enum: `iscsi` | `nfs`.
+    - `protocol`: Enum: `iscsi` | `nfs` | `nfs-subdir`.
     - `is_default`: Boolean (at most one default).
     - `reclaim_policy`: Enum: `Delete` | `Retain`.
     - `volume_binding_mode`: Enum: `Immediate` | `WaitForFirstConsumer`.
-    - `parameters`: Protocol-specific parameters (e.g., fsType for iSCSI, share path for NFS).
+    - `parameters`: Protocol-specific parameters (e.g., fsType for iSCSI, share path for NFS, subDir template for nfs-subdir).
 
 - **Components** (deployed by the role):
   - Namespace resource.
@@ -165,6 +169,8 @@ Optional configuration for Synology CSI integration.
   - Snapshotter controller (when `snapshots_enabled: true`).
   - StorageClass resources (iSCSI and/or NFS per configuration).
   - VolumeSnapshotClass (when `snapshots_enabled: true`).
+  - csi-driver-nfs Helm release (when `csi_nfs_enabled: true`) — provides `nfs.csi.k8s.io` CSI driver for sub-directory provisioning within a pre-existing NFS volume.
+  - NFS sub-directory StorageClass (when `csi_nfs_enabled: true`) — provisions PVCs as sub-directories under the configured parent NFS share.
 
 ## State Transitions
 
@@ -185,8 +191,9 @@ Optional configuration for Synology CSI integration.
 - When `kube_vip.enabled = true`, `deployment_mode` must be `daemonset` for this baseline.
 - When `multus_enabled = true`, `multus_plugin_type` must be `thick` and installation must use the upstream DaemonSet manifest (not Helm).
 - When `cert_manager.enabled = true`, both staging and production issuers must be fully specified (provider, credentials, email).
-- When `synology_csi.enabled = true`, endpoint, port, and credentials must be present, at least one StorageClass must be defined with a valid protocol (`iscsi` or `nfs`), and the namespace must be specified.
+- When `synology_csi.enabled = true`, endpoint, port, and credentials must be present, at least one StorageClass must be defined with a valid protocol (`iscsi`, `nfs`, or `nfs-subdir`), and the namespace must be specified.
 - When `synology_csi.snapshots_enabled = true`, the snapshotter controller and a VolumeSnapshotClass are deployed alongside the CSI driver.
+- When `synology_csi.csi_nfs_enabled = true`, `csi_nfs_server` and `csi_nfs_share` must be defined, and csi-driver-nfs is deployed via Helm to provision PVCs as sub-directories within the specified NFS share.
 - multus VLAN definitions must reference valid interfaces and non-overlapping CIDRs relative to the base cluster networks.
 
 ## k3s Deployment Compatibility Constraints
