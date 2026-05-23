@@ -97,12 +97,12 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T030 [US1] Implement cert-manager install tasks in ansible/roles/cert-manager/tasks/install.yml (Helm chart deploy, wait for readiness)
 - [X] T031 [US1] Implement cert-manager main tasks in ansible/roles/cert-manager/tasks/main.yml (install + issuers + secrets)
 
-### Add-on Roles: multus (Helm Chart, Thick Plugin, DaemonSet)
+### Add-on Roles: multus (Manifest, Thick Plugin, DaemonSet)
 
-- [X] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, Helm chart repo URL, chart version, k3s CNI conf dir override `/var/lib/rancher/k3s/agent/etc/cni/net.d`, k3s CNI bin dir override `/var/lib/rancher/k3s/data/current/bin`, vlan_networks list)
-- [X] T033 [P] [US1] Create multus daemon config template in ansible/roles/multus/templates/multus-daemon-config.json.j2 (k3s CNI path overrides and thick plugin daemon settings)
+- [X] T032 [P] [US1] Define multus role defaults in ansible/roles/multus/defaults/main.yml (enabled flag, multus image tag, k3s CNI conf dir override `/var/lib/rancher/k3s/agent/etc/cni/net.d`, k3s CNI bin dir override `/var/lib/rancher/k3s/data/current/bin`, vlan_networks list)
+- [X] T033 [P] [US1] Create multus DaemonSet manifest template in ansible/roles/multus/templates/multus-daemonset-thick.yaml.j2 (upstream thick plugin DaemonSet with k3s CNI path overrides)
 - [X] T033b [P] [US1] Create NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2
-- [X] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (add Helm repo, install multus via official Helm chart with k3s path values and thick plugin, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
+- [X] T034 [US1] Implement multus install tasks in ansible/roles/multus/tasks/install.yml (apply thick plugin DaemonSet manifest via kubernetes.core.k8s with k3s path overrides, wait for DaemonSet ready, apply NetworkAttachmentDefinitions)
 - [X] T034b [US1] Implement multus main task file in ansible/roles/multus/tasks/main.yml (gate on enabled flag, include install.yml)
 
 ### Add-on Roles: Traefik
@@ -137,6 +137,14 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T047 [US1] Implement synology-csi install tasks in ansible/roles/synology-csi/tasks/install.yml (create namespace, deploy client-info secret, deploy node DaemonSet, deploy controller, conditionally deploy snapshotter, create StorageClasses per protocol, conditionally create VolumeSnapshotClass)
 - [X] T047b [US1] Implement synology-csi main task file in ansible/roles/synology-csi/tasks/main.yml (gate on enabled flag, include install.yml)
 
+### Add-on Roles: csi-driver-nfs (NFS Sub-Directory Provisioning)
+
+- [ ] T079 [P] [US1] Add csi_nfs_* variables to synology-csi role defaults in ansible/roles/synology-csi/defaults/main.yml (csi_nfs_enabled, csi_nfs_version, csi_nfs_server, csi_nfs_share)
+- [ ] T080 [P] [US1] Create csi-driver-nfs Helm values template in ansible/roles/synology-csi/templates/csi-driver-nfs-values.yaml.j2 (driver name nfs.csi.k8s.io, node and controller settings)
+- [ ] T081 [P] [US1] Create NFS sub-directory StorageClass template in ansible/roles/synology-csi/templates/storageclass-nfs-subdir.yaml.j2 (provisioner nfs.csi.k8s.io, server, share path, subDir template, reclaim policy, volume binding mode)
+- [ ] T082 [US1] Implement csi-driver-nfs install tasks in ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (add Helm repo, deploy csi-driver-nfs chart with values template, wait for DaemonSet/controller ready, create nfs-subdir StorageClass)
+- [ ] T083 [US1] Update synology-csi main task file ansible/roles/synology-csi/tasks/main.yml to conditionally include csi-driver-nfs.yml when csi_nfs_enabled is true
+
 ### Add-ons Playbook
 
 - [X] T048 [US1] Implement cluster-addons playbook in ansible/playbooks/cluster-addons.yml (cert-manager → traefik → rancher → rancher-monitoring → multus → synology-csi orchestration, each gated by enabled flag)
@@ -159,8 +167,9 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T052 [P] [US2] Add idempotent convergence logic to ansible/roles/traefik/tasks/main.yml (Helm upgrade idempotence)
 - [X] T053 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher/tasks/main.yml (Helm upgrade idempotence)
 - [X] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
-- [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/install.yml (Helm upgrade with changed values only, NetworkAttachmentDefinition update without recreation)
+- [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/install.yml (manifest template diff detection, DaemonSet update on change, NetworkAttachmentDefinition update without recreation)
 - [X] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/install.yml (namespace, secret, DaemonSet, controller, snapshotter, StorageClass, and VolumeSnapshotClass update without recreation)
+- [ ] T084 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (Helm upgrade with changed values only, StorageClass update without recreation)
 - [X] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
 
 **Checkpoint**: At this point, User Story 2 should be fully functional — re-running playbooks with changed variables updates only the affected resources.
@@ -204,6 +213,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T075 Validate all playbooks and roles pass ansible-lint with no errors
 - [X] T076 Run quickstart.md validation (verify documented commands match actual playbook paths and variable names)
 - [X] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against both iSCSI and NFS StorageClasses, bind, write data, verify availability; optionally test VolumeSnapshot creation — validates SC-005)
+- [ ] T085 [P] Update Synology PVC smoke test in tests/ansible/smoke/synology-pvc-test.yml to also validate csi-driver-nfs nfs-subdir StorageClass (create PVC, verify sub-directory created on NFS share, bind, write data)
 - [X] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
 
 ---
@@ -238,9 +248,10 @@ All tasks MUST comply with these constraints per R-013:
 - All Setup tasks marked [P] can run in parallel (T002–T006)
 - Within US1: all role defaults (T012, T013, T019, T026, T032, T035, T038, T041, T044) can run in parallel
 - Within US1: all templates for a given role marked [P] can run in parallel
-- Within US2: all idempotent convergence tasks (T050–T056) can run in parallel (different role files)
+- Within US1: csi-driver-nfs tasks T079, T080, T081 can run in parallel (different files)
+- Within US2: all idempotent convergence tasks (T050–T056, T084) can run in parallel (different role files)
 - All Polish phase documentation tasks (T068–T074) can run in parallel
-- All smoke test playbooks (T064–T067) can run in parallel
+- All smoke test playbooks (T064–T067, T085) can run in parallel
 
 ---
 
@@ -264,7 +275,7 @@ Task: T021 "Create kube-vip cloud-controller manifest template"
 Task: T027 "Create DNS provider credentials secret template"
 Task: T028 "Create staging ClusterIssuer template"
 Task: T029 "Create production ClusterIssuer template"
-Task: T033 "Create multus Helm values template (thick plugin, k3s paths)"
+Task: T033 "Create multus DaemonSet manifest template (thick plugin, k3s paths)"
 Task: T033b "Create NetworkAttachmentDefinition template"
 ```
 
