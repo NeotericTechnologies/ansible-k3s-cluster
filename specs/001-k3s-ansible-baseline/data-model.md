@@ -52,6 +52,7 @@ Describes cluster networking beyond the base k3s defaults.
   - `multus_plugin_type`: Plugin variant (must be `thick` — bundles all CNI functionality into a single binary).
   - `multus_cni_conf_dir`: CNI config directory (k3s-specific path override: `/var/lib/rancher/k3s/agent/etc/cni/net.d`).
   - `multus_cni_bin_dir`: CNI binary directory (k3s-specific path override: `/var/lib/rancher/k3s/data/current/bin`).
+  - `multus_dhcp_daemon_enabled`: Boolean. Deploy the DHCP daemon DaemonSet for DHCP IPAM support in NetworkAttachmentDefinitions. Default: `true` when any VLAN network uses `ipam_type: dhcp`.
   - `vlan_networks`: List of `VlanNetwork` definitions used by multus.
 
 - **Relationships**:
@@ -65,8 +66,9 @@ Represents a single VLAN-backed secondary network for pods via multus.
   - `name`: Logical name for the network (e.g., `storage-net`).
   - `vlan_id`: VLAN identifier on the physical network.
   - `interface`: Host interface on which the VLAN is available.
-  - `cidr`: IP range assigned to this network.
-  - `gateway`: Optional default gateway.
+  - `ipam_type`: IPAM mode for the network. Enum: `dhcp` | `host-local` | `static`. Default: `dhcp`.
+  - `cidr`: IP range assigned to this network (used when `ipam_type` is `host-local` or `static`; ignored for `dhcp`).
+  - `gateway`: Optional default gateway (used when `ipam_type` is `host-local` or `static`).
 
 - **Relationships**:
   - Many-to-1 with `NetworkConfig`.
@@ -194,7 +196,8 @@ Optional configuration for Synology CSI integration.
 - When `synology_csi.enabled = true`, endpoint, port, and credentials must be present, at least one StorageClass must be defined with a valid protocol (`iscsi`, `nfs`, or `nfs-subdir`), and the namespace must be specified.
 - When `synology_csi.snapshots_enabled = true`, the snapshotter controller and a VolumeSnapshotClass are deployed alongside the CSI driver.
 - When `synology_csi.csi_nfs_enabled = true`, `csi_nfs_server` and `csi_nfs_share` must be defined, and csi-driver-nfs is deployed via Helm to provision PVCs as sub-directories within the specified NFS share.
-- multus VLAN definitions must reference valid interfaces and non-overlapping CIDRs relative to the base cluster networks.
+- multus VLAN definitions must reference valid interfaces and non-overlapping CIDRs relative to the base cluster networks (when using static or host-local IPAM).
+- When `ipam_type: dhcp` is used for a VLAN network, a DHCP server must be available on that VLAN; the multus DHCP daemon DaemonSet is deployed to proxy DHCP requests.
 
 ## k3s Deployment Compatibility Constraints
 

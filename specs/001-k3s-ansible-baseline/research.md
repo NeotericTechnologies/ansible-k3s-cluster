@@ -112,3 +112,11 @@
   - **Static pod manifests placed on disk**: Rejected because it requires file copies to nodes and conflicts with the no-file-copy constraint; DaemonSet deployments via the API are preferred (e.g., kube-vip as DaemonSet).
   - **Symlinked configuration directories**: Rejected because k3s manages its own paths and symlinks can interfere with k3s upgrades and the embedded containerd runtime.
   - **Modifying k3s default paths via flags**: Rejected because it deviates from documented k3s behavior and complicates troubleshooting and community support.
+
+## R-015: Multus NetworkAttachmentDefinitions with DHCP Support
+
+- **Decision**: NetworkAttachmentDefinitions for VLAN interfaces must support DHCP-based IP address assignment. The multus DHCP daemon runs as a sidecar or standalone DaemonSet pod that listens on a UNIX socket and proxies DHCP requests from pods to the external DHCP server on the attached VLAN network. The NAD configuration uses `"ipam": {"type": "dhcp"}` to delegate address assignment to the network's existing DHCP infrastructure.
+- **Rationale**: VLAN networks in homelab and small-production environments typically have their own DHCP servers (e.g., on the router or a dedicated DHCP appliance). Requiring static IP assignment for every pod on a secondary network would be operationally burdensome and fragile. DHCP delegation allows pods to receive addresses from the same pool as other devices on the VLAN, enabling seamless integration with existing network infrastructure.
+- **Alternatives Considered**:
+  - **Static IPAM (host-local or whereabouts)**: Rejected as the primary mode because it requires manual CIDR management per network and does not integrate with existing DHCP infrastructure; however, static IPAM remains available as an alternative NAD configuration if users prefer it.
+  - **No IPAM (manual IP assignment)**: Rejected; impractical for any non-trivial number of pods on secondary networks.
