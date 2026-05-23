@@ -1,32 +1,32 @@
 # Implementation Plan: Baseline k3s Ansible Cluster Lifecycle
 
-**Branch**: `001-k3s-ansible-baseline` | **Date**: 2026-05-18 | **Spec**: `specs/001-k3s-ansible-baseline/spec.md`
+**Branch**: `001-k3s-ansible-baseline` | **Date**: 2026-05-23 | **Spec**: `specs/001-k3s-ansible-baseline/spec.md`
 
 **Input**: Feature specification from `specs/001-k3s-ansible-baseline/spec.md`
 
 ## Summary
 
-Ansible playbooks managing the complete lifecycle of a k3s cluster: provisioning with embedded etcd HA, node scaling, configuration updates, and minor/patch upgrades. Platform add-ons (cert-manager with pluggable DNS-01 providers, multus VLAN networking via thick plugin DaemonSet, kube-vip as DaemonSet for control-plane VIP and service load balancing, Rancher, rancher-monitoring, Traefik, optional Synology CSI) are deployed as in-cluster resources via Helm and Kubernetes API modules. All deployments are k3s-compatible: no symlinks, no file copies to nodes, no modification of default k3s paths.
+Ansible playbooks and roles managing the complete lifecycle of a k3s cluster: provisioning with embedded etcd HA, configuration updates, node scaling, and controlled upgrades. Platform add-ons include kube-vip (DaemonSet), cert-manager with pluggable DNS-01 challenges, multus (thick plugin DaemonSet), Rancher, rancher-monitoring, Traefik, and optional Synology CSI (iSCSI/NFS with snapshots over HTTPS:8443). All deployments are k3s-compatible with no symlinks, no file copies to nodes, and no modification of default k3s paths.
 
 ## Technical Context
 
 **Language/Version**: Ansible Core 2.15+ (YAML playbooks, Jinja2 templates)
 
-**Primary Dependencies**: k3s, kubernetes.core collection, community.kubernetes collection, Helm charts (multus, cert-manager, Rancher, rancher-monitoring, Traefik, Synology CSI, kube-vip)
+**Primary Dependencies**: `kubernetes.core` collection, `community.kubernetes` collection, Helm (via `kubernetes.core.helm`), k3s installer script
 
-**Storage**: Optional Synology CSI for persistent volumes; embedded etcd for k3s HA datastore
+**Storage**: Optional Synology CSI (iSCSI + NFS storage classes, HTTPS port 8443, self-signed certificates); embedded etcd for cluster state
 
-**Testing**: ansible-lint, ansible-playbook --check, smoke tests (tests/ansible/smoke/)
+**Testing**: `ansible-lint`, `ansible-playbook --check`, smoke tests (see `tests/ansible/smoke/`)
 
-**Target Platform**: systemd-based Debian/Ubuntu Linux on x86_64 and arm64
+**Target Platform**: systemd-based Debian/Ubuntu Linux on x86_64 and arm64, reachable via SSH
 
-**Project Type**: Infrastructure-as-Code (Ansible playbook collection)
+**Project Type**: Infrastructure-as-code / Ansible automation
 
-**Performance Goals**: End-to-end cluster provisioning within 60 minutes for 3 control-plane + 3 worker reference topology
+**Performance Goals**: Correctness, idempotence, and safe upgrades for small-to-medium on-prem clusters (1–3 control-plane, up to ~10 workers)
 
-**Constraints**: k3s-specific — no symlinks on nodes, no file copies for runtime workloads, no modification of default k3s paths; all add-ons deployed via Kubernetes API
+**Constraints**: No symlinks on nodes, no file copies to nodes for runtime workloads, no modification of default k3s paths, no hard-coded DNS provider
 
-**Scale/Scope**: 1–3 control-plane nodes, up to ~10 workers; small-to-medium on-prem clusters
+**Scale/Scope**: 1–3 control-plane nodes, up to ~10 worker nodes; single-node and HA cluster variants
 
 ## Constitution Check
 
@@ -34,13 +34,13 @@ Ansible playbooks managing the complete lifecycle of a k3s cluster: provisioning
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| I. Minimal, Focused Playbooks | PASS | Core cluster separate from add-ons; two playbook entrypoints |
-| II. Idempotent Cluster Provisioning | PASS | All tasks use Ansible modules; Helm state:present for convergence |
-| III. k3s-Specific Constraints (NON-NEGOTIABLE) | PASS | Version pinned; k3s paths respected; no symlinks/file copies; DaemonSet deployments |
-| IV. Clear Inventory and Node Roles | PASS | `k3s_servers` / `k3s_agents` groups; behavior derived from inventory/vars |
-| V. Security, Networking, and Upgrades | PASS | No secrets in repo; TLS via k3s defaults; upgrades via variable + re-run |
+| I. Minimal, Focused Playbooks | PASS | Core cluster and add-ons are separate playbooks; add-ons are optional and gated by variables |
+| II. Idempotent Cluster Provisioning | PASS | All tasks use Ansible modules with `state: present`; no destructive operations without guards |
+| III. k3s-Specific Constraints | PASS | k3s version pinned, no symlinks/file copies/path modifications, k3s flags respected, DaemonSet-only deployments for kube-vip and multus |
+| IV. Clear Inventory and Node Roles | PASS | `k3s_servers` and `k3s_agents` groups; behavior driven by inventory/variables, not hard-coded values |
+| V. Security, Networking, and Upgrades | PASS | No secrets in repo (Vault/external), TLS enabled by default, networking explicit and configurable, upgrades controlled via version variable |
 
-**Post-Phase 1 Re-check**: All design artifacts maintain compliance. Kube-vip deployed as DaemonSet (not static pod). Multus deployed via Helm chart with thick plugin image. No violations identified.
+**Gate Result**: PASS — no violations.
 
 ## Project Structure
 
@@ -63,9 +63,9 @@ specs/001-k3s-ansible-baseline/
 ansible/
 ├── requirements.yml           # Ansible Galaxy dependencies
 ├── group_vars/
-│   ├── all.yml                # Cluster-wide defaults
-│   ├── k3s_servers.yml        # Control-plane group vars
-│   └── k3s_agents.yml         # Worker group vars
+│   ├── all.yml                # Cluster-wide variables
+│   ├── k3s_agents.yml         # Agent-specific variables
+│   └── k3s_servers.yml        # Server-specific variables
 ├── host_vars/                 # Per-host overrides
 ├── inventories/
 │   ├── examples/
@@ -79,24 +79,23 @@ ansible/
 │   ├── scale-nodes.yml        # Node add/remove
 │   └── upgrade-k3s.yml        # Minor/patch upgrades
 └── roles/
-    ├── k3s-common/            # Host prerequisites
-    ├── k3s-server/            # Control-plane install
-    ├── k3s-agent/             # Worker install
-    ├── kube-vip/              # VIP + service LB (DaemonSet)
-    ├── cert-manager/          # TLS with DNS-01 challenges
-    ├── multus/                # VLAN networking (Helm, thick plugin)
-    ├── rancher/               # Management console
-    ├── rancher-monitoring/    # Observability
+    ├── k3s-common/            # Prerequisites and shared tasks
+    ├── k3s-server/            # Control-plane installation
+    ├── k3s-agent/             # Worker node installation
+    ├── kube-vip/              # DaemonSet VIP/service LB
+    ├── cert-manager/          # cert-manager + DNS-01 issuers
+    ├── multus/                # Thick plugin DaemonSet + NADs
+    ├── rancher/               # Rancher management console
+    ├── rancher-monitoring/    # Monitoring stack
     ├── traefik/               # Ingress controller
-    └── synology-csi/          # Optional persistent storage
+    └── synology-csi/          # Optional Synology CSI (iSCSI/NFS)
 
-tests/
-└── ansible/
-    ├── inventories/local
-    └── smoke/                 # Smoke test playbooks
+tests/ansible/
+├── inventories/local
+└── smoke/                     # Smoke and integration tests
 ```
 
-**Structure Decision**: Ansible-native layout with roles per component, inventory-driven configuration, and separate playbook entrypoints for core cluster vs. add-ons. Tests reside under `tests/ansible/`.
+**Structure Decision**: Ansible standard layout with roles-per-component, variable-driven inventory, and separated core vs. add-on playbooks.
 
 ## Complexity Tracking
 

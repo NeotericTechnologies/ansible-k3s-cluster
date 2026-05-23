@@ -79,10 +79,12 @@
 
 ## R-011: Synology CSI Integration
 
-- **Decision**: Implement Synology CSI support as an optional role that is activated when Synology-specific variables are defined (e.g., storage endpoint, credentials). It will deploy the Synology CSI driver and a small set of opinionated StorageClasses.
-- **Rationale**: Matches the clarification that Synology CSI is optional and keeps clusters without Synology storage compliant and simple.
+- **Decision**: Implement Synology CSI support as an optional role that is activated when Synology-specific variables are defined (e.g., storage endpoint, credentials). The deployment must include all required components: a dedicated namespace, client info secrets, a node DaemonSet (for volume attach/detach on nodes), a controller StatefulSet/Deployment (for provisioning), and a snapshotter controller. The role must support a configurable CSI driver version, iSCSI and NFS StorageClass templates, and VolumeSnapshot support. Connection to the Synology NAS uses HTTPS on port 8443 with self-signed certificate acceptance.
+- **Rationale**: Matches the clarification that Synology CSI is optional and keeps clusters without Synology storage compliant and simple. The complete component set (namespace, secrets, DaemonSet, controller, snapshotter) is required by the Synology CSI driver architecture. HTTPS:8443 with self-signed certs is the standard DSM management port. Supporting both iSCSI and NFS storage classes covers the two common Synology volume access patterns.
 - **Alternatives Considered**:
   - **Make Synology CSI mandatory**: Rejected; would make the playbook unusable in environments without Synology.
+  - **iSCSI-only storage classes**: Rejected; NFS is a common access mode for shared volumes and read-write-many workloads.
+  - **Require trusted certificates for NAS connection**: Rejected; most homelab/small-production Synology NAS units use self-signed certificates on port 8443, and requiring trusted certs adds unnecessary friction.
 
 ## R-012: Inventory and Node Role Modeling
 

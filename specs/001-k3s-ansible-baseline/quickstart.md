@@ -60,10 +60,22 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
 
 ## 8. Enable Optional Synology CSI
 
-- Define Synology CSI variables (endpoint, credentials, storage classes).
-- Set `synology_csi_enabled: true` in the appropriate variable file.
-- Run the add-ons playbook to deploy and configure Synology CSI:
+- Define Synology CSI variables:
+  - `synology_csi_enabled: true`
+  - `synology_csi_version`: Driver version/tag to deploy.
+  - `synology_csi_namespace`: Namespace for CSI components (e.g., `synology-csi`).
+  - `synology_csi_endpoint`: NAS management endpoint (FQDN or IP).
+  - `synology_csi_port`: HTTPS port (default `8443`).
+  - `synology_csi_tls_verify`: Set to `false` for self-signed certificates (default).
+  - `synology_csi_username` / `synology_csi_password`: Credentials (via Ansible Vault).
+  - `synology_csi_snapshots_enabled`: Set to `true` to deploy snapshotter.
+  - `synology_csi_storage_classes`: List of StorageClass definitions (iSCSI and/or NFS).
+- Run the add-ons playbook:
   - `ansible-playbook -i <your-inventory> ansible/playbooks/cluster-addons.yml`
+- Verify:
+  - `kubectl -n synology-csi get pods` shows node DaemonSet, controller, and (if enabled) snapshotter pods running.
+  - `kubectl get storageclass` shows configured iSCSI and/or NFS StorageClasses.
+  - (If snapshots enabled) `kubectl get volumesnapshotclass` shows the Synology snapshot class.
 
 ## 9. Validation and Smoke Tests
 

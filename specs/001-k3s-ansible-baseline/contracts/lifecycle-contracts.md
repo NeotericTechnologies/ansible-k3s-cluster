@@ -73,13 +73,20 @@ All contracts below are subject to these k3s deployment compatibility rules:
 
 ## Contract C-005: Optional Synology CSI Enablement
 
-- **User Action**: "Enable Synology CSI-backed persistent storage."
+- **User Action**: "Enable Synology CSI-backed persistent storage with iSCSI and/or NFS."
 - **Playbook**: `ansible/playbooks/cluster-addons.yml` (behavior gated by vars)
 - **Invocation (example)**:
-  - `ansible-playbook -i <inventory> -e synology_csi_enabled=true ansible/playbooks/cluster-addons.yml`
+  - `ansible-playbook -i <inventory> ansible/playbooks/cluster-addons.yml`
 - **Required Inputs**:
-  - Synology-specific variables (endpoint, credentials, desired StorageClasses).
+  - Synology-specific variables: endpoint (FQDN/IP), port (default 8443), credentials (username/password via Vault), TLS verification setting (default false for self-signed), CSI driver version.
+  - At least one StorageClass definition specifying protocol (`iscsi` or `nfs`), reclaim policy, and optional parameters.
+  - Optional: `snapshots_enabled: true` to deploy snapshotter and VolumeSnapshotClass.
 - **Expected Outcomes**:
-  - Synology CSI driver deployed and configured.
-  - Expected StorageClasses created and ready for stateful workloads.
+  - Dedicated namespace created for Synology CSI components.
+  - Client info secret deployed with NAS endpoint, HTTPS:8443, and self-signed cert acceptance.
+  - Node DaemonSet running on all nodes (CSI node plugin for attach/mount).
+  - Controller Deployment/StatefulSet running (provisioner).
+  - Snapshotter controller deployed when snapshots are enabled.
+  - StorageClass resources created per configuration (iSCSI and/or NFS).
+  - VolumeSnapshotClass created when snapshots are enabled.
   - Clusters without Synology variables remain unchanged and compliant when only the core cluster playbook is run.
