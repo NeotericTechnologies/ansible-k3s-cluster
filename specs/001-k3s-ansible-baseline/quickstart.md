@@ -80,7 +80,7 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
     - `is_default`: Whether this is the default StorageClass (`true`/`false`)
     - `reclaim_policy`: `Retain` or `Delete`
     - `volume_binding_mode`: `Immediate` or `WaitForFirstConsumer`
-    - `sub_dir`: Sub-directory naming template (default: `${pvc.metadata.namespace}/${pvc.metadata.name}`)
+    - `sub_dir`: Sub-directory naming template (default: `${pv.metadata.name}`)
     - `on_delete`: Action when PV is deleted — `retain` or `delete`
     - `mount_options`: NFS mount options list (default: `["hard", "nfsvers=4.1"]`)
 - Run the add-ons playbook:

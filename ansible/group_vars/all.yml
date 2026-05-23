@@ -110,7 +110,7 @@ csi_nfs_storage_classes:
     is_default: false
     reclaim_policy: "Retain"
     volume_binding_mode: "Immediate"
-    sub_dir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+    sub_dir: "${pv.metadata.name}"
     on_delete: "retain"
     mount_options:
       - hard

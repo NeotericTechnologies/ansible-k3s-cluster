@@ -14,7 +14,7 @@ provisioner: nfs.csi.k8s.io
 parameters:
   server: "{{ item.server }}"
   share: "{{ item.share }}"
-  subDir: "{{ item.sub_dir | default('${pvc.metadata.namespace}/${pvc.metadata.name}') }}"
+  subDir: "{{ item.sub_dir | default('${pv.metadata.name}') }}"
   onDelete: "{{ item.on_delete | default('retain') }}"
 reclaimPolicy: {{ item.reclaim_policy | default('Retain') }}
 allowVolumeExpansion: true

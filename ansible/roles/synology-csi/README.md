@@ -73,7 +73,7 @@ csi_nfs_storage_classes:
     is_default: false                  # Default StorageClass annotation
     reclaim_policy: "Retain"          # "Retain" or "Delete"
     volume_binding_mode: "Immediate"  # "Immediate" or "WaitForFirstConsumer"
-    sub_dir: "${pvc.metadata.namespace}/${pvc.metadata.name}"  # Sub-directory template
+    sub_dir: "${pv.metadata.name}"  # Sub-directory template
     on_delete: "retain"               # "retain" or "delete" — action on PV deletion
     mount_options:                     # NFS mount options
       - hard
@@ -89,14 +89,14 @@ csi_nfs_storage_classes:
     share: "/volume1/k8s-persistent"
     reclaim_policy: "Retain"
     volume_binding_mode: "Immediate"
-    sub_dir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+    sub_dir: "${pv.metadata.name}"
     on_delete: "retain"
   - name: "nfs-subdir-delete"
     server: "nas.example.com"
     share: "/volume1/k8s-scratch"
     reclaim_policy: "Delete"
     volume_binding_mode: "Immediate"
-    sub_dir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+    sub_dir: "${pv.metadata.name}"
     on_delete: "delete"
 ```
 

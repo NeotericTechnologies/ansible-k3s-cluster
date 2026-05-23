@@ -68,7 +68,7 @@ csi_nfs_version: "v4.13.2"
 #   is_default: true/false (at most one default)
 #   reclaim_policy: "Delete" or "Retain"
 #   volume_binding_mode: "Immediate" or "WaitForFirstConsumer"
-#   sub_dir: sub-directory template (default: "${pvc.metadata.namespace}/${pvc.metadata.name}")
+#   sub_dir: sub-directory template (default: "${pv.metadata.name}")
 #   on_delete: "retain" or "delete" — action on PV deletion
 #   mount_options: list of NFS mount options (default: ["hard", "nfsvers=4.1"])
 csi_nfs_storage_classes:
@@ -78,7 +78,7 @@ csi_nfs_storage_classes:
     is_default: false
     reclaim_policy: "Retain"
     volume_binding_mode: "Immediate"
-    sub_dir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+    sub_dir: "${pv.metadata.name}"
     on_delete: "retain"
     mount_options:
       - hard
