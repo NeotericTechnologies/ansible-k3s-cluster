@@ -7,7 +7,7 @@
 synology_csi_enabled: false
 
 # CSI driver version/tag
-synology_csi_version: "v1.3.0"
+synology_csi_version: "v1.2.1"
 
 # Dedicated namespace for all Synology CSI components
 synology_csi_namespace: "synology-csi"
@@ -23,6 +23,7 @@ synology_csi_password: ""
 
 # Snapshot support
 synology_csi_snapshots_enabled: false
+synology_csi_snapshotter_version: "v8.5.0"
 
 # Storage classes — list of definitions supporting iSCSI and/or NFS
 # Each entry:
@@ -32,6 +33,7 @@ synology_csi_snapshots_enabled: false
 #   reclaim_policy: "Delete" or "Retain"
 #   volume_binding_mode: "Immediate" or "WaitForFirstConsumer"
 #   parameters: protocol-specific parameters dict
+#   parameters.location: DSM volume root path (e.g. /volume1), not a subfolder path
 synology_csi_storage_classes:
   - name: "synology-iscsi-retain"
     protocol: "iscsi"

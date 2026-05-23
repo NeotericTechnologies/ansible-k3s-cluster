@@ -20,7 +20,7 @@ spec:
       serviceAccountName: csi-controller-sa
       containers:
         - name: snapshot-controller
-          image: registry.k8s.io/sig-storage/snapshot-controller:v6.3.3
+          image: registry.k8s.io/sig-storage/snapshot-controller:{{ synology_csi_snapshotter_version }}
           args:
             - --v=5
             - --leader-election=false

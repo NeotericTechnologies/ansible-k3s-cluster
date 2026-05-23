@@ -180,6 +180,17 @@
     kubeconfig: /etc/rancher/k3s/k3s.yaml
   when: synology_csi_snapshots_enabled | default(false)
 
+- name: Install VolumeSnapshot CRDs
+  kubernetes.core.k8s:
+    state: present
+    src: "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/{{ synology_csi_snapshotter_version }}/client/config/crd/{{ item }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  loop:
+    - snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+    - snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+    - snapshot.storage.k8s.io_volumesnapshots.yaml
+  when: synology_csi_snapshots_enabled | default(false)
+
 - name: Create iSCSI StorageClasses
   kubernetes.core.k8s:
     state: present

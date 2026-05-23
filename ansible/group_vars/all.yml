@@ -72,7 +72,7 @@ traefik_entrypoints:
 
 # Synology CSI configuration (when enabled)
 # See ansible/roles/synology-csi/defaults/main.yml for full variable reference
-synology_csi_version: "v1.3.0"
+synology_csi_version: "v1.2.1"
 synology_csi_namespace: "synology-csi"
 synology_csi_endpoint: ""
 synology_csi_port: 8443
@@ -80,6 +80,7 @@ synology_csi_tls_verify: false
 synology_csi_username: ""
 synology_csi_password: ""  # Store in Ansible Vault
 synology_csi_snapshots_enabled: false
+synology_csi_snapshotter_version: "v8.5.0"
 synology_csi_storage_classes:
   - name: "synology-iscsi-retain"
     protocol: "iscsi"

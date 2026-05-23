@@ -348,7 +348,7 @@ rancher_enabled: false
 rancher_monitoring_enabled: false
 traefik_enabled: true
 synology_csi_enabled: true
-synology_csi_version: "v1.3.0"
+synology_csi_version: "v1.2.1"
 synology_csi_namespace: "synology-csi"
 synology_csi_endpoint: "synology.example.com"
 synology_csi_port: 8443
@@ -356,6 +356,7 @@ synology_csi_tls_verify: false
 synology_csi_username: "{{ vault_synology_username }}"
 synology_csi_password: "{{ vault_synology_password }}"
 synology_csi_snapshots_enabled: true
+synology_csi_snapshotter_version: "v8.5.0"
 synology_csi_storage_classes:
   - name: "synology-iscsi-retain"
     protocol: "iscsi"
@@ -373,6 +374,8 @@ synology_csi_storage_classes:
     parameters:
       location: "/volume1"
 ```
+
+`location` must be a DSM volume root path (for example `/volume1` or `/volume2`). Do not use subfolder paths such as `/volume1/my-share`.
 
 ### cert-manager Configuration
 
