@@ -1,70 +1,235 @@
 ---
 # ansible/roles/synology-csi/tasks/install.yml
-# Purpose: Deploy Synology CSI driver and StorageClasses
-# Reference: FR-010
+# Purpose: Deploy complete Synology CSI driver stack
+# Reference: FR-015, Contract C-005
+# Components: namespace, client-info secret, node DaemonSet, controller,
+#             snapshotter (optional), StorageClasses, VolumeSnapshotClass (optional)
 
-- name: Create synology-csi namespace
-  ansible.builtin.command: >-
-    kubectl create namespace synology-csi
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: synology_ns
-  changed_when: "'created' in synology_ns.stdout"
-  failed_when: synology_ns.rc != 0 and 'AlreadyExists' not in synology_ns.stderr
+- name: Create Synology CSI namespace
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'namespace.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
 
-- name: Create Synology CSI credentials secret
-  ansible.builtin.template:
-    src: synology-credentials.yaml.j2
-    dest: /tmp/synology-credentials.yaml
-    mode: '0600'
+- name: Create CSI node ServiceAccount
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: csi-node-sa
+        namespace: "{{ synology_csi_namespace }}"
+
+- name: Create CSI controller ServiceAccount
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: csi-controller-sa
+        namespace: "{{ synology_csi_namespace }}"
+
+- name: Create CSI controller ClusterRole
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: synology-csi-controller-role
+      rules:
+        - apiGroups: [""]
+          resources: ["events"]
+          verbs: ["get", "list", "watch", "create", "update", "patch"]
+        - apiGroups: [""]
+          resources: ["persistentvolumes"]
+          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        - apiGroups: [""]
+          resources: ["persistentvolumeclaims"]
+          verbs: ["get", "list", "watch", "update", "patch"]
+        - apiGroups: [""]
+          resources: ["persistentvolumeclaims/status"]
+          verbs: ["update", "patch"]
+        - apiGroups: [""]
+          resources: ["nodes"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["storage.k8s.io"]
+          resources: ["storageclasses"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["storage.k8s.io"]
+          resources: ["volumeattachments"]
+          verbs: ["get", "list", "watch", "update", "patch"]
+        - apiGroups: ["storage.k8s.io"]
+          resources: ["volumeattachments/status"]
+          verbs: ["patch"]
+        - apiGroups: ["storage.k8s.io"]
+          resources: ["csinodes"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["snapshot.storage.k8s.io"]
+          resources: ["volumesnapshotclasses"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: ["snapshot.storage.k8s.io"]
+          resources: ["volumesnapshotcontents"]
+          verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+        - apiGroups: ["snapshot.storage.k8s.io"]
+          resources: ["volumesnapshotcontents/status"]
+          verbs: ["update", "patch"]
+        - apiGroups: ["snapshot.storage.k8s.io"]
+          resources: ["volumesnapshots"]
+          verbs: ["get", "list", "watch", "update", "patch"]
+        - apiGroups: ["snapshot.storage.k8s.io"]
+          resources: ["volumesnapshots/status"]
+          verbs: ["update", "patch"]
+
+- name: Create CSI controller ClusterRoleBinding
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: synology-csi-controller-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: synology-csi-controller-role
+      subjects:
+        - kind: ServiceAccount
+          name: csi-controller-sa
+          namespace: "{{ synology_csi_namespace }}"
+
+- name: Create CSI node ClusterRole
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: synology-csi-node-role
+      rules:
+        - apiGroups: [""]
+          resources: ["events"]
+          verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+- name: Create CSI node ClusterRoleBinding
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: synology-csi-node-binding
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: synology-csi-node-role
+      subjects:
+        - kind: ServiceAccount
+          name: csi-node-sa
+          namespace: "{{ synology_csi_namespace }}"
+
+- name: Create CSIDriver object
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: storage.k8s.io/v1
+      kind: CSIDriver
+      metadata:
+        name: csi.san.synology.com
+      spec:
+        attachRequired: true
+        podInfoOnMount: true
+        volumeLifecycleModes:
+          - Persistent
+
+- name: Deploy client-info secret
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'client-info-secret.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
   no_log: true
 
-- name: Apply Synology CSI credentials
-  ansible.builtin.command: >-
-    kubectl apply -f /tmp/synology-credentials.yaml
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: synology_secret
-  changed_when: "'created' in synology_secret.stdout or 'configured' in synology_secret.stdout"
-  no_log: true
+- name: Deploy Synology CSI node DaemonSet
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'node-daemonset.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
 
-- name: Remove temporary credentials file
-  ansible.builtin.file:
-    path: /tmp/synology-credentials.yaml
-    state: absent
+- name: Deploy Synology CSI controller
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'controller.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
 
-- name: Deploy Synology CSI driver
-  ansible.builtin.shell: |
-    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/{{ synology_csi_version }}/deploy/kubernetes/v1.20/namespace.yml
-    kubectl apply -f https://raw.githubusercontent.com/SynologyOpenSource/synology-csi/{{ synology_csi_version }}/deploy/kubernetes/v1.20/csi-driver.yml
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: synology_deploy
-  changed_when: "'created' in synology_deploy.stdout or 'configured' in synology_deploy.stdout"
+- name: Deploy snapshotter controller
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'snapshotter.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  when: synology_csi_snapshots_enabled | default(false)
 
-- name: Create default StorageClass
-  ansible.builtin.template:
-    src: storage-class.yaml.j2
-    dest: /tmp/synology-storage-class.yaml
-    mode: '0644'
+- name: Create iSCSI StorageClasses
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'storageclass-iscsi.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ synology_csi_storage_classes | selectattr('protocol', 'equalto', 'iscsi') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
 
-- name: Apply default StorageClass
-  ansible.builtin.command: >-
-    kubectl apply -f /tmp/synology-storage-class.yaml
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: storage_class
-  changed_when: "'created' in storage_class.stdout or 'configured' in storage_class.stdout"
+- name: Create NFS StorageClasses
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'storageclass-nfs.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ synology_csi_storage_classes | selectattr('protocol', 'equalto', 'nfs') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
 
-- name: Clean up temporary files
-  ansible.builtin.file:
-    path: /tmp/synology-storage-class.yaml
-    state: absent
+- name: Create VolumeSnapshotClass
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'volumesnapshotclass.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  when: synology_csi_snapshots_enabled | default(false)
 
-- name: Synology CSI deployment summary
-  ansible.builtin.debug:
-    msg: |
-      Synology CSI deployed successfully:
-      - Version: {{ synology_csi_version }}
-      - Endpoint: {{ synology_csi_endpoint }}
-      - Default StorageClass: {{ synology_csi_default_storage_class }}
+- name: Wait for CSI node DaemonSet to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: synology-csi-node
+    namespace: "{{ synology_csi_namespace }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: synology_node_ds
+  until: >-
+    synology_node_ds.resources | length > 0 and
+    (synology_node_ds.resources[0].status.numberReady | default(0)) ==
+    (synology_node_ds.resources[0].status.desiredNumberScheduled | default(1))
+  retries: 30
+  delay: 10
+
+- name: Wait for CSI controller to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: synology-csi-controller
+    namespace: "{{ synology_csi_namespace }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: synology_controller
+  until: >-
+    synology_controller.resources | length > 0 and
+    (synology_controller.resources[0].status.readyReplicas | default(0)) >= 1
+  retries: 30
+  delay: 10

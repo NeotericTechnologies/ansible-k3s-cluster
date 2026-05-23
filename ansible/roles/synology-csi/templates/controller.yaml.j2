@@ -1,0 +1,76 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: synology-csi-controller
+  namespace: {{ synology_csi_namespace }}
+  labels:
+    app.kubernetes.io/name: synology-csi-controller
+    app.kubernetes.io/managed-by: ansible
+spec:
+  serviceName: synology-csi-controller
+  replicas: 1
+  selector:
+    matchLabels:
+      app: synology-csi-controller
+  template:
+    metadata:
+      labels:
+        app: synology-csi-controller
+    spec:
+      serviceAccountName: csi-controller-sa
+      containers:
+        - name: csi-driver
+          image: {{ synology_csi_controller_image }}
+          args:
+            - --nodeid=NotUsed
+            - --endpoint=unix:///csi/csi.sock
+            - --client-info=/etc/synology/client-info.yml
+            - --log-level=info
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: client-info
+              mountPath: /etc/synology
+              readOnly: true
+        - name: csi-provisioner
+          image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.3
+          args:
+            - --csi-address=/csi/csi.sock
+            - --timeout=60s
+            - --v=5
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+        - name: csi-attacher
+          image: registry.k8s.io/sig-storage/csi-attacher:v4.4.3
+          args:
+            - --csi-address=/csi/csi.sock
+            - --v=5
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+        - name: csi-resizer
+          image: registry.k8s.io/sig-storage/csi-resizer:v1.9.3
+          args:
+            - --csi-address=/csi/csi.sock
+            - --v=5
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+{% if synology_csi_snapshots_enabled %}
+        - name: csi-snapshotter
+          image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.3
+          args:
+            - --csi-address=/csi/csi.sock
+            - --v=5
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+{% endif %}
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        - name: client-info
+          secret:
+            secretName: client-info-secret

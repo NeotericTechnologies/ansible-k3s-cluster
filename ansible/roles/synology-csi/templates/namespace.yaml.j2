@@ -1,0 +1,8 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ synology_csi_namespace }}
+  labels:
+    app.kubernetes.io/name: synology-csi
+    app.kubernetes.io/managed-by: ansible
