@@ -54,3 +54,32 @@ synology_csi_storage_classes:
 # CSI driver images
 synology_csi_node_driver_image: "synology/synology-csi:{{ synology_csi_version }}"
 synology_csi_controller_image: "synology/synology-csi:{{ synology_csi_version }}"
+
+# csi-driver-nfs (kubernetes-csi/csi-driver-nfs) for NFS sub-directory provisioning
+# Reference: FR-018, R-014, data-model SynologyCsiConfig.csi_nfs_*
+csi_nfs_enabled: false
+csi_nfs_version: "v4.13.2"
+
+# NFS sub-directory storage classes — list of definitions
+# Each entry:
+#   name: StorageClass name
+#   server: NFS server address
+#   share: NFS export path (pre-existing share on NAS)
+#   is_default: true/false (at most one default)
+#   reclaim_policy: "Delete" or "Retain"
+#   volume_binding_mode: "Immediate" or "WaitForFirstConsumer"
+#   sub_dir: sub-directory template (default: "${pvc.metadata.namespace}/${pvc.metadata.name}")
+#   on_delete: "retain" or "delete" — action on PV deletion
+#   mount_options: list of NFS mount options (default: ["hard", "nfsvers=4.1"])
+csi_nfs_storage_classes:
+  - name: "nfs-subdir"
+    server: "{{ synology_csi_endpoint }}"
+    share: "/volume1/k8s-nfs"
+    is_default: false
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    sub_dir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+    on_delete: "retain"
+    mount_options:
+      - hard
+      - nfsvers=4.1

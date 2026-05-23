@@ -69,19 +69,27 @@ This quickstart explains how to use the Ansible playbooks to provision and manag
   - `synology_csi_tls_verify`: Set to `false` for self-signed certificates (default).
   - `synology_csi_username` / `synology_csi_password`: Credentials (via Ansible Vault).
   - `synology_csi_snapshots_enabled`: Set to `true` to deploy snapshotter.
-  - `synology_csi_storage_classes`: List of StorageClass definitions (iSCSI, NFS, and/or NFS sub-directory).
+  - `synology_csi_storage_classes`: List of StorageClass definitions (iSCSI and/or NFS via Synology CSI).
 - (Optional) Enable NFS sub-directory provisioning via csi-driver-nfs:
   - `csi_nfs_enabled: true`
   - `csi_nfs_version`: csi-driver-nfs Helm chart version (e.g., `v4.13.2`).
-  - `csi_nfs_server`: NFS server address (defaults to Synology CSI endpoint).
-  - `csi_nfs_share`: Path of the pre-existing NFS share (e.g., `/volume1/k8s-nfs`).
+  - `csi_nfs_storage_classes`: List of NFS sub-directory StorageClass definitions. Each entry:
+    - `name`: StorageClass name (e.g., `nfs-subdir`)
+    - `server`: NFS server address (defaults to `synology_csi_endpoint`)
+    - `share`: Path of the pre-existing NFS share (e.g., `/volume1/k8s-nfs`)
+    - `is_default`: Whether this is the default StorageClass (`true`/`false`)
+    - `reclaim_policy`: `Retain` or `Delete`
+    - `volume_binding_mode`: `Immediate` or `WaitForFirstConsumer`
+    - `sub_dir`: Sub-directory naming template (default: `${pvc.metadata.namespace}/${pvc.metadata.name}`)
+    - `on_delete`: Action when PV is deleted — `retain` or `delete`
+    - `mount_options`: NFS mount options list (default: `["hard", "nfsvers=4.1"]`)
 - Run the add-ons playbook:
   - `ansible-playbook -i <your-inventory> ansible/playbooks/cluster-addons.yml`
 - Verify:
   - `kubectl -n synology-csi get pods` shows node DaemonSet, controller, and (if enabled) snapshotter pods running.
   - `kubectl get storageclass` shows configured iSCSI and/or NFS StorageClasses.
   - (If snapshots enabled) `kubectl get volumesnapshotclass` shows the Synology snapshot class.
-  - (If NFS sub-dir enabled) `kubectl get csidrivers` shows `nfs.csi.k8s.io` alongside the Synology CSI driver, and `kubectl get storageclass` includes the NFS sub-directory StorageClass.
+  - (If NFS sub-dir enabled) `kubectl get csidrivers` shows `nfs.csi.k8s.io` alongside the Synology CSI driver, and `kubectl get storageclass` includes the configured NFS sub-directory StorageClass(es).
 
 ## 9. Validation and Smoke Tests
 

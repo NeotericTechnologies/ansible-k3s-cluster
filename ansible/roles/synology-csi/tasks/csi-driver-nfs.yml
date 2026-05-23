@@ -1,0 +1,61 @@
+---
+# ansible/roles/synology-csi/tasks/csi-driver-nfs.yml
+# Purpose: Deploy kubernetes-csi/csi-driver-nfs for NFS sub-directory provisioning
+# Reference: FR-018, R-014, Contract C-005
+# Idempotent: Helm upgrade converges to desired state; StorageClass uses state: present
+
+- name: Add csi-driver-nfs Helm repository
+  kubernetes.core.helm_repository:
+    name: csi-driver-nfs
+    repo_url: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+  register: csi_nfs_repo
+
+- name: Deploy csi-driver-nfs Helm chart
+  kubernetes.core.helm:
+    name: csi-driver-nfs
+    chart_ref: csi-driver-nfs/csi-driver-nfs
+    chart_version: "{{ csi_nfs_version }}"
+    release_namespace: kube-system
+    create_namespace: false
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    values: "{{ lookup('template', 'csi-driver-nfs-values.yaml.j2') | from_yaml }}"
+    wait: true
+    wait_timeout: "300s"
+  register: csi_nfs_helm
+
+- name: Wait for csi-driver-nfs controller to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: csi-nfs-controller
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    wait: true
+    wait_timeout: 120
+    wait_condition:
+      type: Available
+      status: "True"
+
+- name: Wait for csi-driver-nfs node DaemonSet to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: csi-nfs-node
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: csi_nfs_ds
+  until: >-
+    csi_nfs_ds.resources | length > 0 and
+    (csi_nfs_ds.resources[0].status.numberReady | default(0)) ==
+    (csi_nfs_ds.resources[0].status.desiredNumberScheduled | default(0))
+  retries: 30
+  delay: 10
+
+- name: Create NFS sub-directory StorageClasses
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'storageclass-nfs-subdir.yaml.j2') | from_yaml }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ csi_nfs_storage_classes }}"
+  loop_control:
+    label: "{{ item.name }}"

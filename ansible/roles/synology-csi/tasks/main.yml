@@ -1,7 +1,7 @@
 ---
 # ansible/roles/synology-csi/tasks/main.yml
 # Purpose: Deploy Synology CSI for persistent storage
-# Reference: FR-015, Contract C-005
+# Reference: FR-015, FR-018, Contract C-005
 
 - name: Include Synology CSI installation tasks
   ansible.builtin.include_tasks: install.yml
@@ -9,3 +9,11 @@
   tags:
     - install
     - storage
+
+- name: Include csi-driver-nfs installation tasks
+  ansible.builtin.include_tasks: csi-driver-nfs.yml
+  when: csi_nfs_enabled | default(false)
+  tags:
+    - install
+    - storage
+    - csi-nfs

@@ -97,3 +97,21 @@ synology_csi_storage_classes:
     volume_binding_mode: "Immediate"
     parameters:
       location: "/volume1"
+
+# csi-driver-nfs configuration (NFS sub-directory provisioning via kubernetes-csi/csi-driver-nfs)
+# Deploys nfs.csi.k8s.io driver via Helm; creates sub-directories in a pre-existing NFS share per PVC
+# See ansible/roles/synology-csi/defaults/main.yml for full variable reference
+csi_nfs_enabled: false
+csi_nfs_version: "v4.13.2"
+csi_nfs_storage_classes:
+  - name: "nfs-subdir"
+    server: "{{ synology_csi_endpoint }}"
+    share: "/volume1/k8s-nfs"
+    is_default: false
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    sub_dir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+    on_delete: "retain"
+    mount_options:
+      - hard
+      - nfsvers=4.1

@@ -1,0 +1,16 @@
+---
+# csi-driver-nfs Helm values
+# Reference: FR-018, R-014
+# Deploys kubernetes-csi/csi-driver-nfs (nfs.csi.k8s.io) for sub-directory provisioning
+
+driver:
+  name: nfs.csi.k8s.io
+
+controller:
+  replicas: 1
+
+node:
+  dnsPolicy: ClusterFirstWithHostNet
+
+storageClass:
+  create: false

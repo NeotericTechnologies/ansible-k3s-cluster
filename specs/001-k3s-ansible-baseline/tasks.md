@@ -139,11 +139,11 @@ All tasks MUST comply with these constraints per R-013:
 
 ### Add-on Roles: csi-driver-nfs (NFS Sub-Directory Provisioning)
 
-- [ ] T079 [P] [US1] Add csi_nfs_* variables to synology-csi role defaults in ansible/roles/synology-csi/defaults/main.yml (csi_nfs_enabled, csi_nfs_version, csi_nfs_server, csi_nfs_share)
-- [ ] T080 [P] [US1] Create csi-driver-nfs Helm values template in ansible/roles/synology-csi/templates/csi-driver-nfs-values.yaml.j2 (driver name nfs.csi.k8s.io, node and controller settings)
-- [ ] T081 [P] [US1] Create NFS sub-directory StorageClass template in ansible/roles/synology-csi/templates/storageclass-nfs-subdir.yaml.j2 (provisioner nfs.csi.k8s.io, server, share path, subDir template, reclaim policy, volume binding mode)
-- [ ] T082 [US1] Implement csi-driver-nfs install tasks in ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (add Helm repo, deploy csi-driver-nfs chart with values template, wait for DaemonSet/controller ready, create nfs-subdir StorageClass)
-- [ ] T083 [US1] Update synology-csi main task file ansible/roles/synology-csi/tasks/main.yml to conditionally include csi-driver-nfs.yml when csi_nfs_enabled is true
+- [X] T079 [P] [US1] Add csi_nfs_* variables to synology-csi role defaults in ansible/roles/synology-csi/defaults/main.yml (csi_nfs_enabled, csi_nfs_version, csi_nfs_server, csi_nfs_share)
+- [X] T080 [P] [US1] Create csi-driver-nfs Helm values template in ansible/roles/synology-csi/templates/csi-driver-nfs-values.yaml.j2 (driver name nfs.csi.k8s.io, node and controller settings)
+- [X] T081 [P] [US1] Create NFS sub-directory StorageClass template in ansible/roles/synology-csi/templates/storageclass-nfs-subdir.yaml.j2 (provisioner nfs.csi.k8s.io, server, share path, subDir template, reclaim policy, volume binding mode)
+- [X] T082 [US1] Implement csi-driver-nfs install tasks in ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (add Helm repo, deploy csi-driver-nfs chart with values template, wait for DaemonSet/controller ready, create nfs-subdir StorageClass)
+- [X] T083 [US1] Update synology-csi main task file ansible/roles/synology-csi/tasks/main.yml to conditionally include csi-driver-nfs.yml when csi_nfs_enabled is true
 
 ### Add-ons Playbook
 
@@ -169,7 +169,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
 - [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/install.yml (manifest template diff detection, DaemonSet update on change, NetworkAttachmentDefinition update without recreation)
 - [X] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/install.yml (namespace, secret, DaemonSet, controller, snapshotter, StorageClass, and VolumeSnapshotClass update without recreation)
-- [ ] T084 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (Helm upgrade with changed values only, StorageClass update without recreation)
+- [X] T084 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (Helm upgrade with changed values only, StorageClass update without recreation)
 - [X] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
 
 **Checkpoint**: At this point, User Story 2 should be fully functional — re-running playbooks with changed variables updates only the affected resources.
@@ -213,7 +213,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T075 Validate all playbooks and roles pass ansible-lint with no errors
 - [X] T076 Run quickstart.md validation (verify documented commands match actual playbook paths and variable names)
 - [X] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against both iSCSI and NFS StorageClasses, bind, write data, verify availability; optionally test VolumeSnapshot creation — validates SC-005)
-- [ ] T085 [P] Update Synology PVC smoke test in tests/ansible/smoke/synology-pvc-test.yml to also validate csi-driver-nfs nfs-subdir StorageClass (create PVC, verify sub-directory created on NFS share, bind, write data)
+- [X] T085 [P] Update Synology PVC smoke test in tests/ansible/smoke/synology-pvc-test.yml to also validate csi-driver-nfs nfs-subdir StorageClass (create PVC, verify sub-directory created on NFS share, bind, write data)
 - [X] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
 
 ---

@@ -1,0 +1,25 @@
+---
+# NFS sub-directory StorageClass using csi-driver-nfs
+# Reference: FR-018, R-014, data-model SynologyCsiConfig
+# Provisions PVCs as sub-directories within a pre-existing NFS share
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ item.name }}
+{% if item.is_default | default(false) %}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+{% endif %}
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: "{{ item.server }}"
+  share: "{{ item.share }}"
+  subDir: "{{ item.sub_dir | default('${pvc.metadata.namespace}/${pvc.metadata.name}') }}"
+  onDelete: "{{ item.on_delete | default('retain') }}"
+reclaimPolicy: {{ item.reclaim_policy | default('Retain') }}
+allowVolumeExpansion: true
+volumeBindingMode: {{ item.volume_binding_mode | default('Immediate') }}
+mountOptions:
+{% for opt in item.mount_options | default(['hard', 'nfsvers=4.1']) %}
+  - {{ opt }}
+{% endfor %}
