@@ -125,10 +125,17 @@ All tasks MUST comply with these constraints per R-013:
 
 ### Add-on Roles: Synology CSI (Optional)
 
-- [X] T044 [P] [US1] Define synology-csi role defaults in ansible/roles/synology-csi/defaults/main.yml (enabled flag, endpoint, storage classes)
-- [X] T045 [P] [US1] Create Synology CSI credentials secret template in ansible/roles/synology-csi/templates/synology-csi-secret.yaml.j2
-- [X] T046 [P] [US1] Create StorageClass template in ansible/roles/synology-csi/templates/storageclass.yaml.j2
-- [X] T047 [US1] Implement synology-csi install tasks in ansible/roles/synology-csi/tasks/main.yml (deploy CSI driver, create secret, create StorageClasses)
+- [ ] T044 [P] [US1] Define synology-csi role defaults in ansible/roles/synology-csi/defaults/main.yml (enabled flag, version, namespace, endpoint, port 8443, tls_verify false, snapshots_enabled, storage_classes list with protocol iscsi|nfs)
+- [ ] T045 [P] [US1] Create Synology CSI client-info secret template in ansible/roles/synology-csi/templates/client-info-secret.yaml.j2 (NAS endpoint, HTTPS:8443, credentials, self-signed cert acceptance)
+- [ ] T046 [P] [US1] Create iSCSI StorageClass template in ansible/roles/synology-csi/templates/storageclass-iscsi.yaml.j2 (protocol-specific parameters, reclaim policy, volume binding mode)
+- [ ] T046b [P] [US1] Create NFS StorageClass template in ansible/roles/synology-csi/templates/storageclass-nfs.yaml.j2 (protocol-specific parameters, reclaim policy, volume binding mode)
+- [ ] T046c [P] [US1] Create VolumeSnapshotClass template in ansible/roles/synology-csi/templates/volumesnapshotclass.yaml.j2 (Synology CSI driver, deletion policy)
+- [ ] T046d [P] [US1] Create Synology CSI namespace template in ansible/roles/synology-csi/templates/namespace.yaml.j2
+- [ ] T046e [P] [US1] Create Synology CSI node DaemonSet template in ansible/roles/synology-csi/templates/node-daemonset.yaml.j2 (CSI node plugin for attach/mount on each node)
+- [ ] T046f [P] [US1] Create Synology CSI controller template in ansible/roles/synology-csi/templates/controller.yaml.j2 (CSI controller for provisioning/snapshotting)
+- [ ] T046g [P] [US1] Create Synology CSI snapshotter controller template in ansible/roles/synology-csi/templates/snapshotter.yaml.j2 (deployed when snapshots_enabled is true)
+- [ ] T047 [US1] Implement synology-csi install tasks in ansible/roles/synology-csi/tasks/install.yml (create namespace, deploy client-info secret, deploy node DaemonSet, deploy controller, conditionally deploy snapshotter, create StorageClasses per protocol, conditionally create VolumeSnapshotClass)
+- [ ] T047b [US1] Implement synology-csi main task file in ansible/roles/synology-csi/tasks/main.yml (gate on enabled flag, include install.yml)
 
 ### Add-ons Playbook
 
@@ -153,7 +160,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T053 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher/tasks/main.yml (Helm upgrade idempotence)
 - [X] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
 - [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/install.yml (Helm upgrade with changed values only, NetworkAttachmentDefinition update without recreation)
-- [X] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/main.yml (StorageClass and secret update without recreation)
+- [ ] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/install.yml (namespace, secret, DaemonSet, controller, snapshotter, StorageClass, and VolumeSnapshotClass update without recreation)
 - [X] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
 
 **Checkpoint**: At this point, User Story 2 should be fully functional — re-running playbooks with changed variables updates only the affected resources.
@@ -196,7 +203,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T074 [P] Write role-level README for cert-manager in ansible/roles/cert-manager/README.md
 - [X] T075 Validate all playbooks and roles pass ansible-lint with no errors
 - [X] T076 Run quickstart.md validation (verify documented commands match actual playbook paths and variable names)
-- [X] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against Synology StorageClass, bind, write data, verify availability — validates SC-005)
+- [X] T077 [P] Create Synology CSI PVC validation smoke test in tests/ansible/smoke/synology-pvc-test.yml (create PVC against both iSCSI and NFS StorageClasses, bind, write data, verify availability; optionally test VolumeSnapshot creation — validates SC-005)
 - [X] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
 
 ---
@@ -304,5 +311,6 @@ With multiple developers:
 - kube-vip MUST be deployed as DaemonSet per planning directive (docs/ai-prompts/plan.md)
 - Multus MUST be installed via official Helm chart (`https://k8snetworkplumbingwg.github.io/helm-charts`) using the **thick plugin** variant with k3s host path overrides configured in Helm values per R-008
 - All add-on deployments MUST comply with k3s compatibility constraints: no symlinks on nodes, no file copies for runtime workloads, no modification of default k3s paths
+- Synology CSI deployment includes: namespace, client-info secret (HTTPS:8443, self-signed), node DaemonSet, controller, snapshotter (optional), iSCSI and/or NFS StorageClasses, VolumeSnapshotClass (optional)
 - Secrets (tokens, DNS credentials, Synology credentials) must NEVER be committed — use Ansible Vault or external secret management
 - Commit after each task or logical group
