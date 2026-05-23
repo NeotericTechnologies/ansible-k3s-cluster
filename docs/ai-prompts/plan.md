@@ -15,3 +15,20 @@
     - Using the documentation here as a reference; https://github.com/k8snetworkplumbingwg/multus-cni/tree/master/docs
 - Configuration
     - Ensure host paths are added/updated as needed for k3s compatibility.
+
+## Synology CSI
+- Ensure complete installation, including:
+    - Namespace
+    - Client info secrets
+    - DaemonSet
+    - Controller
+    - Snapshotter
+- Support:
+    - Configuration of version
+    - Snapshots
+    - Templates for storage classes
+      - iSCSI
+      - NFS
+- Use https to connect to NAS
+    - Port 8443
+    - Certificates are self signed
