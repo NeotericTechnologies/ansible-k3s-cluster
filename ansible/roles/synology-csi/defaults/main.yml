@@ -7,7 +7,7 @@
 synology_csi_enabled: false
 
 # CSI driver version/tag
-synology_csi_version: "v1.2.2"
+synology_csi_version: "v1.3.0"
 
 # Dedicated namespace for all Synology CSI components
 synology_csi_namespace: "synology-csi"
