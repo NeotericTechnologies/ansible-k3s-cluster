@@ -22,11 +22,12 @@ description: "Implementation tasks for Baseline k3s Ansible Cluster Lifecycle"
 
 ## k3s Deployment Compatibility Constraints (Cross-Cutting)
 
-All tasks MUST comply with these constraints per R-013:
+All tasks MUST comply with these constraints per R-013 and R-016:
 
 1. **No symlinks on nodes** — roles must not create symlinks on target nodes for any deployment artifact
-2. **No file copies to nodes for runtime workloads** — add-ons (kube-vip, cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests via `kubernetes.core` modules), not by copying files to the node filesystem
-3. **No modification of default k3s paths** — roles must not remove, rename, or alter paths managed by k3s (`/var/lib/rancher/k3s`, `/etc/rancher/k3s`, etc.)
+2. **No file copies to nodes for runtime workloads** — add-ons (kube-vip, cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests via `kubernetes.core` modules), not by copying files to the node filesystem. DaemonSet initContainers that install binaries to the k3s CNI bin dir are the approved exception.
+3. **No modification of default k3s paths** — roles must not remove, rename, or alter paths managed by k3s (`/var/lib/rancher/k3s`, `/etc/rancher/k3s`, etc.). Adding CNI plugin binaries to `/var/lib/rancher/k3s/data/cni/` via initContainers is permitted.
+4. **No Ansible-time binary installation on nodes** — the `dhcp` binary MUST NOT be installed on nodes via Ansible `get_url`/`tar`/`copy`. It must be deployed via a DaemonSet initContainer that copies it from a CNI plugins container image (R-016).
 
 ---
 
@@ -109,6 +110,16 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T092 [US1] Update NetworkAttachmentDefinition template in ansible/roles/multus/templates/network-attachment-definition.yaml.j2 to support ipam_type: dhcp (render `"ipam": {"type": "dhcp"}` when vlan_network.ipam_type is dhcp)
 - [X] T093 [US1] Update multus install tasks in ansible/roles/multus/tasks/install.yml to deploy DHCP daemon DaemonSet when multus_dhcp_daemon_enabled is true
 
+### R-016 Migration: DHCP Daemon initContainer Deployment
+
+**Purpose**: Migrate the DHCP daemon from Ansible-time binary installation (`get_url`/`tar` on nodes) to the approved initContainer pattern per R-016. The `dhcp` binary must be installed by a DaemonSet initContainer that copies it from a CNI plugins container image into the k3s CNI bin dir (`/var/lib/rancher/k3s/data/cni/`).
+
+- [ ] T096 [US1] Update multus role defaults in ansible/roles/multus/defaults/main.yml — replace `multus_dhcp_daemon_image: "busybox:stable"` and `multus_cni_plugins_version` variables with `multus_cni_plugins_image` (container image bundling CNI plugins, e.g. a build of containernetworking/plugins), `multus_cni_plugins_version` (version tag for the image), and `multus_dhcp_daemon_image` (minimal runtime image for the main dhcp-daemon container, e.g. `alpine:3`); update `multus_cni_bin_dir` default from `/var/lib/rancher/k3s/data/current/bin` to `/var/lib/rancher/k3s/data/cni/` per k3s October 2024+ fixed path
+- [ ] T097 [US1] Rewrite DHCP daemon DaemonSet template in ansible/roles/multus/templates/multus-dhcp-daemon.yaml.j2 — add initContainer `install-cni-plugins` that uses `{{ multus_cni_plugins_image }}:{{ multus_cni_plugins_version }}` to copy the `dhcp` binary to the host CNI bin dir volume mount; retain initContainer `clean-dhcp-socket` (removes stale `/run/cni/dhcp.sock`); update main container `dhcp-daemon` to use `{{ multus_dhcp_daemon_image }}` and run `dhcp daemon -hostprefix /host` from the host-mounted CNI bin dir; ensure volumes: cni-bin (hostPath `{{ multus_cni_bin_dir }}`), run-cni (hostPath `/run/cni`), proc (hostPath `/proc`), netns (hostPath `/run/netns` with HostToContainer propagation)
+- [ ] T098 [US1] Remove Ansible-time dhcp binary installation from ansible/roles/multus/tasks/install.yml — delete the entire `Install CNI dhcp binary on nodes` block (stat check, get_url download, tar extraction, chmod, cleanup tasks that delegate_to each node); the dhcp binary is now managed entirely by the DaemonSet initContainer
+- [ ] T100 [P] [US1] Update multus role README in ansible/roles/multus/README.md — document the initContainer-based DHCP binary deployment approach, reference R-016, document that Ansible does NOT install any binaries on nodes, list the required variables (`multus_cni_plugins_image`, `multus_cni_plugins_version`, `multus_dhcp_daemon_image`, `multus_cni_bin_dir`)
+- [ ] T101 [US1] Verify multus DHCP daemon DaemonSet deploys correctly via ansible/roles/multus/tasks/install.yml — ensure the kubernetes.core.k8s apply of the updated template succeeds, DaemonSet rolls out with initContainer completing before main container starts
+
 ### Add-on Roles: Traefik
 
 - [X] T035 [P] [US1] Define traefik role defaults in ansible/roles/traefik/defaults/main.yml (enabled flag, service type, entrypoints)
@@ -173,6 +184,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T054 [P] [US2] Add idempotent convergence logic to ansible/roles/rancher-monitoring/tasks/main.yml (Helm upgrade idempotence)
 - [X] T055 [P] [US2] Add idempotent convergence logic to ansible/roles/multus/tasks/install.yml (manifest template diff detection, DaemonSet update on change, NetworkAttachmentDefinition update without recreation)
 - [X] T094 [P] [US2] Add idempotent convergence logic for DHCP daemon in ansible/roles/multus/tasks/install.yml (deploy/remove DHCP daemon DaemonSet based on multus_dhcp_daemon_enabled, update NADs when ipam_type changes)
+- [ ] T102 [P] [US2] Verify idempotent convergence for R-016 DHCP daemon DaemonSet in ansible/roles/multus/tasks/install.yml — re-running with same variables produces no changes; changing `multus_cni_plugins_version` triggers DaemonSet update with new initContainer image; toggling `multus_dhcp_daemon_enabled` to false removes DaemonSet cleanly
 - [X] T056 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/install.yml (namespace, secret, DaemonSet, controller, snapshotter, StorageClass, and VolumeSnapshotClass update without recreation)
 - [X] T084 [P] [US2] Add idempotent convergence logic to ansible/roles/synology-csi/tasks/csi-driver-nfs.yml (Helm upgrade with changed values only, StorageClass update without recreation)
 - [X] T057 [US2] Ensure ansible/roles/k3s-agent/tasks/install.yml handles agent config updates idempotently (service restart only on change)
@@ -221,6 +233,7 @@ All tasks MUST comply with these constraints per R-013:
 - [X] T085 [P] Update Synology PVC smoke test in tests/ansible/smoke/synology-pvc-test.yml to also validate csi-driver-nfs nfs-subdir StorageClass (create PVC, verify sub-directory created on NFS share, bind, write data)
 - [X] T078 [P] Create DNS-01 provider switch validation smoke test in tests/ansible/smoke/dns-provider-switch-test.yml (change dns_provider variable, re-run cert-manager role, verify issuer renewal with new provider — validates SC-007)
 - [X] T095 [P] Create multus DHCP smoke test in tests/ansible/smoke/multus-dhcp-test.yml (deploy a pod with a NetworkAttachmentDefinition using ipam_type: dhcp, verify pod gets a secondary interface with a DHCP-assigned IP, verify DHCP daemon DaemonSet is running)
+- [ ] T103 [P] Update multus DHCP smoke test in tests/ansible/smoke/multus-dhcp-test.yml — add validation that: DHCP daemon DaemonSet has initContainer `install-cni-plugins` that completed successfully, `dhcp` binary exists at the expected CNI bin dir path on nodes (via exec into DaemonSet pod), no Ansible-managed dhcp binary exists outside the DaemonSet lifecycle
 
 ---
 
@@ -248,6 +261,7 @@ All tasks MUST comply with these constraints per R-013:
 - Templates before tasks that reference them
 - Core cluster roles before add-on roles (within US1)
 - cluster-core.yml before cluster-addons.yml
+- R-016 migration tasks (T096–T101) depend on existing multus tasks being complete (T032–T093)
 
 ### Parallel Opportunities
 
@@ -255,9 +269,10 @@ All tasks MUST comply with these constraints per R-013:
 - Within US1: all role defaults (T012, T013, T019, T026, T032, T035, T038, T041, T044) can run in parallel
 - Within US1: all templates for a given role marked [P] can run in parallel
 - Within US1: csi-driver-nfs tasks T079, T080, T081 can run in parallel (different files)
-- Within US2: all idempotent convergence tasks (T050–T056, T084) can run in parallel (different role files)
+- Within US1 R-016: T100 can run in parallel with T097–T099 (README vs code changes)
+- Within US2: all idempotent convergence tasks (T050–T056, T084, T102) can run in parallel (different role files)
 - All Polish phase documentation tasks (T068–T074) can run in parallel
-- All smoke test playbooks (T064–T067, T085) can run in parallel
+- All smoke test playbooks (T064–T067, T085, T103) can run in parallel
 
 ---
 
@@ -284,6 +299,16 @@ Task: T029 "Create production ClusterIssuer template"
 Task: T033 "Create multus DaemonSet manifest template (thick plugin, k3s paths)"
 Task: T033b "Create NetworkAttachmentDefinition template"
 Task: T091 "Create multus DHCP daemon DaemonSet template"
+
+# R-016 migration (after existing multus tasks complete):
+# Sequential (dependencies within):
+Task: T096 "Update multus role defaults (CNI plugins image, k3s data/cni path)"
+Task: T097 "Rewrite DHCP daemon DaemonSet template (initContainer approach)"
+Task: T098 "Remove Ansible-time dhcp binary installation from install.yml"
+# Parallel with above:
+Task: T100 "Update multus role README (document initContainer approach)"
+# After T097-T098:
+Task: T101 "Verify DHCP daemon DaemonSet deploys correctly"
 ```
 
 ---
