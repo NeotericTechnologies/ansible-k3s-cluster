@@ -135,7 +135,7 @@ spec:
       serviceAccountName: multus
       initContainers:
         - name: install-multus-binary
-          image: {{ multus_image }}:{{ multus_image_tag }}
+          image: {{ multus_image }}:{{ multus_version }}
           command:
             - /bin/sh
             - -ec
@@ -159,7 +159,7 @@ spec:
               mountPropagation: HostToContainer
       containers:
         - name: kube-multus
-          image: {{ multus_image }}:{{ multus_image_tag }}
+          image: {{ multus_image }}:{{ multus_version }}
           command: ["/usr/src/multus-cni/bin/multus-daemon"]
           resources:
             requests:

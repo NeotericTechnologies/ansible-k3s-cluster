@@ -45,14 +45,22 @@ cert_manager_staging_issuer: "letsencrypt-staging"
 cert_manager_production_issuer: "letsencrypt-production"
 
 # multus CNI configuration (when enabled)
-multus_version: "v4.0.2"
+# See ansible/roles/multus/README.md for full variable reference
+multus_version: "v4.2.4-thick"
+multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based IPAM
 multus_vlan_networks: []
 # Example:
-# - name: storage-net
-#   vlan_id: 100
-#   interface: eth1
-#   cidr: 10.100.0.0/24
-#   gateway: 10.100.0.1
+# multus_vlan_networks:
+#   - name: iot-vlan
+#     interface: eth0
+#     vlan_id: 50
+#     ipam_type: dhcp          # dhcp (default) | host-local | static
+#   - name: storage-net
+#     interface: eth0
+#     vlan_id: 100
+#     ipam_type: host-local
+#     cidr: 10.100.0.0/24
+#     gateway: 10.100.0.1
 
 # Rancher configuration (when enabled)
 rancher_version: "2.8.0"

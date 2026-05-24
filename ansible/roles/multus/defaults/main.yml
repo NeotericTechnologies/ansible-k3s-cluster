@@ -3,10 +3,10 @@ multus_enabled: false
 multus_namespace: kube-system
 multus_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 
-# Multus image (thick plugin variant)
+# Multus image (thick plugin variant — used for both multus DaemonSet and DHCP daemon)
 # Reference: https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/deployments/multus-daemonset-thick.yml
 multus_image: "ghcr.io/k8snetworkplumbingwg/multus-cni"
-multus_image_tag: "v4.1.2-thick"
+multus_version: "v4.2.4-thick"
 
 # k3s-compatible host path overrides
 # These override the default /etc/cni/net.d and /opt/cni/bin paths
@@ -18,6 +18,12 @@ multus_cni_bin_dir: "/var/lib/rancher/k3s/data/current/bin"
 multus_log_level: "error"
 multus_log_to_stderr: true
 
+# DHCP daemon for DHCP-based IPAM on secondary networks
+# When true, deploys a DHCP daemon DaemonSet that proxies DHCP requests
+# from pods to the external DHCP server on the attached VLAN network.
+# Set to false to skip DHCP daemon even when vlan_networks use ipam_type: dhcp.
+multus_dhcp_daemon_enabled: true
+
 # VLAN network definitions for NetworkAttachmentDefinitions
 multus_vlan_networks: []
 # Example:
@@ -26,5 +32,6 @@ multus_vlan_networks: []
 #     namespace: default
 #     interface: eth0
 #     vlan_id: 100
-#     cidr: 10.10.100.0/24
-#     gateway: 10.10.100.1
+#     ipam_type: dhcp         # dhcp | host-local | static (default: dhcp)
+#     cidr: 10.10.100.0/24   # required for host-local/static, ignored for dhcp
+#     gateway: 10.10.100.1   # optional for host-local/static, ignored for dhcp

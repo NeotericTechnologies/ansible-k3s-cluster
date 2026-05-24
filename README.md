@@ -66,7 +66,28 @@ kube_vip_interface: "eth0"
 cert_manager_enabled: true
 rancher_enabled: true
 traefik_enabled: true
+multus_enabled: true
 ```
+
+For multus VLAN networking, define secondary networks:
+
+```yaml
+# VLAN networks with DHCP-based IP assignment (default)
+multus_vlan_networks:
+  - name: iot-vlan
+    interface: eth0
+    vlan_id: 50
+    ipam_type: dhcp
+
+  - name: storage-vlan
+    interface: eth0
+    vlan_id: 100
+    ipam_type: host-local
+    cidr: 10.10.100.0/24
+    gateway: 10.10.100.1
+```
+
+See the [Multus role documentation](ansible/roles/multus/README.md) for full configuration details.
 
 ### 4. Provision Cluster
 
@@ -167,6 +188,7 @@ ansible-playbook -i inventories/production ansible/playbooks/upgrade-k3s.yml
 - **[Quickstart Guide](specs/001-k3s-ansible-baseline/quickstart.md)**: Step-by-step provisioning and usage examples
 - **[Feature Specification](specs/001-k3s-ansible-baseline/spec.md)**: Complete functional requirements
 - **[Implementation Plan](specs/001-k3s-ansible-baseline/plan.md)**: Technical architecture and decisions
+- **[Multus CNI Role](ansible/roles/multus/README.md)**: VLAN networking, DHCP IPAM, and NetworkAttachmentDefinition configuration
 - **[Constitution](.specify/memory/constitution.md)**: Project governance and design principles
 
 ## Validation

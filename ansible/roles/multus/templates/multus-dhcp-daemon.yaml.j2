@@ -1,0 +1,79 @@
+---
+# Multus DHCP daemon DaemonSet
+# Purpose: Runs a DHCP daemon pod on each node that proxies DHCP requests
+# from pods with DHCP-based IPAM to the external DHCP server on the VLAN.
+# Reference: https://github.com/k8snetworkplumbingwg/multus-cni/tree/master/docs
+# Constraint: No symlinks, no file copies, no k3s path modifications (R-013)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: multus-dhcp-daemon
+  namespace: {{ multus_namespace }}
+  labels:
+    app: multus-dhcp-daemon
+    k8s-app: multus-dhcp
+spec:
+  selector:
+    matchLabels:
+      app: multus-dhcp-daemon
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: multus-dhcp-daemon
+        k8s-app: multus-dhcp
+    spec:
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
+      serviceAccountName: multus
+      containers:
+        - name: dhcp-daemon
+          image: {{ multus_image }}:{{ multus_version }}
+          command:
+            - /usr/src/multus-cni/bin/multus-daemon
+          args:
+            - --multus-conf-file=auto
+            - --cni-version=0.3.1
+            - --multus-kubeconfig-file-host={{ multus_cni_conf_dir }}/multus.d/multus.kubeconfig
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: cni-conf
+              mountPath: /host/etc/cni/net.d
+            - name: cni-bin
+              mountPath: /host/opt/cni/bin
+            - name: run
+              mountPath: /run
+            - name: var-lib-cni
+              mountPath: /var/lib/cni/dhcp
+      volumes:
+        - name: cni-conf
+          hostPath:
+            path: {{ multus_cni_conf_dir }}
+            type: Directory
+        - name: cni-bin
+          hostPath:
+            path: {{ multus_cni_bin_dir }}
+            type: Directory
+        - name: run
+          hostPath:
+            path: /run
+            type: Directory
+        - name: var-lib-cni
+          hostPath:
+            path: /var/lib/cni/dhcp
+            type: DirectoryOrCreate
