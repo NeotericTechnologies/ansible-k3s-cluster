@@ -20,13 +20,16 @@ Deploys [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni) as a th
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `multus_enabled` | `false` | Enable/disable the entire multus role |
-| `multus_namespace` | `kube-system` | Namespace for multus resources |
-| `multus_image` | `ghcr.io/k8snetworkplumbingwg/multus-cni` | Container image for multus and DHCP daemon |
-| `multus_version` | `v4.2.4-thick` | Image tag (thick plugin variant) |
+| `multus_namespace` | `kube-system` | Namespace for multus DaemonSets and RBAC |
+| `multus_kubeconfig` | `/etc/rancher/k3s/k3s.yaml` | Path to kubeconfig for kubectl commands |
+| `multus_image` | `ghcr.io/k8snetworkplumbingwg/multus-cni` | Multus thick plugin container image |
+| `multus_version` | `v4.2.4-thick` | Multus image tag (thick plugin variant) |
 | `multus_cni_conf_dir` | `/var/lib/rancher/k3s/agent/etc/cni/net.d` | k3s CNI config directory |
 | `multus_cni_bin_dir` | `/var/lib/rancher/k3s/data/current/bin` | k3s CNI binary directory |
 | `multus_log_level` | `error` | Multus log verbosity |
+| `multus_log_to_stderr` | `true` | Log to stderr instead of file |
 | `multus_dhcp_daemon_enabled` | `true` | Deploy DHCP daemon DaemonSet |
+| `multus_dhcp_daemon_image` | `busybox:stable` | Minimal runtime image for DHCP daemon container (dhcp binary is mounted from host) |
 | `multus_vlan_networks` | `[]` | List of VLAN network definitions (see below) |
 
 ## VLAN Network Definitions
@@ -88,7 +91,9 @@ multus_vlan_networks:
 
 ## DHCP Daemon
 
-The DHCP daemon DaemonSet runs on all nodes with `hostNetwork: true` and privileged access. It listens on a UNIX socket for DHCP proxy requests from pods that use `"ipam": {"type": "dhcp"}` in their NetworkAttachmentDefinition.
+The DHCP daemon DaemonSet runs the CNI `dhcp` binary (bundled with k3s at `multus_cni_bin_dir/dhcp`) on each node. It listens on a UNIX socket (`/run/cni/dhcp.sock`) and proxies DHCP requests from pods that use `"ipam": {"type": "dhcp"}` in their NetworkAttachmentDefinition to the external DHCP server on the VLAN.
+
+The daemon container uses a minimal image (`busybox:stable` by default) since the actual `dhcp` binary is mounted from the host. No additional image downloads are needed beyond the base image.
 
 ### Enabling/Disabling
 

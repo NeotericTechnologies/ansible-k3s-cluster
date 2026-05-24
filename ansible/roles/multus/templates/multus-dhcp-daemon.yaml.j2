@@ -1,8 +1,9 @@
 ---
 # Multus DHCP daemon DaemonSet
-# Purpose: Runs a DHCP daemon pod on each node that proxies DHCP requests
-# from pods with DHCP-based IPAM to the external DHCP server on the VLAN.
-# Reference: https://github.com/k8snetworkplumbingwg/multus-cni/tree/master/docs
+# Purpose: Runs the CNI DHCP daemon on each node to proxy DHCP requests from
+# pods using DHCP-based IPAM to the external DHCP server on the VLAN.
+# The dhcp binary is provided by k3s bundled CNI plugins at multus_cni_bin_dir.
+# Reference: https://www.cni.dev/plugins/current/ipam/dhcp/
 # Constraint: No symlinks, no file copies, no k3s path modifications (R-013)
 apiVersion: apps/v1
 kind: DaemonSet
@@ -32,16 +33,21 @@ spec:
           effect: NoSchedule
         - operator: Exists
           effect: NoExecute
-      serviceAccountName: multus
+      initContainers:
+        - name: clean-dhcp-socket
+          image: {{ multus_dhcp_daemon_image }}
+          command: ["/bin/sh", "-c", "rm -f /host/run/cni/dhcp.sock"]
+          volumeMounts:
+            - name: run-cni
+              mountPath: /host/run/cni
       containers:
         - name: dhcp-daemon
-          image: {{ multus_image }}:{{ multus_version }}
+          image: {{ multus_dhcp_daemon_image }}
           command:
-            - /usr/src/multus-cni/bin/multus-daemon
-          args:
-            - --multus-conf-file=auto
-            - --cni-version=0.3.1
-            - --multus-kubeconfig-file-host={{ multus_cni_conf_dir }}/multus.d/multus.kubeconfig
+            - /host/cni-bin/dhcp
+            - daemon
+            - -hostprefix
+            - /host
           resources:
             requests:
               cpu: 10m
@@ -52,28 +58,30 @@ spec:
           securityContext:
             privileged: true
           volumeMounts:
-            - name: cni-conf
-              mountPath: /host/etc/cni/net.d
             - name: cni-bin
-              mountPath: /host/opt/cni/bin
-            - name: run
-              mountPath: /run
-            - name: var-lib-cni
-              mountPath: /var/lib/cni/dhcp
+              mountPath: /host/cni-bin
+              readOnly: true
+            - name: run-cni
+              mountPath: /host/run/cni
+            - name: proc
+              mountPath: /host/proc
+            - name: netns
+              mountPath: /host/var/run/netns
+              mountPropagation: HostToContainer
       volumes:
-        - name: cni-conf
-          hostPath:
-            path: {{ multus_cni_conf_dir }}
-            type: Directory
         - name: cni-bin
           hostPath:
             path: {{ multus_cni_bin_dir }}
             type: Directory
-        - name: run
+        - name: run-cni
           hostPath:
-            path: /run
+            path: /run/cni
+            type: DirectoryOrCreate
+        - name: proc
+          hostPath:
+            path: /proc
             type: Directory
-        - name: var-lib-cni
+        - name: netns
           hostPath:
-            path: /var/lib/cni/dhcp
+            path: /run/netns
             type: DirectoryOrCreate

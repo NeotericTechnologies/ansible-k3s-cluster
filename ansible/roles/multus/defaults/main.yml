@@ -24,6 +24,10 @@ multus_log_to_stderr: true
 # Set to false to skip DHCP daemon even when vlan_networks use ipam_type: dhcp.
 multus_dhcp_daemon_enabled: true
 
+# DHCP daemon container image (minimal runtime — the actual dhcp binary is
+# mounted from the k3s host CNI bin dir at multus_cni_bin_dir/dhcp)
+multus_dhcp_daemon_image: "busybox:stable"
+
 # VLAN network definitions for NetworkAttachmentDefinitions
 multus_vlan_networks: []
 # Example:

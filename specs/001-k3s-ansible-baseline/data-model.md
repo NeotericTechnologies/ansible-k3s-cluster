@@ -47,7 +47,7 @@ Describes cluster networking beyond the base k3s defaults.
 - **Fields**:
   - `base_cni`: The default CNI used by k3s.
   - `multus_enabled`: Boolean.
-  - `multus_image_tag`: Image tag for multus thick plugin container.
+  - `multus_version`: Image tag for multus thick plugin container.
   - `multus_install_method`: Installation method (must be `manifest` — upstream DaemonSet manifest applied via `kubernetes.core.k8s`).
   - `multus_plugin_type`: Plugin variant (must be `thick` — bundles all CNI functionality into a single binary).
   - `multus_cni_conf_dir`: CNI config directory (k3s-specific path override: `/var/lib/rancher/k3s/agent/etc/cni/net.d`).
