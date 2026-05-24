@@ -51,11 +51,10 @@ Describes cluster networking beyond the base k3s defaults.
   - `multus_install_method`: Installation method (must be `manifest` — upstream DaemonSet manifest applied via `kubernetes.core.k8s`).
   - `multus_plugin_type`: Plugin variant (must be `thick` — bundles all CNI functionality into a single binary).
   - `multus_cni_conf_dir`: CNI config directory (k3s-specific path override: `/var/lib/rancher/k3s/agent/etc/cni/net.d`).
-  - `multus_cni_bin_dir`: CNI binary directory (k3s-specific path override: `/var/lib/rancher/k3s/data/current/bin`).
+  - `multus_cni_bin_dir`: CNI binary directory (k3s-specific path override: `/var/lib/rancher/k3s/data/current/bin`). This is the canonical path for this project.
   - `multus_dhcp_daemon_enabled`: Boolean. Deploy the DHCP daemon DaemonSet for DHCP IPAM support in NetworkAttachmentDefinitions. Default: `true` when any VLAN network uses `ipam_type: dhcp`.
-  - `multus_dhcp_daemon_image`: Container image for the DHCP daemon DaemonSet main container (minimal runtime that executes the dhcp binary from the host-mounted CNI bin dir).
-  - `multus_cni_plugins_image`: Container image bundling the CNI plugins release (e.g., `ghcr.io/containernetworking/plugins:<version>`) used by the initContainer to install the `dhcp` binary into the k3s CNI bin dir without Ansible-time host operations.
-  - `multus_cni_plugins_version`: Version tag for the CNI plugins container image.
+  - `multus_dhcp_daemon_image`: Container image for the DHCP daemon DaemonSet main container (minimal image with shell and curl/wget, e.g. `alpine:3`; the initContainer downloads the `dhcp` binary from the official CNI plugins tarball release and the main container executes it from the host-mounted CNI bin dir).
+  - `multus_cni_plugins_version`: Version of the containernetworking/plugins release to download (e.g., `v1.6.2`). The initContainer fetches the official tarball from GitHub releases, extracts only the `dhcp` binary, and copies it to the host CNI bin dir volume mount.
   - `vlan_networks`: List of `VlanNetwork` definitions used by multus.
 
 - **Relationships**:
@@ -200,7 +199,8 @@ Optional configuration for Synology CSI integration.
 - When `synology_csi.snapshots_enabled = true`, the snapshotter controller and a VolumeSnapshotClass are deployed alongside the CSI driver.
 - When `synology_csi.csi_nfs_enabled = true`, `csi_nfs_server` and `csi_nfs_share` must be defined, and csi-driver-nfs is deployed via Helm to provision PVCs as sub-directories within the specified NFS share.
 - multus VLAN definitions must reference valid interfaces and non-overlapping CIDRs relative to the base cluster networks (when using static or host-local IPAM).
-- When `ipam_type: dhcp` is used for a VLAN network, a DHCP server must be available on that VLAN; the multus DHCP daemon DaemonSet is deployed to proxy DHCP requests. The DHCP daemon DaemonSet uses an initContainer to install the `dhcp` binary from a CNI plugins container image into the k3s CNI bin dir — the binary MUST NOT be installed directly on nodes by Ansible provisioning tasks.
+- When `ipam_type: dhcp` is used for a VLAN network, a DHCP server must be available on that VLAN; the multus DHCP daemon DaemonSet is deployed to proxy DHCP requests. The DHCP daemon DaemonSet uses an initContainer to download the `dhcp` binary from the official containernetworking/plugins GitHub release tarball and install it into the k3s CNI bin dir — the binary MUST NOT be installed directly on nodes by Ansible provisioning tasks.
+- When `multus_dhcp_daemon_enabled: false` and any VLAN network in `vlan_networks` uses `ipam_type: dhcp`, the multus role MUST fail validation with a clear error message indicating that DHCP IPAM requires the DHCP daemon DaemonSet to be enabled.
 
 ## k3s Deployment Compatibility Constraints
 
@@ -208,6 +208,6 @@ All add-on deployments managed by the playbooks MUST adhere to these constraints
 
 1. **No symlinks on nodes**: Roles and tasks must not create symlinks on target nodes for any deployment artifact.
 2. **No file copies to nodes for runtime workloads**: Add-ons (kube-vip, cert-manager, multus, Rancher, rancher-monitoring, Traefik, Synology CSI) must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests applied via `kubernetes.core` modules), not by copying files to the node filesystem. The DHCP daemon DaemonSet installs its binary via an initContainer (copying from a container image to the k3s CNI bin dir), which is the approved pattern for cases where a host-level binary is required.
-3. **No modification of default k3s paths**: Roles must not remove, rename, or alter paths managed by k3s (e.g., `/var/lib/rancher/k3s`, `/etc/rancher/k3s`, the k3s data directory structure). Adding binaries to the designated CNI bin dir (`/var/lib/rancher/k3s/data/cni/`) via initContainers is permitted per k3s documentation.
+3. **No modification of default k3s paths**: Roles must not remove, rename, or alter paths managed by k3s (e.g., `/var/lib/rancher/k3s`, `/etc/rancher/k3s`, the k3s data directory structure). Adding binaries to the designated CNI bin dir (`/var/lib/rancher/k3s/data/current/bin`) via initContainers is permitted per k3s documentation.
 
 These constraints ensure that k3s upgrade paths remain intact and the k3s service manager retains full control of its runtime environment.
