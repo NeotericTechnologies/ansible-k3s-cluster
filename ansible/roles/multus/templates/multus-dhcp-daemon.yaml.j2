@@ -42,19 +42,30 @@ spec:
             - -c
             - |
               set -e
+              DESIRED_VERSION="{{ multus_cni_plugins_version }}"
+              VERSION_FILE="/host/cni-bin/.cni-ipam-dhcp-plugin-version"
+              if [ -x /host/cni-bin/dhcp ] && [ -f "${VERSION_FILE}" ]; then
+                CURRENT_VERSION=$(cat "${VERSION_FILE}")
+                if [ "${CURRENT_VERSION}" = "${DESIRED_VERSION}" ]; then
+                  echo "dhcp binary already at version ${DESIRED_VERSION}, skipping download"
+                  exit 0
+                fi
+                echo "Upgrading dhcp binary from ${CURRENT_VERSION} to ${DESIRED_VERSION}"
+              fi
               ARCH=$(uname -m)
               case "$ARCH" in
                 x86_64)  ARCH="amd64" ;;
                 aarch64) ARCH="arm64" ;;
               esac
-              URL="https://github.com/containernetworking/plugins/releases/download/{{ multus_cni_plugins_version }}/cni-plugins-linux-${ARCH}-{{ multus_cni_plugins_version }}.tgz"
+              URL="https://github.com/containernetworking/plugins/releases/download/${DESIRED_VERSION}/cni-plugins-linux-${ARCH}-${DESIRED_VERSION}.tgz"
               echo "Downloading CNI plugins from ${URL}"
               wget -q -O /tmp/cni-plugins.tgz "${URL}"
               tar xzf /tmp/cni-plugins.tgz -C /tmp ./dhcp
               cp /tmp/dhcp /host/cni-bin/dhcp
               chmod 0755 /host/cni-bin/dhcp
+              echo "${DESIRED_VERSION}" > "${VERSION_FILE}"
               rm -f /tmp/cni-plugins.tgz /tmp/dhcp
-              echo "dhcp binary installed successfully"
+              echo "dhcp binary installed successfully (version ${DESIRED_VERSION})"
           volumeMounts:
             - name: cni-bin
               mountPath: /host/cni-bin
