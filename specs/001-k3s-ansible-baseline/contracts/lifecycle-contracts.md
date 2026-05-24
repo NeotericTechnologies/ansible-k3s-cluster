@@ -7,9 +7,10 @@ This document maps user actions to Ansible playbook entrypoints and describes th
 All contracts below are subject to these k3s deployment compatibility rules:
 
 - **No symlinks on nodes**: No role or task may create symlinks on target nodes for deployment artifacts.
-- **No runtime file copies to nodes**: Add-ons must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests via `kubernetes.core` modules), not by copying files to the node filesystem.
-- **No modification of default k3s paths**: Roles must not remove, rename, or alter paths managed by k3s (`/var/lib/rancher/k3s`, `/etc/rancher/k3s`, etc.).
+- **No runtime file copies to nodes**: Add-ons must be deployed as in-cluster resources via the Kubernetes API (Helm charts, manifests via `kubernetes.core` modules), not by copying files to the node filesystem. The exception is DaemonSet initContainers that install binaries to the k3s CNI bin dir (approved pattern for the DHCP daemon).
+- **No modification of default k3s paths**: Roles must not remove, rename, or alter paths managed by k3s (`/var/lib/rancher/k3s`, `/etc/rancher/k3s`, etc.). Adding CNI plugin binaries to `/var/lib/rancher/k3s/data/cni/` via initContainers is permitted.
 - **Multus deployment via DaemonSet manifest (thick plugin)**: Multus CNI must be installed as a DaemonSet using the upstream thick plugin manifest (`deployments/multus-daemonset-thick.yml` pattern from `https://github.com/k8snetworkplumbingwg/multus-cni/tree/master/docs`), templated for k3s-compatible host paths for CNI config and binary directories, applied via `kubernetes.core.k8s`.
+- **DHCP daemon via DaemonSet with initContainer**: The CNI DHCP daemon must be deployed as a DaemonSet that uses an initContainer to copy the `dhcp` binary from a CNI plugins container image into the k3s CNI bin dir (`/var/lib/rancher/k3s/data/cni/`). Ansible MUST NOT download or install the dhcp binary directly on nodes. References: `https://github.com/k8snetworkplumbingwg/reference-deployment/tree/master/multus-dhcp`, RKE2 DHCP DaemonSet pattern.
 - **Kube-vip as DaemonSet**: Kube-vip must be deployed as a DaemonSet (not static pod) for both control-plane VIP and service load balancing.
 
 ## Contract C-001: Provision New HA k3s Cluster

@@ -115,8 +115,32 @@
 
 ## R-015: Multus NetworkAttachmentDefinitions with DHCP Support
 
-- **Decision**: NetworkAttachmentDefinitions for VLAN interfaces must support DHCP-based IP address assignment. The multus DHCP daemon runs as a sidecar or standalone DaemonSet pod that listens on a UNIX socket and proxies DHCP requests from pods to the external DHCP server on the attached VLAN network. The NAD configuration uses `"ipam": {"type": "dhcp"}` to delegate address assignment to the network's existing DHCP infrastructure.
+- **Decision**: NetworkAttachmentDefinitions for VLAN interfaces must support DHCP-based IP address assignment. The multus DHCP daemon runs as a DaemonSet pod on each node that listens on a UNIX socket (`/run/cni/dhcp.sock`) and proxies DHCP requests from pods to the external DHCP server on the attached VLAN network. The NAD configuration uses `"ipam": {"type": "dhcp"}` to delegate address assignment to the network's existing DHCP infrastructure.
 - **Rationale**: VLAN networks in homelab and small-production environments typically have their own DHCP servers (e.g., on the router or a dedicated DHCP appliance). Requiring static IP assignment for every pod on a secondary network would be operationally burdensome and fragile. DHCP delegation allows pods to receive addresses from the same pool as other devices on the VLAN, enabling seamless integration with existing network infrastructure.
 - **Alternatives Considered**:
   - **Static IPAM (host-local or whereabouts)**: Rejected as the primary mode because it requires manual CIDR management per network and does not integrate with existing DHCP infrastructure; however, static IPAM remains available as an alternative NAD configuration if users prefer it.
   - **No IPAM (manual IP assignment)**: Rejected; impractical for any non-trivial number of pods on secondary networks.
+
+## R-016: DHCP Daemon DaemonSet Deployment — Avoiding Direct Binary Installation
+
+- **Decision**: The CNI DHCP daemon DaemonSet must deploy the `dhcp` binary via an initContainer that copies it from a CNI plugins container image into the k3s CNI bin directory (`/var/lib/rancher/k3s/data/cni/`), rather than having Ansible download and install the binary directly on nodes during provisioning. The main container then runs the `dhcp daemon` command by referencing the binary at the host-mounted CNI bin path. This follows the same initContainer pattern used by the multus thick plugin DaemonSet for installing its own binaries.
+- **Rationale**: The `docs/ai-prompts/plan.md` planning directive explicitly requires: "Deployed in such a way as to avoid installing the binary directly on the k3s node. If direct installation is required, installation utilizing an initContainer like the Multus Thick DaemonSet uses is acceptable." Using an initContainer keeps the binary lifecycle fully within Kubernetes (the DaemonSet manages it), avoids Ansible-time SSH file operations on nodes, and ensures the binary is automatically redeployed if the DaemonSet is recreated or a node is replaced.
+- **Architecture**:
+  - **initContainer** (`install-cni-plugins`): Uses a CNI plugins container image (e.g., `ghcr.io/containernetworking/plugins:<version>`) and copies the `dhcp` binary to the host CNI bin dir via a volume mount.
+  - **initContainer** (`clean-dhcp-socket`): Removes stale UNIX socket at `/run/cni/dhcp.sock` before the daemon starts.
+  - **Main container** (`dhcp-daemon`): Runs `dhcp daemon -hostprefix /host` using the host-mounted CNI bin dir binary. Uses `hostNetwork: true`, `privileged: true`, and mounts `/run/cni` (socket), `/proc` (host processes), `/run/netns` (network namespaces with HostToContainer propagation).
+- **k3s Path Compatibility**:
+  - CNI bin dir: `/var/lib/rancher/k3s/data/cni/` (k3s October 2024+ fixed path)
+  - Socket path: `/run/cni/dhcp.sock`
+  - The DHCP daemon does NOT modify any default k3s paths — it only adds a binary to the CNI bin dir (which is the designated location for additional CNI plugins per k3s docs).
+- **Implementation References**:
+  - Primary: https://github.com/k8snetworkplumbingwg/reference-deployment/tree/master/multus-dhcp
+  - RKE2 chart pattern: https://github.com/rancher/rke2-charts/blob/main-source/packages/rke2-multus/charts/templates/dhcp-daemonSet.yaml
+  - k3s CNI paths: https://docs.k3s.io/networking/multus-ipams
+  - CNI DHCP plugin docs: https://www.cni.dev/plugins/current/ipam/dhcp/
+  - Additional references: https://github.com/k8snetworkplumbingwg/reference-deployment/pull/6, https://github.com/rancher/rke2/issues/3917
+- **Alternatives Considered**:
+  - **Ansible `get_url` + `tar` to install dhcp binary on host during provisioning**: Rejected because it violates the plan requirement to avoid installing binaries directly on k3s nodes via Ansible. Also creates a drift risk — the binary is not managed by Kubernetes and could become stale after node replacements or upgrades.
+  - **Bundling dhcp binary in a custom Docker image and running it directly from the container (no host mount)**: Rejected because the CNI DHCP daemon must be reachable via a UNIX socket at `/run/cni/dhcp.sock` on the host, and the CNI plugin invocations happen outside the container namespace. The binary must be accessible at the host's CNI bin path.
+  - **Using the multus container image to provide the dhcp binary**: Rejected because the multus thick image does not bundle the separate `dhcp` IPAM binary from `containernetworking/plugins`.
+  - **Relying on k3s to bundle the dhcp binary**: Rejected because k3s does not include the `dhcp` binary in its CNI plugin bundle (it includes bridge, flannel, host-local, loopback, portmap, but NOT dhcp).
