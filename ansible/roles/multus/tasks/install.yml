@@ -12,6 +12,58 @@
   delegate_to: "{{ item }}"
   loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
 
+- name: Install CNI dhcp binary on nodes
+  when: multus_dhcp_daemon_enabled | default(true)
+  block:
+    - name: Check if dhcp binary exists at expected version
+      ansible.builtin.stat:
+        path: "{{ multus_cni_bin_dir }}/dhcp"
+      register: dhcp_binary_stat
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+
+    - name: Determine host architecture
+      ansible.builtin.set_fact:
+        cni_arch: "{{ ansible_architecture | regex_replace('x86_64', 'amd64') | regex_replace('aarch64', 'arm64') }}"
+
+    - name: Download CNI plugins tarball
+      ansible.builtin.get_url:
+        url: "https://github.com/containernetworking/plugins/releases/download/{{ multus_cni_plugins_version }}/cni-plugins-linux-{{ cni_arch }}-{{ multus_cni_plugins_version }}.tgz"
+        dest: "/tmp/cni-plugins-{{ multus_cni_plugins_version }}.tgz"
+        mode: "0644"
+      delegate_to: "{{ item.item }}"
+      loop: "{{ dhcp_binary_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not item.stat.exists
+
+    - name: Extract dhcp binary from CNI plugins tarball
+      ansible.builtin.command:
+        cmd: "tar xzf /tmp/cni-plugins-{{ multus_cni_plugins_version }}.tgz -C {{ multus_cni_bin_dir }} ./dhcp"
+      delegate_to: "{{ item.item }}"
+      loop: "{{ dhcp_binary_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not item.stat.exists
+      changed_when: true
+
+    - name: Set permissions on dhcp binary
+      ansible.builtin.file:
+        path: "{{ multus_cni_bin_dir }}/dhcp"
+        mode: "0755"
+      delegate_to: "{{ item }}"
+      loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+
+    - name: Clean up downloaded tarball
+      ansible.builtin.file:
+        path: "/tmp/cni-plugins-{{ multus_cni_plugins_version }}.tgz"
+        state: absent
+      delegate_to: "{{ item.item }}"
+      loop: "{{ dhcp_binary_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: not item.stat.exists
+
 - name: Deploy multus thick plugin DaemonSet and RBAC
   ansible.builtin.command:
     argv:

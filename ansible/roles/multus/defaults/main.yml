@@ -25,8 +25,12 @@ multus_log_to_stderr: true
 multus_dhcp_daemon_enabled: true
 
 # DHCP daemon container image (minimal runtime — the actual dhcp binary is
-# mounted from the k3s host CNI bin dir at multus_cni_bin_dir/dhcp)
+# installed on the host by Ansible from the CNI plugins release)
 multus_dhcp_daemon_image: "busybox:stable"
+
+# CNI plugins version for the dhcp binary (installed on host nodes)
+# Release: https://github.com/containernetworking/plugins/releases
+multus_cni_plugins_version: "v1.9.1"
 
 # VLAN network definitions for NetworkAttachmentDefinitions
 multus_vlan_networks: []

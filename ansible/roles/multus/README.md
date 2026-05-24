@@ -29,7 +29,8 @@ Deploys [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni) as a th
 | `multus_log_level` | `error` | Multus log verbosity |
 | `multus_log_to_stderr` | `true` | Log to stderr instead of file |
 | `multus_dhcp_daemon_enabled` | `true` | Deploy DHCP daemon DaemonSet |
-| `multus_dhcp_daemon_image` | `busybox:stable` | Minimal runtime image for DHCP daemon container (dhcp binary is mounted from host) |
+| `multus_dhcp_daemon_image` | `busybox:stable` | Minimal runtime image for DHCP daemon container (dhcp binary is installed on host by Ansible) |
+| `multus_cni_plugins_version` | `v1.9.1` | CNI plugins release version for the `dhcp` binary |
 | `multus_vlan_networks` | `[]` | List of VLAN network definitions (see below) |
 
 ## VLAN Network Definitions
@@ -91,9 +92,11 @@ multus_vlan_networks:
 
 ## DHCP Daemon
 
-The DHCP daemon DaemonSet runs the CNI `dhcp` binary (bundled with k3s at `multus_cni_bin_dir/dhcp`) on each node. It listens on a UNIX socket (`/run/cni/dhcp.sock`) and proxies DHCP requests from pods that use `"ipam": {"type": "dhcp"}` in their NetworkAttachmentDefinition to the external DHCP server on the VLAN.
+The DHCP daemon DaemonSet runs the CNI `dhcp` binary on each node. It listens on a UNIX socket (`/run/cni/dhcp.sock`) and proxies DHCP requests from pods that use `"ipam": {"type": "dhcp"}` in their NetworkAttachmentDefinition to the external DHCP server on the VLAN.
 
-The daemon container uses a minimal image (`busybox:stable` by default) since the actual `dhcp` binary is mounted from the host. No additional image downloads are needed beyond the base image.
+The `dhcp` binary is **not bundled with k3s**. This role installs it from the [containernetworking/plugins](https://github.com/containernetworking/plugins/releases) release during provisioning (pinned to `multus_cni_plugins_version`). The binary is cached on the host at `multus_cni_bin_dir/dhcp` and only downloaded once.
+
+The daemon container uses a minimal image (`busybox:stable` by default) since the binary is mounted from the host.
 
 ### Enabling/Disabling
 
