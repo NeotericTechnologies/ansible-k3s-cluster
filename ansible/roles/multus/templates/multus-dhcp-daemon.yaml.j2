@@ -2,9 +2,10 @@
 # Multus DHCP daemon DaemonSet
 # Purpose: Runs the CNI DHCP daemon on each node to proxy DHCP requests from
 # pods using DHCP-based IPAM to the external DHCP server on the VLAN.
-# The dhcp binary is provided by k3s bundled CNI plugins at multus_cni_bin_dir.
+# The dhcp binary is installed by an initContainer that downloads the official
+# containernetworking/plugins release tarball and extracts only the dhcp binary.
 # Reference: https://www.cni.dev/plugins/current/ipam/dhcp/
-# Constraint: No symlinks, no file copies, no k3s path modifications (R-013)
+# Constraint: No Ansible-time binary installation on nodes (R-016)
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -34,6 +35,29 @@ spec:
         - operator: Exists
           effect: NoExecute
       initContainers:
+        - name: install-cni-plugins
+          image: {{ multus_dhcp_daemon_image }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              ARCH=$(uname -m)
+              case "$ARCH" in
+                x86_64)  ARCH="amd64" ;;
+                aarch64) ARCH="arm64" ;;
+              esac
+              URL="https://github.com/containernetworking/plugins/releases/download/{{ multus_cni_plugins_version }}/cni-plugins-linux-${ARCH}-{{ multus_cni_plugins_version }}.tgz"
+              echo "Downloading CNI plugins from ${URL}"
+              wget -q -O /tmp/cni-plugins.tgz "${URL}"
+              tar xzf /tmp/cni-plugins.tgz -C /tmp ./dhcp
+              cp /tmp/dhcp /host/cni-bin/dhcp
+              chmod 0755 /host/cni-bin/dhcp
+              rm -f /tmp/cni-plugins.tgz /tmp/dhcp
+              echo "dhcp binary installed successfully"
+          volumeMounts:
+            - name: cni-bin
+              mountPath: /host/cni-bin
         - name: clean-dhcp-socket
           image: {{ multus_dhcp_daemon_image }}
           command: ["/bin/sh", "-c", "rm -f /host/run/cni/dhcp.sock"]

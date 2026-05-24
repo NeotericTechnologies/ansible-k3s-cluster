@@ -48,6 +48,8 @@ cert_manager_production_issuer: "letsencrypt-production"
 # See ansible/roles/multus/README.md for full variable reference
 multus_version: "v4.2.4-thick"
 multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based IPAM
+multus_dhcp_daemon_image: "alpine:3"  # Image for DHCP daemon initContainer + main container
+multus_cni_plugins_version: "v1.9.1"  # CNI plugins release (initContainer downloads tarball)
 multus_vlan_networks: []
 # Example:
 # multus_vlan_networks:

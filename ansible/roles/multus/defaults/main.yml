@@ -24,11 +24,13 @@ multus_log_to_stderr: true
 # Set to false to skip DHCP daemon even when vlan_networks use ipam_type: dhcp.
 multus_dhcp_daemon_enabled: true
 
-# DHCP daemon container image (minimal runtime — the actual dhcp binary is
-# installed on the host by Ansible from the CNI plugins release)
-multus_dhcp_daemon_image: "busybox:stable"
+# DHCP daemon container image (used for both the initContainer that downloads
+# the dhcp binary and the main container that runs the daemon)
+# Requires shell and wget — alpine provides both in a minimal footprint.
+multus_dhcp_daemon_image: "alpine:3"
 
-# CNI plugins version for the dhcp binary (installed on host nodes)
+# CNI plugins release version — the initContainer downloads the official tarball
+# from GitHub releases and extracts only the `dhcp` binary.
 # Release: https://github.com/containernetworking/plugins/releases
 multus_cni_plugins_version: "v1.9.1"
 
