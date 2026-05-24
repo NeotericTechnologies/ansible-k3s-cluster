@@ -186,7 +186,42 @@ A smoke test validates the DHCP daemon and DHCP-based NAD functionality:
 ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/multus-dhcp-test.yml
 ```
 
-This test verifies:
+### Inventory Requirements
+
+The smoke test targets `k3s_servers[0]` and requires a working k3s cluster with multus deployed. The inventory at `tests/ansible/inventories/local` must define at least one server node with access to the cluster's kubeconfig:
+
+```ini
+# tests/ansible/inventories/local
+[k3s_servers]
+# For a local single-node cluster:
+localhost ansible_connection=local
+
+# For a remote cluster, replace with actual host:
+# k3s-cp-1 ansible_host=192.168.1.10 ansible_user=admin
+
+[k3s_agents]
+# Include agent nodes if applicable (not required for the smoke test itself)
+
+[k3s_cluster:children]
+k3s_servers
+k3s_agents
+
+[k3s_cluster:vars]
+control_plane_vip=192.168.1.100
+api_port=6443
+```
+
+### Preconditions
+
+- Cluster provisioned with `cluster-core.yml`
+- `cluster-addons.yml` run with `multus_enabled: true` and at least one VLAN network using `ipam_type: dhcp`
+- A DHCP server must be reachable on the configured VLAN for pods to receive addresses
+
+### What It Validates
+
 - DHCP daemon DaemonSet is running on all nodes
 - At least one DHCP-type NetworkAttachmentDefinition exists
 - A test pod receives a DHCP-assigned IP on its secondary interface
+- initContainer `install-cni-plugins` completed successfully (R-016)
+- `dhcp` binary exists at the expected CNI bin dir path
+- No leftover download artifacts remain in the pod

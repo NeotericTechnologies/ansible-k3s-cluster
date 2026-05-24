@@ -47,7 +47,7 @@
           {{ dhcp_daemon_ready.stdout }}/{{ dhcp_daemon_desired.stdout }} pods ready
 
     - name: Create test namespace
-      ansible.builtin.command: >-
+      ansible.builtin.shell: >-
         kubectl create namespace {{ test_namespace }} --dry-run=client -o yaml |
         kubectl apply -f -
       environment:
@@ -65,14 +65,25 @@
     - name: Parse NAD list and find DHCP NAD
       ansible.builtin.set_fact:
         dhcp_nads: >-
-          {{ (nad_list.stdout | from_json).items |
-             selectattr('spec.config', 'search', '"type":\s*"dhcp"') | list }}
+          {%- set out = [] -%}
+          {%- set nad_items = (nad_list.stdout | from_json)['items'] | default([]) -%}
+          {%- for nad in nad_items -%}
+          {%- set cfg = nad.spec.config | default('') -%}
+          {%- if '"type":"dhcp"' in cfg or '"type": "dhcp"' in cfg -%}
+          {%- set _ = out.append(nad) -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ out }}
 
     - name: Assert at least one DHCP NAD exists
       ansible.builtin.assert:
         that:
           - dhcp_nads | length > 0
-        fail_msg: "No NetworkAttachmentDefinition with DHCP IPAM found in the cluster"
+        fail_msg: >-
+          No NetworkAttachmentDefinition with DHCP IPAM found in the cluster.
+          kubectl returned {{ ((nad_list.stdout | from_json)['items'] | default([]) | length) }} total NADs.
+          Ensure cluster-addons was run with multus_enabled: true and at least one
+          multus_vlan_networks entry using ipam_type: dhcp.
         success_msg: "Found {{ dhcp_nads | length }} DHCP-based NetworkAttachmentDefinition(s)"
 
     - name: Deploy test pod with DHCP-based secondary interface
