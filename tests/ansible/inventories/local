@@ -3,11 +3,16 @@
 # Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
 
 [k3s_servers]
-localhost ansible_connection=local
+# localhost ansible_connection=local
+k3s-server-01 ansible_host=192.168.50.121 ansible_user=ansible
+
+[k3s_agents]
+# k3s-agent-01 ansible_host=192.168.1.111 ansible_user=ansible
 
 [k3s_cluster:children]
 k3s_servers
+k3s_agents
 
 [k3s_cluster:vars]
-control_plane_vip=127.0.0.1
+control_plane_vip=192.168.50.8
 api_port=6443

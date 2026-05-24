@@ -44,6 +44,14 @@ multus_vlan_networks:
     interface: eth0           # Host interface for macvlan
     vlan_id: 100             # VLAN tag (optional, omit for untagged)
     ipam_type: dhcp          # dhcp | host-local | static (default: dhcp)
+
+  # Example
+  - name: iot-vlan
+    # Must match an interface that exists on every target node.
+    # Using enp6s18 (same NIC as kube_vip_interface) avoids "Link not found" from macvlan.
+    interface: enp6s18
+    # Leave vlan_id unset unless the host already has a matching VLAN subinterface (e.g. enp6s18.10).
+    ipam_type: dhcp          # dhcp (default) | host-local | static
 ```
 
 ### IPAM Types
@@ -126,6 +134,12 @@ multus_enabled: true
 
 multus_vlan_networks:
   - name: iot-vlan
+    # Must match an interface that exists on every target node.
+    # Using enp6s18 (same NIC as kube_vip_interface) avoids "Link not found" from macvlan.
+    interface: enp6s18
+    # Leave vlan_id unset unless the host already has a matching VLAN subinterface (e.g. enp6s18.10).
+    ipam_type: dhcp          # dhcp (default) | host-local | static
+  - name: iot-vlan-2
     interface: eth0
     vlan_id: 50
     ipam_type: dhcp

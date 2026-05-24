@@ -44,13 +44,13 @@ spec:
               set -e
               DESIRED_VERSION="{{ multus_cni_plugins_version }}"
               VERSION_FILE="/host/cni-bin/.cni-ipam-dhcp-plugin-version"
-              if [ -x /host/cni-bin/dhcp ] && [ -f "${VERSION_FILE}" ]; then
+              if [ -x /host/cni-bin/dhcp ] && [ -x /host/cni-bin/macvlan ] && [ -f "${VERSION_FILE}" ]; then
                 CURRENT_VERSION=$(cat "${VERSION_FILE}")
                 if [ "${CURRENT_VERSION}" = "${DESIRED_VERSION}" ]; then
-                  echo "dhcp binary already at version ${DESIRED_VERSION}, skipping download"
+                  echo "dhcp and macvlan binaries already at version ${DESIRED_VERSION}, skipping download"
                   exit 0
                 fi
-                echo "Upgrading dhcp binary from ${CURRENT_VERSION} to ${DESIRED_VERSION}"
+                echo "Upgrading CNI plugins from ${CURRENT_VERSION} to ${DESIRED_VERSION}"
               fi
               ARCH=$(uname -m)
               case "$ARCH" in
@@ -60,12 +60,14 @@ spec:
               URL="https://github.com/containernetworking/plugins/releases/download/${DESIRED_VERSION}/cni-plugins-linux-${ARCH}-${DESIRED_VERSION}.tgz"
               echo "Downloading CNI plugins from ${URL}"
               wget -q -O /tmp/cni-plugins.tgz "${URL}"
-              tar xzf /tmp/cni-plugins.tgz -C /tmp ./dhcp
+              tar xzf /tmp/cni-plugins.tgz -C /tmp ./dhcp ./macvlan
               cp /tmp/dhcp /host/cni-bin/dhcp
+              cp /tmp/macvlan /host/cni-bin/macvlan
               chmod 0755 /host/cni-bin/dhcp
+              chmod 0755 /host/cni-bin/macvlan
               echo "${DESIRED_VERSION}" > "${VERSION_FILE}"
-              rm -f /tmp/cni-plugins.tgz /tmp/dhcp
-              echo "dhcp binary installed successfully (version ${DESIRED_VERSION})"
+              rm -f /tmp/cni-plugins.tgz /tmp/dhcp /tmp/macvlan
+              echo "dhcp and macvlan binaries installed successfully (version ${DESIRED_VERSION})"
           volumeMounts:
             - name: cni-bin
               mountPath: /host/cni-bin
