@@ -40,6 +40,36 @@
   until: cert_manager_ready.rc == 0
   changed_when: false
 
+- name: Scale cert-manager deployment to topology-aware replica target
+  ansible.builtin.command: >-
+    kubectl scale deployment cert-manager
+    -n cert-manager
+    --replicas={{ cert_manager_replicas | default(1) }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_scale
+  changed_when: "'scaled' in cert_manager_scale.stdout"
+
+- name: Scale cert-manager-webhook deployment to topology-aware replica target
+  ansible.builtin.command: >-
+    kubectl scale deployment cert-manager-webhook
+    -n cert-manager
+    --replicas={{ cert_manager_replicas | default(1) }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_webhook_scale
+  changed_when: "'scaled' in cert_manager_webhook_scale.stdout"
+
+- name: Scale cert-manager-cainjector deployment to topology-aware replica target
+  ansible.builtin.command: >-
+    kubectl scale deployment cert-manager-cainjector
+    -n cert-manager
+    --replicas={{ cert_manager_replicas | default(1) }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_cainjector_scale
+  changed_when: "'scaled' in cert_manager_cainjector_scale.stdout"
+
 - name: Create DNS provider credentials secret
   ansible.builtin.template:
     src: dns-credentials-secret.yaml.j2

@@ -20,6 +20,10 @@
   pre_tasks:
     - name: Resolve topology-aware HA policy
       ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
+
+    - name: Propagate resolved HA targets into role-consumable variables
+      ansible.builtin.set_fact:
+        kube_vip_cloud_controller_replicas: "{{ ha_component_policies['kube-vip'].expected_target | int }}"
   roles:
     - role: k3s-common
       tags: ['prerequisites', 'validation']

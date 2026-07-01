@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/name: synology-csi-snapshotter
     app.kubernetes.io/managed-by: ansible
 spec:
-  replicas: 1
+  replicas: {{ synology_csi_replicas | default(1) }}
   selector:
     matchLabels:
       app: synology-csi-snapshotter

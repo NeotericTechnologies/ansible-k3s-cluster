@@ -27,6 +27,16 @@
     - name: Resolve topology-aware HA policy
       ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
 
+    - name: Propagate resolved HA targets into role-consumable variables
+      ansible.builtin.set_fact:
+        traefik_replicas: "{{ ha_component_policies['traefik'].expected_target | int }}"
+        rancher_replicas: "{{ ha_component_policies['rancher'].expected_target | int }}"
+        cert_manager_replicas: "{{ ha_component_policies['cert-manager'].expected_target | int }}"
+        rancher_monitoring_replicas: "{{ ha_component_policies['rancher-monitoring'].expected_target | int }}"
+        synology_csi_replicas: "{{ ha_component_policies['synology-csi'].expected_target | int }}"
+        csi_nfs_replicas: "{{ ha_component_policies['csi-nfs'].expected_target | int }}"
+        kube_vip_cloud_controller_replicas: "{{ ha_component_policies['kube-vip'].expected_target | int }}"
+
     - name: Verify k3s cluster is operational
       ansible.builtin.command: kubectl get nodes
       environment:
