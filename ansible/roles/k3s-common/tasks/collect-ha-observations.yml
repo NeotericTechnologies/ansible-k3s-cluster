@@ -1,0 +1,100 @@
+---
+# Gather runtime observations used by HA validation checks.
+
+- name: Collect control-plane ready count
+  ansible.builtin.command: >-
+    kubectl get nodes -l node-role.kubernetes.io/control-plane=true --no-headers
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_control_plane_nodes
+  changed_when: false
+  failed_when: false
+
+- name: Collect kube-vip daemonset availability
+  ansible.builtin.command: >-
+    kubectl get daemonset -A -l app.kubernetes.io/name=kube-vip -o jsonpath='{range .items[*]}{.status.numberAvailable}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_kube_vip_available
+  changed_when: false
+  failed_when: false
+
+- name: Collect Traefik deployment availability
+  ansible.builtin.command: >-
+    kubectl get deployment -A -l app.kubernetes.io/name=traefik -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_traefik_available
+  changed_when: false
+  failed_when: false
+
+- name: Collect cert-manager deployment availability
+  ansible.builtin.command: >-
+    kubectl get deployment -n cert-manager -l app.kubernetes.io/name=cert-manager -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_cert_manager_available
+  changed_when: false
+  failed_when: false
+
+- name: Collect multus daemonset availability
+  ansible.builtin.command: >-
+    kubectl get daemonset -A -l app.kubernetes.io/name=multus -o jsonpath='{range .items[*]}{.status.numberAvailable}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_multus_available
+  changed_when: false
+  failed_when: false
+
+- name: Collect Rancher deployment availability
+  ansible.builtin.command: >-
+    kubectl get deployment -n cattle-system -l app.kubernetes.io/name=rancher -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_rancher_available
+  changed_when: false
+  failed_when: false
+
+- name: Collect rancher-monitoring deployment availability
+  ansible.builtin.command: >-
+    kubectl get deployment -n cattle-monitoring-system -l app.kubernetes.io/name=prometheus -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_rancher_monitoring_available
+  changed_when: false
+  failed_when: false
+
+- name: Collect Synology CSI deployment availability
+  ansible.builtin.command: >-
+    kubectl get deployment -n {{ synology_csi_namespace | default('synology-csi') }} -l app.kubernetes.io/name=synology-csi -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_synology_available
+  changed_when: false
+  failed_when: false
+
+- name: Collect CSI NFS deployment availability
+  ansible.builtin.command: >-
+    kubectl get deployment -A -l app.kubernetes.io/name=csi-driver-nfs -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ha_csi_nfs_available
+  changed_when: false
+  failed_when: false
+
+- name: Build HA observation map
+  ansible.builtin.set_fact:
+    ha_component_observations:
+      k3s-control-plane: "{{ ha_control_plane_nodes.stdout_lines | default([]) | length | int }}"
+      kube-vip: "{{ (ha_kube_vip_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+      traefik: "{{ (ha_traefik_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+      cert-manager: "{{ (ha_cert_manager_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+      multus: "{{ (ha_multus_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+      rancher: "{{ (ha_rancher_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+      rancher-monitoring: "{{ (ha_rancher_monitoring_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+      synology-csi: "{{ (ha_synology_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+      csi-nfs: "{{ (ha_csi_nfs_available.stdout_lines | default(['0']) | first | default('0')) | int }}"
+
+- name: Display collected HA observations
+  ansible.builtin.debug:
+    var: ha_component_observations

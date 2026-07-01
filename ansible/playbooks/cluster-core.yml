@@ -17,6 +17,9 @@
   hosts: k3s_cluster
   become: true
   gather_facts: true
+  pre_tasks:
+    - name: Resolve topology-aware HA policy
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
   roles:
     - role: k3s-common
       tags: ['prerequisites', 'validation']
@@ -90,6 +93,21 @@
       delay: 5
       until: vip_health.rc == 0
       changed_when: false
+
+    - name: Collect HA observations for core components
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/collect-ha-observations.yml
+
+    - name: Validate topology-aware HA targets for core lifecycle
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/validate-ha-targets.yml
+
+    - name: Run optional critical subset disruption smoke test
+      ansible.builtin.command: >-
+        ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/ha-disruption-test.yml
+      args:
+        chdir: /workspaces/ansible-k3s-cluster
+      register: ha_disruption_test
+      changed_when: false
+      when: ha_run_disruption_test | default(false) | bool
 
     - name: Cluster deployment summary
       ansible.builtin.debug:

@@ -24,6 +24,9 @@
   become: true
   gather_facts: false
   tasks:
+    - name: Resolve topology-aware HA policy
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
+
     - name: Verify k3s cluster is operational
       ansible.builtin.command: kubectl get nodes
       environment:
@@ -166,3 +169,18 @@
 
           Verify deployment:
           kubectl get pods -A
+
+    - name: Collect HA observations after add-ons deployment
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/collect-ha-observations.yml
+
+    - name: Validate topology-aware HA targets after add-ons deployment
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/validate-ha-targets.yml
+
+    - name: Run optional critical subset disruption smoke test
+      ansible.builtin.command: >-
+        ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/ha-disruption-test.yml
+      args:
+        chdir: /workspaces/ansible-k3s-cluster
+      register: ha_disruption_test
+      changed_when: false
+      when: ha_run_disruption_test | default(false) | bool

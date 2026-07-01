@@ -1,0 +1,81 @@
+---
+# HA disruption resilience test for critical component subset.
+# Measures success ratio using external probes and enforces SC-003 threshold.
+
+- name: HA Disruption Resilience Test
+  hosts: k3s_servers[0]
+  gather_facts: false
+  vars:
+    disruption_window_seconds: "{{ ha_disruption_window_seconds | default(600) | int }}"
+    probe_rps: "{{ ha_probe_requests_per_second | default(1) | int }}"
+    availability_threshold: "{{ ha_probe_min_availability_percent | default(99.0) | float }}"
+  tasks:
+    - name: Determine HA topology for disruption test
+      ansible.builtin.set_fact:
+        disruption_server_count: "{{ groups['k3s_servers'] | default([]) | length }}"
+        disruption_is_ha: "{{ (groups['k3s_servers'] | default([]) | length) >= 3 }}"
+
+    - name: Skip disruption validation outside HA topology
+      ansible.builtin.meta: end_play
+      when: not disruption_is_ha | bool
+
+    - name: Ensure critical probes are defined
+      ansible.builtin.assert:
+        that:
+          - critical_component_subset | default([]) | length > 0
+          - critical_component_probes is mapping
+        fail_msg: "critical_component_subset and critical_component_probes must be defined for disruption tests"
+
+    - name: Calculate total probes per component
+      ansible.builtin.set_fact:
+        total_probes_per_component: "{{ disruption_window_seconds * probe_rps }}"
+
+    - name: Execute probe loop per critical component
+      ansible.builtin.shell: |
+        set -eu
+        success=0
+        total={{ total_probes_per_component }}
+        url="{{ critical_component_probes[item].url }}"
+        insecure="{{ critical_component_probes[item].insecure | default(false) | bool }}"
+        for _ in $(seq 1 "$total"); do
+          if [[ "$insecure" == "True" ]]; then
+            curl -ksf --max-time 2 "$url" >/dev/null 2>&1 && success=$((success+1)) || true
+          else
+            curl -sf --max-time 2 "$url" >/dev/null 2>&1 && success=$((success+1)) || true
+          fi
+          sleep 1
+        done
+        echo "success=${success}"
+        echo "total=${total}"
+      args:
+        executable: /bin/bash
+      loop: "{{ critical_component_subset }}"
+      loop_control:
+        label: "{{ item }}"
+      register: disruption_probe_results
+      changed_when: false
+
+    - name: Compute availability percentages
+      ansible.builtin.set_fact:
+        disruption_component_availability: >-
+          {{ disruption_component_availability | default({}) |
+             combine({
+               item.item: ((item.stdout_lines | select('search', '^success=') | first | default('success=0') | regex_replace('^success=', '') | int) * 100.0 /
+                         (item.stdout_lines | select('search', '^total=') | first | default('total=1') | regex_replace('^total=', '') | int))
+             }) }}
+      loop: "{{ disruption_probe_results.results }}"
+
+    - name: Display disruption availability summary
+      ansible.builtin.debug:
+        var: disruption_component_availability
+
+    - name: Enforce SC-003 threshold per critical component
+      ansible.builtin.assert:
+        that:
+          - disruption_component_availability[item] | float >= availability_threshold
+        fail_msg: >-
+          SC-003 threshold failed for {{ item }}: availability={{ disruption_component_availability[item] | float }}%,
+          required={{ availability_threshold }}%
+        success_msg: >-
+          SC-003 threshold met for {{ item }}: availability={{ disruption_component_availability[item] | float }}%
+      loop: "{{ critical_component_subset }}"

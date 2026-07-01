@@ -25,6 +25,9 @@
   hosts: k3s_servers[0]
   gather_facts: true
   tasks:
+    - name: Resolve topology-aware HA policy
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
+
     - name: Verify target k3s_version is defined
       ansible.builtin.assert:
         that:
@@ -310,3 +313,9 @@
           - "1. Test application workloads"
           - "2. Monitor cluster stability"
           - "3. Update documentation with new version"
+
+    - name: Collect HA observations after upgrade
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/collect-ha-observations.yml
+
+    - name: Validate topology-aware HA targets after upgrade
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/validate-ha-targets.yml

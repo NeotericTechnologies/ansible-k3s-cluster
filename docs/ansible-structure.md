@@ -116,6 +116,22 @@ For development or small deployments:
 - Keep playbooks and role defaults free of duplicate hard-coded version values whenever possible.
 - For environment-specific needs, override versions in inventory-scoped group vars rather than editing role internals.
 
+### Same-Scope HA Target Policy
+
+- Every managed component version variable must have corresponding HA/non-HA target variables in the same top-level `group_vars/all.yml` scope.
+- Environment-specific adjustments must use inventory-scoped `group_vars/all.yml` overrides for both version and HA target variables together.
+- Do not add HA target values only in role defaults when a top-level version variable exists.
+
+### Maintainer Workflow for New Managed Components
+
+1. Add the component version variable in `ansible/group_vars/all.yml`.
+2. Add `<component>_ha_min_replicas` and `<component>_non_ha_default_replicas` in the same file section.
+3. Add inventory override examples in test/prod inventory `group_vars/all.yml` if needed.
+4. Update `docs/ansible-k3s-baseline.md` HA policy table and expectation matrix.
+5. Extend `ansible/roles/k3s-common/tasks/resolve-ha-policy.yml` with component policy mapping.
+6. Extend runtime observation/validation tasks when executable checks are available.
+7. Add/adjust smoke scenarios to verify HA and non-HA behavior.
+
 ### Role-Specific Variables
 - `group_vars/k3s_servers.yml`: Control-plane node configuration
 - `group_vars/k3s_agents.yml`: Worker node configuration

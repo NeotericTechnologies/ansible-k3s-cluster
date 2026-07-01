@@ -105,6 +105,15 @@ docs/
 
 **Structure Decision**: Keep the current roles-and-playbooks Ansible structure and implement HA behavior through variable model extensions plus lifecycle validation tasks inside existing playbooks/roles.
 
+## Feature Artifact Links
+
+- Specification: `specs/003-ha-component-deployment/spec.md`
+- Research: `specs/003-ha-component-deployment/research.md`
+- Data model: `specs/003-ha-component-deployment/data-model.md`
+- Contracts: `specs/003-ha-component-deployment/contracts/ha-lifecycle-contracts.md`
+- Quickstart: `specs/003-ha-component-deployment/quickstart.md`
+- Tasks: `specs/003-ha-component-deployment/tasks.md`
+
 ## Complexity Tracking
 
 > **Fill ONLY if Constitution Check has violations that must be justified**

@@ -1,0 +1,49 @@
+---
+# Resolve topology-aware HA policy targets for all managed components.
+
+- name: Compute topology profile from inventory
+  ansible.builtin.set_fact:
+    ha_server_count: "{{ groups['k3s_servers'] | default([]) | length }}"
+    ha_is_enabled: "{{ (groups['k3s_servers'] | default([]) | length) >= 3 }}"
+
+- name: Build effective HA policy map
+  ansible.builtin.set_fact:
+    ha_component_policies:
+      k3s-control-plane:
+        enabled: true
+        expected_target: "{{ (k3s_server_ha_min_replicas if ha_is_enabled else k3s_server_non_ha_default_replicas) | int }}"
+      kube-vip:
+        enabled: "{{ kube_vip_enabled | default(false) | bool }}"
+        expected_target: "{{ (kube_vip_ha_min_replicas if ha_is_enabled else kube_vip_non_ha_default_replicas) | int }}"
+      cert-manager:
+        enabled: "{{ cert_manager_enabled | default(false) | bool }}"
+        expected_target: "{{ (cert_manager_ha_min_replicas if ha_is_enabled else cert_manager_non_ha_default_replicas) | int }}"
+      multus:
+        enabled: "{{ multus_enabled | default(false) | bool }}"
+        expected_target: "{{ (multus_ha_min_replicas if ha_is_enabled else multus_non_ha_default_replicas) | int }}"
+      traefik:
+        enabled: "{{ traefik_enabled | default(true) | bool }}"
+        expected_target: "{{ (traefik_ha_min_replicas if ha_is_enabled else traefik_non_ha_default_replicas) | int }}"
+      rancher:
+        enabled: "{{ rancher_enabled | default(false) | bool }}"
+        expected_target: "{{ (rancher_ha_min_replicas if ha_is_enabled else rancher_non_ha_default_replicas) | int }}"
+      rancher-monitoring:
+        enabled: "{{ rancher_monitoring_enabled | default(false) | bool }}"
+        expected_target: "{{ (rancher_monitoring_ha_min_replicas if ha_is_enabled else rancher_monitoring_non_ha_default_replicas) | int }}"
+      synology-csi:
+        enabled: "{{ synology_csi_enabled | default(false) | bool }}"
+        expected_target: "{{ (synology_csi_ha_min_replicas if ha_is_enabled else synology_csi_non_ha_default_replicas) | int }}"
+      csi-nfs:
+        enabled: "{{ csi_nfs_enabled | default(false) | bool }}"
+        expected_target: "{{ (csi_nfs_ha_min_replicas if ha_is_enabled else csi_nfs_non_ha_default_replicas) | int }}"
+
+- name: Apply operator overrides map when provided
+  ansible.builtin.set_fact:
+    ha_component_policies: "{{ ha_component_policies | combine(ha_component_overrides, recursive=True) }}"
+  when: ha_component_overrides is defined
+
+- name: Display resolved HA policy
+  ansible.builtin.debug:
+    msg:
+      - "HA topology enabled: {{ ha_is_enabled }} (servers={{ ha_server_count }})"
+      - "Resolved component policies: {{ ha_component_policies }}"

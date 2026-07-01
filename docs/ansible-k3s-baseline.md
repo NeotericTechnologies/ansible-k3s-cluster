@@ -106,6 +106,52 @@ The `ansible/requirements.yml` documents the `kubernetes.core` and `community.ku
 - Avoid introducing duplicate hard-coded versions in role defaults or playbook command lines.
 - Use inventory-scoped overrides when one environment needs different versions.
 
+## HA Policy Variable Reference
+
+Topology-aware HA targets are defined alongside corresponding component versions in `ansible/group_vars/all.yml` and can be overridden in inventory-scoped `group_vars/all.yml`.
+
+| Component | Version Variable | HA Target Variable | Non-HA Default Variable |
+|-----------|------------------|--------------------|-------------------------|
+| k3s control-plane | `k3s_version` | `k3s_server_ha_min_replicas` | `k3s_server_non_ha_default_replicas` |
+| kube-vip | `kube_vip_version` | `kube_vip_ha_min_replicas` | `kube_vip_non_ha_default_replicas` |
+| cert-manager | `cert_manager_version` | `cert_manager_ha_min_replicas` | `cert_manager_non_ha_default_replicas` |
+| multus | `multus_version` | `multus_ha_min_replicas` | `multus_non_ha_default_replicas` |
+| Rancher | `rancher_version` | `rancher_ha_min_replicas` | `rancher_non_ha_default_replicas` |
+| rancher-monitoring | `rancher_monitoring_version` | `rancher_monitoring_ha_min_replicas` | `rancher_monitoring_non_ha_default_replicas` |
+| Traefik | n/a (k3s managed) | `traefik_ha_min_replicas` | `traefik_non_ha_default_replicas` |
+| Synology CSI | `synology_csi_version` | `synology_csi_ha_min_replicas` | `synology_csi_non_ha_default_replicas` |
+| csi-driver-nfs | `csi_nfs_version` | `csi_nfs_ha_min_replicas` | `csi_nfs_non_ha_default_replicas` |
+
+## Explicit HA Expectation Matrix
+
+| Component | Topology Trigger | HA Expectation |
+|-----------|------------------|----------------|
+| k3s control-plane service | `k3s_servers` count >= 3 | At least 3 ready control-plane nodes |
+| kube-vip | `k3s_servers` count >= 3 and `kube_vip_enabled=true` | At least 2 available kube-vip pods |
+| cert-manager | `cert_manager_enabled=true` in HA topology | At least configured HA target replicas |
+| multus | `multus_enabled=true` in HA topology | At least configured HA target replicas |
+| Traefik | `traefik_enabled=true` in HA topology | At least 2 available replicas |
+| Rancher | `rancher_enabled=true` in HA topology | At least configured HA target replicas |
+| rancher-monitoring | `rancher_monitoring_enabled=true` in HA topology | At least configured HA target replicas |
+| Synology CSI | `synology_csi_enabled=true` in HA topology | At least configured HA target replicas |
+
+## Critical Subset Validation Procedure
+
+Critical subset used for resilience validation:
+
+- `k3s-control-plane`
+- `kube-vip`
+- `traefik`
+
+Validation workflow:
+
+1. Ensure HA topology (`k3s_servers` count >= 3).
+2. Run `tests/ansible/smoke/ha-disruption-test.yml`.
+3. Use external probes from `critical_component_probes`.
+4. Execute probe loop for the configured disruption window (default 10 minutes).
+5. Calculate availability per component as successful requests / total requests.
+6. Fail when any critical subset component falls below `ha_probe_min_availability_percent` (default 99.0).
+
 ## Explicit Non-Goals
 
 This baseline intentionally does NOT include:

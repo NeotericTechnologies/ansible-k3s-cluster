@@ -12,9 +12,9 @@
 
 **Purpose**: Establish shared variable scaffolding and documentation anchors for HA policy work.
 
-- [ ] T001 Create HA policy variable section adjacent to component version variables in ansible/group_vars/all.yml
-- [ ] T002 [P] Mirror HA policy variable section for test inventory in ansible/inventories/test-cluster/group_vars/all.yml
-- [ ] T003 [P] Add HA policy variable reference table in docs/ansible-k3s-baseline.md
+- [X] T001 Create HA policy variable section adjacent to component version variables in ansible/group_vars/all.yml
+- [X] T002 [P] Mirror HA policy variable section for test inventory in ansible/inventories/test-cluster/group_vars/all.yml
+- [X] T003 [P] Add HA policy variable reference table in docs/ansible-k3s-baseline.md
 
 ---
 
@@ -24,20 +24,20 @@
 
 **⚠️ CRITICAL**: No user story implementation begins until this phase is complete.
 
-- [ ] T004 Add inventory-driven topology classification (`is_ha` from `k3s_servers` count) pre-task block in ansible/playbooks/cluster-core.yml
-- [ ] T005 [P] Add shared topology classification pre-task block in ansible/playbooks/cluster-addons.yml
-- [ ] T006 [P] Add shared topology classification pre-task block in ansible/playbooks/scale-nodes.yml
-- [ ] T007 [P] Add shared topology classification pre-task block in ansible/playbooks/upgrade-k3s.yml
-- [ ] T008 Create reusable HA policy resolution tasks with override precedence in ansible/roles/k3s-common/tasks/resolve-ha-policy.yml
-- [ ] T009 Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/cluster-core.yml
-- [ ] T010 [P] Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/cluster-addons.yml
-- [ ] T011 [P] Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/scale-nodes.yml
-- [ ] T012 [P] Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/upgrade-k3s.yml
-- [ ] T013 Implement hard-fail validation reporter for enabled components in ansible/roles/k3s-common/tasks/validate-ha-targets.yml
-- [ ] T014 Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/cluster-core.yml
-- [ ] T015 [P] Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/cluster-addons.yml
-- [ ] T016 [P] Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/scale-nodes.yml
-- [ ] T017 [P] Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/upgrade-k3s.yml
+- [X] T004 Add inventory-driven topology classification (`is_ha` from `k3s_servers` count) pre-task block in ansible/playbooks/cluster-core.yml
+- [X] T005 [P] Add shared topology classification pre-task block in ansible/playbooks/cluster-addons.yml
+- [X] T006 [P] Add shared topology classification pre-task block in ansible/playbooks/scale-nodes.yml
+- [X] T007 [P] Add shared topology classification pre-task block in ansible/playbooks/upgrade-k3s.yml
+- [X] T008 Create reusable HA policy resolution tasks with override precedence in ansible/roles/k3s-common/tasks/resolve-ha-policy.yml
+- [X] T009 Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/cluster-core.yml
+- [X] T010 [P] Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/cluster-addons.yml
+- [X] T011 [P] Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/scale-nodes.yml
+- [X] T012 [P] Wire reusable HA policy resolution include into lifecycle playbooks in ansible/playbooks/upgrade-k3s.yml
+- [X] T013 Implement hard-fail validation reporter for enabled components in ansible/roles/k3s-common/tasks/validate-ha-targets.yml
+- [X] T014 Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/cluster-core.yml
+- [X] T015 [P] Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/cluster-addons.yml
+- [X] T016 [P] Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/scale-nodes.yml
+- [X] T017 [P] Attach hard-fail validation reporter to lifecycle completion stages in ansible/playbooks/upgrade-k3s.yml
 
 **Checkpoint**: Foundation ready - user story implementation can proceed.
 
@@ -51,21 +51,21 @@
 
 ### Tests for User Story 1
 
-- [ ] T018 [P] [US1] Add HA convergence smoke scenario for core and addons in tests/ansible/smoke/smoke.yml
-- [ ] T019 [P] [US1] Add component-target verification assertions for HA inventory in tests/ansible/smoke/idempotence-test.yml
+- [X] T018 [P] [US1] Add HA convergence smoke scenario for core and addons in tests/ansible/smoke/smoke.yml
+- [X] T019 [P] [US1] Add component-target verification assertions for HA inventory in tests/ansible/smoke/idempotence-test.yml
 
 ### Implementation for User Story 1
 
-- [ ] T020 [P] [US1] Define component-specific HA minimum targets for core components near version variables in ansible/group_vars/all.yml
-- [ ] T021 [US1] Define component-specific HA minimum targets for addon components near version variables in ansible/group_vars/all.yml
-- [ ] T022 [US1] Enforce HA targets for k3s control-plane service and kube-vip in ansible/playbooks/cluster-core.yml
-- [ ] T023 [US1] Enforce HA targets for cert-manager, multus, traefik, rancher, rancher-monitoring, and synology-csi in ansible/playbooks/cluster-addons.yml
-- [ ] T024 [US1] Implement component-level post-run state collection for enabled components in ansible/roles/k3s-common/tasks/collect-ha-observations.yml
-- [ ] T025 [US1] Integrate HA observation collection with hard-fail validator in ansible/roles/k3s-common/tasks/validate-ha-targets.yml
-- [ ] T043 [US1] Encode executable critical-component subset variables for resilience checks in ansible/group_vars/all.yml and ansible/inventories/test-cluster/group_vars/all.yml
-- [ ] T044 [US1] Add HA disruption resilience smoke playbook for the critical subset in tests/ansible/smoke/ha-disruption-test.yml
-- [ ] T045 [US1] Implement SC-003 availability calculation and threshold assertions in tests/ansible/smoke/ha-disruption-test.yml
-- [ ] T046 [US1] Add lifecycle task wiring to execute critical-subset resilience validation in ansible/playbooks/cluster-core.yml and ansible/playbooks/cluster-addons.yml
+- [X] T020 [P] [US1] Define component-specific HA minimum targets for core components near version variables in ansible/group_vars/all.yml
+- [X] T021 [US1] Define component-specific HA minimum targets for addon components near version variables in ansible/group_vars/all.yml
+- [X] T022 [US1] Enforce HA targets for k3s control-plane service and kube-vip in ansible/playbooks/cluster-core.yml
+- [X] T023 [US1] Enforce HA targets for cert-manager, multus, traefik, rancher, rancher-monitoring, and synology-csi in ansible/playbooks/cluster-addons.yml
+- [X] T024 [US1] Implement component-level post-run state collection for enabled components in ansible/roles/k3s-common/tasks/collect-ha-observations.yml
+- [X] T025 [US1] Integrate HA observation collection with hard-fail validator in ansible/roles/k3s-common/tasks/validate-ha-targets.yml
+- [X] T043 [US1] Encode executable critical-component subset variables for resilience checks in ansible/group_vars/all.yml and ansible/inventories/test-cluster/group_vars/all.yml
+- [X] T044 [US1] Add HA disruption resilience smoke playbook for the critical subset in tests/ansible/smoke/ha-disruption-test.yml
+- [X] T045 [US1] Implement SC-003 availability calculation and threshold assertions in tests/ansible/smoke/ha-disruption-test.yml
+- [X] T046 [US1] Add lifecycle task wiring to execute critical-subset resilience validation in ansible/playbooks/cluster-core.yml and ansible/playbooks/cluster-addons.yml
 
 **Checkpoint**: User Story 1 is independently functional and testable as MVP.
 
@@ -79,15 +79,15 @@
 
 ### Tests for User Story 2
 
-- [ ] T026 [P] [US2] Add non-HA baseline preservation smoke scenario in tests/ansible/smoke/smoke.yml
-- [ ] T027 [P] [US2] Add override precedence validation scenario in tests/ansible/smoke/scale-test.yml
+- [X] T026 [P] [US2] Add non-HA baseline preservation smoke scenario in tests/ansible/smoke/smoke.yml
+- [X] T027 [P] [US2] Add override precedence validation scenario in tests/ansible/smoke/scale-test.yml
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Implement non-HA branch defaults and bypass logic in ansible/roles/k3s-common/tasks/resolve-ha-policy.yml
-- [ ] T029 [US2] Implement operator override precedence handling in ansible/roles/k3s-common/tasks/resolve-ha-policy.yml
-- [ ] T030 [US2] Ensure non-HA preservation during node scale operations in ansible/playbooks/scale-nodes.yml
-- [ ] T031 [US2] Ensure non-HA preservation during upgrade operations in ansible/playbooks/upgrade-k3s.yml
+- [X] T028 [US2] Implement non-HA branch defaults and bypass logic in ansible/roles/k3s-common/tasks/resolve-ha-policy.yml
+- [X] T029 [US2] Implement operator override precedence handling in ansible/roles/k3s-common/tasks/resolve-ha-policy.yml
+- [X] T030 [US2] Ensure non-HA preservation during node scale operations in ansible/playbooks/scale-nodes.yml
+- [X] T031 [US2] Ensure non-HA preservation during upgrade operations in ansible/playbooks/upgrade-k3s.yml
 
 **Checkpoint**: User Story 2 works independently without regression to US1 behavior.
 
@@ -101,14 +101,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T032 [P] [US3] Add documentation traceability check list for all managed components in specs/003-ha-component-deployment/quickstart.md
+- [X] T032 [P] [US3] Add documentation traceability check list for all managed components in specs/003-ha-component-deployment/quickstart.md
 
 ### Implementation for User Story 3
 
-- [ ] T033 [US3] Publish per-component HA expectation matrix and topology triggers in docs/ansible-k3s-baseline.md
-- [ ] T034 [US3] Document critical-component subset validation procedure in docs/ansible-k3s-baseline.md
-- [ ] T035 [US3] Document same-scope rule for version and HA target variables in docs/ansible-structure.md
-- [ ] T036 [US3] Add maintainer update workflow for new components and HA target variables in docs/ansible-structure.md
+- [X] T033 [US3] Publish per-component HA expectation matrix and topology triggers in docs/ansible-k3s-baseline.md
+- [X] T034 [US3] Document critical-component subset validation procedure in docs/ansible-k3s-baseline.md
+- [X] T035 [US3] Document same-scope rule for version and HA target variables in docs/ansible-structure.md
+- [X] T036 [US3] Add maintainer update workflow for new components and HA target variables in docs/ansible-structure.md
 
 **Checkpoint**: User Story 3 documentation is independently usable and testable.
 
@@ -119,11 +119,11 @@
 **Purpose**: Final consistency checks across all stories.
 
 - [ ] T037 [P] Run full HA and non-HA quickstart validation flow and record results in specs/003-ha-component-deployment/quickstart.md
-- [ ] T038 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/cluster-core.yml
-- [ ] T039 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/cluster-addons.yml
-- [ ] T040 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/scale-nodes.yml
-- [ ] T041 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/upgrade-k3s.yml
-- [ ] T042 Finalize feature documentation cross-links for plan/research/contracts/tasks in specs/003-ha-component-deployment/plan.md
+- [X] T038 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/cluster-core.yml
+- [X] T039 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/cluster-addons.yml
+- [X] T040 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/scale-nodes.yml
+- [X] T041 [P] Run ansible-lint and address HA-policy-related lint findings in ansible/playbooks/upgrade-k3s.yml
+- [X] T042 Finalize feature documentation cross-links for plan/research/contracts/tasks in specs/003-ha-component-deployment/plan.md
 
 ---
 

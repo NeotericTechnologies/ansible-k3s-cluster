@@ -86,3 +86,48 @@ Run repository quality checks:
 
 Expected outcome:
 - Lint and check-mode pass with no HA policy regressions.
+
+## 8) Documentation Traceability Checklist
+
+Use this checklist to confirm documentation coverage for all managed components:
+
+- [x] `k3s-common` mapped to topology trigger and HA expectation
+- [x] `k3s-server` mapped to topology trigger and HA expectation
+- [x] `k3s-agent` mapped to topology trigger and HA expectation
+- [x] `kube-vip` mapped to topology trigger and HA expectation
+- [x] `cert-manager` mapped to topology trigger and HA expectation
+- [x] `multus` mapped to topology trigger and HA expectation
+- [x] `traefik` mapped to topology trigger and HA expectation
+- [x] `rancher` mapped to topology trigger and HA expectation
+- [x] `rancher-monitoring` mapped to topology trigger and HA expectation
+- [x] `synology-csi` mapped to topology trigger and HA expectation
+
+Coverage references:
+
+| Component | Topology Trigger Coverage | HA Expectation Coverage |
+|-----------|----------------------------|-------------------------|
+| k3s-common | `resolve-ha-policy.yml` topology classification and policy map | `validate-ha-targets.yml` assertions and hard-fail behavior |
+| k3s-server | `k3s_servers` count >= 3 policy trigger | Control-plane minimum target and validation assertions |
+| k3s-agent | Non-HA preservation and lifecycle consistency sections | Scale/upgrade consistency requirements for managed lifecycle |
+| kube-vip | Explicit topology trigger in expectation matrix | Minimum available replicas in HA matrix and validation |
+| cert-manager | Enabled + HA topology trigger in matrix | Minimum available replicas in HA matrix and validation |
+| multus | Enabled + HA topology trigger in matrix | Minimum available replicas in HA matrix and validation |
+| traefik | Enabled + HA topology trigger in matrix | Minimum available replicas in HA matrix and critical subset checks |
+| rancher | Enabled + HA topology trigger in matrix | Minimum available replicas in HA matrix and validation |
+| rancher-monitoring | Enabled + HA topology trigger in matrix | Minimum available replicas in HA matrix and validation |
+| synology-csi | Enabled + HA topology trigger in matrix | Minimum available replicas in HA matrix and validation |
+
+Primary references:
+- `docs/ansible-k3s-baseline.md` (HA expectation matrix and policy variable table)
+- `docs/ansible-structure.md` (same-scope rule and maintainer workflow)
+- `contracts/ha-lifecycle-contracts.md` (topology resolution, enforcement, lifecycle consistency)
+
+## 9) Validation Record
+
+Capture implementation validation evidence here after running the full flow:
+
+- HA inventory run result:
+- Non-HA inventory run result:
+- Scale operation validation result:
+- Upgrade operation validation result:
+- Critical subset disruption test result:

@@ -53,6 +53,34 @@
         timeout: 5
       when: control_plane_vip is defined
 
+    - name: Compute topology classification for smoke validation
+      ansible.builtin.set_fact:
+        smoke_server_count: "{{ groups['k3s_servers'] | default([]) | length }}"
+        smoke_is_ha: "{{ (groups['k3s_servers'] | default([]) | length) >= 3 }}"
+
+    - name: Verify HA targets are defined for enabled components
+      ansible.builtin.assert:
+        that:
+          - k3s_server_ha_min_replicas | int >= 1
+          - kube_vip_ha_min_replicas | int >= 1
+          - traefik_ha_min_replicas | int >= 1
+        fail_msg: "Required HA target variables are missing or invalid"
+
+    - name: Validate non-HA preservation branch behavior
+      ansible.builtin.assert:
+        that:
+          - k3s_server_non_ha_default_replicas | int >= 1
+          - kube_vip_non_ha_default_replicas | int >= 1
+          - traefik_non_ha_default_replicas | int >= 1
+        fail_msg: "Required non-HA default target variables are missing or invalid"
+
+    - name: Display topology-specific smoke context
+      ansible.builtin.debug:
+        msg:
+          - "Topology server count: {{ smoke_server_count }}"
+          - "HA topology enabled: {{ smoke_is_ha }}"
+          - "Expected traefik target: {{ (traefik_ha_min_replicas if smoke_is_ha else traefik_non_ha_default_replicas) | int }}"
+
     - name: Smoke test summary
       ansible.builtin.debug:
         msg: "Smoke tests completed. Review output above for any failures."
