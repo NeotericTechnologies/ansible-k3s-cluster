@@ -193,12 +193,12 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "specify-cli", git = "https://github.com/github/spec-kit.git?rev=v0.8.11" }]
+requires-dist = [{ name = "specify-cli", git = "https://github.com/github/spec-kit.git?rev=v0.12.2" }]
 
 [[package]]
 name = "specify-cli"
-version = "0.8.11"
-source = { git = "https://github.com/github/spec-kit.git?rev=v0.8.11#5301b34132fd0dfa96767631c3a79fd28ce30d00" }
+version = "0.12.2"
+source = { git = "https://github.com/github/spec-kit.git?rev=v0.12.2#25c1ce48bbef2843159c16c0ba43446f114f5d1f" }
 dependencies = [
     { name = "click" },
     { name = "json5" },
