@@ -48,7 +48,8 @@ cert_manager_dns_provider_credentials:
 ### Optional
 
 ```yaml
-cert_manager_version: "v1.13.3"
+# Set in ansible/group_vars/all.yml as canonical source
+cert_manager_version: "{{ cert_manager_version }}"
 cert_manager_staging_issuer: "letsencrypt-staging"
 cert_manager_production_issuer: "letsencrypt-production"
 ```
@@ -148,4 +149,4 @@ kubectl describe certificate example-tls
 
 - [cert-manager Documentation](https://cert-manager.io/)
 - [DNS-01 Challenge](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)
-- [Feature Specification FR-005, FR-017](../../specs/001-k3s-ansible-baseline/spec.md)
+- [Feature Specification FR-005, FR-017](../../../specs/001-k3s-ansible-baseline/spec.md)

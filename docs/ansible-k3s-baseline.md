@@ -94,11 +94,17 @@ For larger scale requirements, consider:
 
 This project uses [k3s-io/k3s-ansible](https://github.com/k3s-io/k3s-ansible) as an upstream reference (per research decision R-005). Patterns from that project informed the structure of the `k3s-server`, `k3s-agent`, and `k3s-common` roles (host preparation, service installation, token handling). However, this project's roles supersede k3s-ansible directly because:
 
-- Additional integrations are required (kube-vip DaemonSet, cert-manager, multus Helm chart, Rancher, Synology CSI)
+- Additional integrations are required (kube-vip DaemonSet, cert-manager, multus manifest-based deployment, Rancher, Synology CSI)
 - k3s deployment compatibility constraints (no symlinks, no file copies, no path modification) require tighter control
 - The playbook lifecycle (scale, upgrade, add-ons) extends beyond k3s-ansible's scope
 
 The `ansible/requirements.yml` documents the `kubernetes.core` and `community.kubernetes` collections used in place of upstream role dependencies.
+
+## Version Management Policy
+
+- Canonical managed-component versions are defined in `ansible/group_vars/all.yml`.
+- Avoid introducing duplicate hard-coded versions in role defaults or playbook command lines.
+- Use inventory-scoped overrides when one environment needs different versions.
 
 ## Explicit Non-Goals
 

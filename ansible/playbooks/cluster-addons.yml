@@ -44,6 +44,46 @@
           - Traefik: {{ traefik_enabled | default(true) }}
           - Synology CSI: {{ synology_csi_enabled | default(false) }}
 
+    - name: Validate cert-manager version variable when enabled
+      ansible.builtin.assert:
+        that:
+          - cert_manager_version is defined
+          - cert_manager_version | length > 0
+        fail_msg: "cert_manager_version must be defined when cert_manager_enabled=true"
+      when: cert_manager_enabled | default(false)
+
+    - name: Validate multus version variable when enabled
+      ansible.builtin.assert:
+        that:
+          - multus_version is defined
+          - multus_version | length > 0
+        fail_msg: "multus_version must be defined when multus_enabled=true"
+      when: multus_enabled | default(false)
+
+    - name: Validate Rancher version variable when enabled
+      ansible.builtin.assert:
+        that:
+          - rancher_version is defined
+          - rancher_version | length > 0
+        fail_msg: "rancher_version must be defined when rancher_enabled=true"
+      when: rancher_enabled | default(false)
+
+    - name: Validate rancher-monitoring version variable when enabled
+      ansible.builtin.assert:
+        that:
+          - rancher_monitoring_version is defined
+          - rancher_monitoring_version | length > 0
+        fail_msg: "rancher_monitoring_version must be defined when rancher_monitoring_enabled=true"
+      when: rancher_monitoring_enabled | default(false)
+
+    - name: Validate Synology CSI version variable when enabled
+      ansible.builtin.assert:
+        that:
+          - synology_csi_version is defined
+          - synology_csi_version | length > 0
+        fail_msg: "synology_csi_version must be defined when synology_csi_enabled=true"
+      when: synology_csi_enabled | default(false)
+
 - name: Deploy cert-manager
   hosts: k3s_servers[0]
   become: true

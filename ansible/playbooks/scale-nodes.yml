@@ -267,7 +267,7 @@
 
     - name: Test pod scheduling on new workers
       ansible.builtin.command:
-        cmd: kubectl run scaling-test-{{ ansible_facts.date_time.epoch }} --image=busybox:latest --restart=Never --rm -i --command -- echo "Scheduling test successful"
+        cmd: kubectl run scaling-test-{{ ansible_facts.date_time.epoch }} --image={{ smoke_test_image }} --restart=Never --rm -i --command -- echo "Scheduling test successful"
       register: scheduling_test
       changed_when: false
       failed_when: false

@@ -283,7 +283,7 @@
 
     - name: Test cluster functionality
       ansible.builtin.command:
-        cmd: kubectl run upgrade-test-{{ ansible_facts.date_time.epoch }} --image=busybox:latest --restart=Never --rm -i --command -- echo "Cluster functional after upgrade"
+        cmd: kubectl run upgrade-test-{{ ansible_facts.date_time.epoch }} --image={{ smoke_test_image }} --restart=Never --rm -i --command -- echo "Cluster functional after upgrade"
       register: functionality_test
       changed_when: false
       failed_when: false

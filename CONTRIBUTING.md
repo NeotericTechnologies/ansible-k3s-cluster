@@ -50,10 +50,10 @@ When reporting issues, please include:
    # Lint playbooks
    cd ansible/
    ansible-lint playbooks/*.yml roles/*/tasks/*.yml
-   
+
    # Run smoke tests
    ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
-   
+
    # Test idempotence
    ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/idempotence-test.yml
    ```
@@ -62,7 +62,7 @@ When reporting issues, please include:
    ```bash
    git add .
    git commit -m "feat: Add feature description"
-   
+
    # Use conventional commits:
    # feat: New feature
    # fix: Bug fix
@@ -261,6 +261,13 @@ api_token: "my_secret_token_123"
 - Add regression test if possible
 - Document the issue and solution
 - Update troubleshooting guide if relevant
+
+## Cleanup and Version Management Rules
+
+- Treat `ansible/group_vars/all.yml` as the canonical source for managed component versions.
+- Avoid adding new hard-coded version literals in playbooks, templates, or role defaults when a central variable exists.
+- When removing or deprecating repository artifacts, run reference scans across `ansible/`, `docs/`, and `tests/` and update stale references in the same change.
+- Record cleanup rationale and validation evidence in `docs/cleanup-decision-record.md` for cleanup-focused features.
 
 ## Pull Request Template
 

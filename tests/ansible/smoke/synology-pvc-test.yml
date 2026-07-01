@@ -62,7 +62,7 @@
           spec:
             containers:
             - name: writer
-              image: busybox:latest
+              image: "{{ smoke_test_image }}"
               command: ["sh", "-c", "echo 'smoke-test-data' > /data/test.txt && sleep 30"]
               volumeMounts:
               - name: test-vol
@@ -185,7 +185,7 @@
           spec:
             containers:
             - name: writer
-              image: busybox:latest
+              image: "{{ smoke_test_image }}"
               command: ["sh", "-c", "echo 'nfs-subdir-smoke-data' > /data/test.txt && sleep 30"]
               volumeMounts:
               - name: test-vol

@@ -30,7 +30,7 @@ Install and configure k3s worker (agent) nodes that join an existing k3s cluster
 ### Required (from group_vars/all.yml)
 
 ```yaml
-k3s_version: "v1.28.5+k3s1"
+k3s_version: "<managed in ansible/group_vars/all.yml>"
 control_plane_vip: "192.168.1.100"
 api_port: 6443
 ```
@@ -71,4 +71,4 @@ k3s_agent_taints: []
 ## References
 
 - [k3s Documentation](https://docs.k3s.io/)
-- [Feature Specification FR-001](../../specs/001-k3s-ansible-baseline/spec.md)
+- [Feature Specification FR-001](../../../specs/001-k3s-ansible-baseline/spec.md)

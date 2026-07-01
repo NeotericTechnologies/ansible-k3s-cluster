@@ -171,7 +171,7 @@ metadata:
 spec:
   containers:
     - name: app
-      image: my-app:latest
+      image: my-app:1.0.0
 ```
 
 The pod will receive its primary interface from the default CNI (flannel) and a secondary interface (`net1`) attached to the specified VLAN with an IP assigned via the configured IPAM method.

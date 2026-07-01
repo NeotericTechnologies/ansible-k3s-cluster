@@ -1,3 +1,6 @@
+[k3s_cluster:vars]
+smoke_test_image=busybox:1.36.1
+
 # Local Test Inventory
 # Purpose: Inventory for smoke tests against localhost or local VM
 # Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml

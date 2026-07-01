@@ -36,7 +36,7 @@ Install and configure k3s control-plane (server) nodes with embedded etcd high a
 ### Required (from group_vars/all.yml)
 
 ```yaml
-k3s_version: "v1.28.5+k3s1"
+k3s_version: "<managed in ansible/group_vars/all.yml>"
 control_plane_vip: "192.168.1.100"
 api_port: 6443
 ha_mode: "embedded-etcd-ha"  # or "single-node"
@@ -76,4 +76,4 @@ k3s_server_taints: []
 ## References
 
 - [k3s Documentation](https://docs.k3s.io/)
-- [Feature Specification FR-001](../../specs/001-k3s-ansible-baseline/spec.md)
+- [Feature Specification FR-001](../../../specs/001-k3s-ansible-baseline/spec.md)

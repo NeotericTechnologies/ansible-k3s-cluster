@@ -84,5 +84,5 @@ None.
 
 ## References
 
-- [Feature Specification FR-013](../../specs/001-k3s-ansible-baseline/spec.md)
-- [Ansible Structure Documentation](../../docs/ansible-structure.md)
+- [Feature Specification FR-013](../../../specs/001-k3s-ansible-baseline/spec.md)
+- [Ansible Structure Documentation](../../../docs/ansible-structure.md)

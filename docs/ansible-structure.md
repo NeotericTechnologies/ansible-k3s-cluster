@@ -110,6 +110,12 @@ For development or small deployments:
 - Add-on configuration (cert-manager, multus, Rancher, etc.)
 - kube-vip configuration
 
+### Canonical Version Source Policy
+
+- Use `ansible/group_vars/all.yml` as the authoritative version source for managed components (k3s, kube-vip, cert-manager, multus, Rancher, monitoring, Synology CSI).
+- Keep playbooks and role defaults free of duplicate hard-coded version values whenever possible.
+- For environment-specific needs, override versions in inventory-scoped group vars rather than editing role internals.
+
 ### Role-Specific Variables
 - `group_vars/k3s_servers.yml`: Control-plane node configuration
 - `group_vars/k3s_agents.yml`: Worker node configuration
