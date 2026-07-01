@@ -17,10 +17,10 @@
 
 **Purpose**: Prepare cleanup tracking and baseline audit artifacts.
 
-- [ ] T001 Create cleanup working notes in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T002 Create cleanup decision log template in docs/cleanup-decision-record.md
-- [ ] T003 [P] Capture baseline artifact reference scan commands in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T004 [P] Capture baseline workflow validation command matrix in specs/002-repository-cleanup/implementation-notes.md
+- [x] T001 Create cleanup working notes in specs/002-repository-cleanup/implementation-notes.md
+- [x] T002 Create cleanup decision log template in docs/cleanup-decision-record.md
+- [x] T003 [P] Capture baseline artifact reference scan commands in specs/002-repository-cleanup/implementation-notes.md
+- [x] T004 [P] Capture baseline workflow validation command matrix in specs/002-repository-cleanup/implementation-notes.md
 
 ---
 
@@ -30,12 +30,12 @@
 
 **CRITICAL**: No user story implementation begins until this phase is complete.
 
-- [ ] T005 Build repository artifact inventory table in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T006 [P] Build workflow-to-artifact dependency map in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T007 [P] Build documentation topic index with validation status in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T008 Build version source catalog from ansible/group_vars/all.yml in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T009 [P] Build role/playbook version consumer list from ansible/roles and ansible/playbooks in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T010 Define removal safety criteria checklist in specs/002-repository-cleanup/implementation-notes.md
+- [x] T005 Build repository artifact inventory table in specs/002-repository-cleanup/implementation-notes.md
+- [x] T006 [P] Build workflow-to-artifact dependency map in specs/002-repository-cleanup/implementation-notes.md
+- [x] T007 [P] Build documentation topic index with validation status in specs/002-repository-cleanup/implementation-notes.md
+- [x] T008 Build version source catalog from ansible/group_vars/all.yml in specs/002-repository-cleanup/implementation-notes.md
+- [x] T009 [P] Build role/playbook version consumer list from ansible/roles and ansible/playbooks in specs/002-repository-cleanup/implementation-notes.md
+- [x] T010 Define removal safety criteria checklist in specs/002-repository-cleanup/implementation-notes.md
 
 **Checkpoint**: Foundational inventory, dependency mapping, and validation criteria are ready.
 
@@ -49,16 +49,16 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Identify obsolete candidate artifacts and rationale in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T012 [P] [US1] Verify candidate references across ansible/ docs/ tests/ using commands documented in specs/002-repository-cleanup/quickstart.md
-- [ ] T013 [US1] Update docs/cleanup-decision-record.md with remove/update/retain decisions for all candidates
-- [ ] T014 [US1] Remove confirmed obsolete smoke artifact tests/ansible/smoke/dns-provider-switch-test.yml
-- [ ] T015 [US1] Remove or update references to removed artifact in tests/ansible/smoke/smoke.yml
-- [ ] T016 [P] [US1] Remove or update references to removed artifact in docs/ansible-k3s-baseline.md
-- [ ] T017 [P] [US1] Remove or update references to removed artifact in docs/ansible-structure.md
-- [ ] T018 [P] [US1] Remove or update references to removed artifact in README.md
-- [ ] T019 [US1] Validate no stale references to removed artifacts and record evidence in docs/cleanup-decision-record.md
-- [ ] T020 [US1] Run lifecycle playbook syntax checks and record outcomes in docs/cleanup-decision-record.md
+- [x] T011 [US1] Identify obsolete candidate artifacts and rationale in specs/002-repository-cleanup/implementation-notes.md
+- [x] T012 [P] [US1] Verify candidate references across ansible/ docs/ tests/ using commands documented in specs/002-repository-cleanup/quickstart.md
+- [x] T013 [US1] Update docs/cleanup-decision-record.md with remove/update/retain decisions for all candidates
+- [x] T014 [US1] Remove confirmed obsolete smoke artifact tests/ansible/smoke/dns-provider-switch-test.yml
+- [x] T015 [US1] Remove or update references to removed artifact in tests/ansible/smoke/smoke.yml
+- [x] T016 [P] [US1] Remove or update references to removed artifact in docs/ansible-k3s-baseline.md
+- [x] T017 [P] [US1] Remove or update references to removed artifact in docs/ansible-structure.md
+- [x] T018 [P] [US1] Remove or update references to removed artifact in README.md
+- [x] T019 [US1] Validate no stale references to removed artifacts and record evidence in docs/cleanup-decision-record.md
+- [x] T020 [US1] Run lifecycle playbook syntax checks and record outcomes in docs/cleanup-decision-record.md
 
 **Checkpoint**: Obsolete artifacts are removed safely and all supported workflows remain valid.
 
@@ -72,16 +72,16 @@
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Document canonical version-source policy in docs/ansible-structure.md
-- [ ] T022 [P] [US2] Inventory hard-coded version literals in ansible/playbooks and record findings in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T023 [P] [US2] Inventory hard-coded version literals in ansible/roles and record findings in specs/002-repository-cleanup/implementation-notes.md
-- [ ] T024 [US2] Normalize duplicated or conflicting version defaults between ansible/group_vars/all.yml and ansible/roles/*/defaults/main.yml
-- [ ] T025 [US2] Replace hard-coded version references in ansible/playbooks/cluster-addons.yml with variable-driven values
-- [ ] T026 [P] [US2] Replace hard-coded version references in ansible/roles/cert-manager/defaults/main.yml with centralized variable usage
-- [ ] T027 [P] [US2] Replace hard-coded version references in ansible/roles/kube-vip/defaults/main.yml with centralized variable usage
-- [ ] T028 [P] [US2] Replace hard-coded version references in ansible/roles/rancher/defaults/main.yml with centralized variable usage
-- [ ] T029 [US2] Add version update guidance and override examples in README.md
-- [ ] T030 [US2] Validate centralized version behavior and record evidence in docs/cleanup-decision-record.md
+- [x] T021 [US2] Document canonical version-source policy in docs/ansible-structure.md
+- [x] T022 [P] [US2] Inventory hard-coded version literals in ansible/playbooks and record findings in specs/002-repository-cleanup/implementation-notes.md
+- [x] T023 [P] [US2] Inventory hard-coded version literals in ansible/roles and record findings in specs/002-repository-cleanup/implementation-notes.md
+- [x] T024 [US2] Normalize duplicated or conflicting version defaults between ansible/group_vars/all.yml and ansible/roles/*/defaults/main.yml
+- [x] T025 [US2] Replace hard-coded version references in ansible/playbooks/cluster-addons.yml with variable-driven values
+- [x] T026 [P] [US2] Replace hard-coded version references in ansible/roles/cert-manager/defaults/main.yml with centralized variable usage
+- [x] T027 [P] [US2] Replace hard-coded version references in ansible/roles/kube-vip/defaults/main.yml with centralized variable usage
+- [x] T028 [P] [US2] Replace hard-coded version references in ansible/roles/rancher/defaults/main.yml with centralized variable usage
+- [x] T029 [US2] Add version update guidance and override examples in README.md
+- [x] T030 [US2] Validate centralized version behavior and record evidence in docs/cleanup-decision-record.md
 
 **Checkpoint**: Version configuration is centralized, documented, and maintainable.
 
@@ -95,16 +95,16 @@
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Align repository overview and workflow entrypoints in README.md with current playbooks and roles
-- [ ] T032 [P] [US3] Align lifecycle procedures in docs/ansible-k3s-baseline.md with current supported workflows
-- [ ] T033 [P] [US3] Align structure and conventions in docs/ansible-structure.md with current repository layout
-- [ ] T034 [P] [US3] Review role documentation references and fix stale links in ansible/roles/cert-manager/README.md
-- [ ] T035 [P] [US3] Review role documentation references and fix stale links in ansible/roles/k3s-common/README.md
-- [ ] T036 [P] [US3] Review role documentation references and fix stale links in ansible/roles/k3s-server/README.md
-- [ ] T037 [P] [US3] Review role documentation references and fix stale links in ansible/roles/k3s-agent/README.md
-- [ ] T038 [US3] Update contributor maintenance guidance in CONTRIBUTING.md for cleanup and version-centralization rules
-- [ ] T039 [US3] Execute documentation reference integrity scan and record outcomes in docs/cleanup-decision-record.md
-- [ ] T040 [US3] Execute quickstart validation commands from specs/002-repository-cleanup/quickstart.md and record outcomes in docs/cleanup-decision-record.md
+- [x] T031 [US3] Align repository overview and workflow entrypoints in README.md with current playbooks and roles
+- [x] T032 [P] [US3] Align lifecycle procedures in docs/ansible-k3s-baseline.md with current supported workflows
+- [x] T033 [P] [US3] Align structure and conventions in docs/ansible-structure.md with current repository layout
+- [x] T034 [P] [US3] Review role documentation references and fix stale links in ansible/roles/cert-manager/README.md
+- [x] T035 [P] [US3] Review role documentation references and fix stale links in ansible/roles/k3s-common/README.md
+- [x] T036 [P] [US3] Review role documentation references and fix stale links in ansible/roles/k3s-server/README.md
+- [x] T037 [P] [US3] Review role documentation references and fix stale links in ansible/roles/k3s-agent/README.md
+- [x] T038 [US3] Update contributor maintenance guidance in CONTRIBUTING.md for cleanup and version-centralization rules
+- [x] T039 [US3] Execute documentation reference integrity scan and record outcomes in docs/cleanup-decision-record.md
+- [x] T040 [US3] Execute quickstart validation commands from specs/002-repository-cleanup/quickstart.md and record outcomes in docs/cleanup-decision-record.md
 
 **Checkpoint**: Documentation is accurate, navigable, and validated against current repository state.
 
@@ -114,10 +114,10 @@
 
 **Purpose**: Final consistency, quality checks, and readiness evidence.
 
-- [ ] T041 [P] Run ansible-lint and capture results in docs/cleanup-decision-record.md
-- [ ] T042 [P] Re-run full reference scan for removed/deprecated artifacts and capture results in docs/cleanup-decision-record.md
-- [ ] T043 Ensure docs/cleanup-decision-record.md includes final artifact mapping with rationale and evidence
-- [ ] T044 Update specs/002-repository-cleanup/implementation-notes.md with final completion summary and open follow-ups
+- [x] T041 [P] Run ansible-lint and capture results in docs/cleanup-decision-record.md
+- [x] T042 [P] Re-run full reference scan for removed/deprecated artifacts and capture results in docs/cleanup-decision-record.md
+- [x] T043 Ensure docs/cleanup-decision-record.md includes final artifact mapping with rationale and evidence
+- [x] T044 Update specs/002-repository-cleanup/implementation-notes.md with final completion summary and open follow-ups
 
 ---
 

@@ -69,6 +69,12 @@ traefik_enabled: true
 multus_enabled: true
 ```
 
+Version management policy:
+
+- Treat `ansible/group_vars/all.yml` as the canonical source for managed component versions.
+- Avoid embedding new hard-coded versions in role defaults or playbook commands.
+- Use inventory-specific overrides (for example `ansible/inventories/test-cluster/group_vars/all.yml`) when environment-specific version differences are required.
+
 For multus VLAN networking, define secondary networks:
 
 ```yaml
@@ -245,9 +251,11 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-cor
 ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
 ```
 
-### Multus Tests
+### Focused Feature Smoke Tests
 ```bash
 ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/multus-dhcp-test.yml
+ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/scale-test.yml
+ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-test.yml
 ```
 
 ## Architecture

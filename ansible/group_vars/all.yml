@@ -48,7 +48,7 @@ cert_manager_production_issuer: "letsencrypt-production"
 # See ansible/roles/multus/README.md for full variable reference
 multus_version: "v4.2.4-thick"
 multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based IPAM
-multus_dhcp_daemon_image: "alpine:3"  # Image for DHCP daemon initContainer + main container
+multus_dhcp_daemon_image: "alpine:3.20.3"  # Pinned image for deterministic DHCP daemon behavior
 multus_cni_plugins_version: "v1.9.1"  # CNI plugins release (initContainer downloads tarball)
 multus_vlan_networks: []
 # Example:
@@ -134,3 +134,6 @@ csi_nfs_storage_classes:
     mount_options:
       - hard
       - nfsvers=4.1
+
+# Shared smoke/functional test image used in playbook runtime checks
+smoke_test_image: "busybox:1.36.1"

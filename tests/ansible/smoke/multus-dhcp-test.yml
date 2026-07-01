@@ -205,7 +205,7 @@
           spec:
             containers:
               - name: test
-                image: busybox:stable
+                image: "{{ smoke_test_image }}"
                 command: ["sleep", "300"]
                 resources:
                   requests:

@@ -50,7 +50,7 @@
     - name: Parse cluster health
       ansible.builtin.set_fact:
         nodes_data: "{{ cluster_health.stdout | from_json }}"
-        
+
     - name: Count Ready nodes
       ansible.builtin.set_fact:
         ready_nodes: "{{ nodes_data.items | selectattr('status.conditions', 'defined') | selectattr('status.conditions', 'search', 'Ready.*True') | list | length }}"
@@ -178,7 +178,7 @@
 
     - name: Test pod scheduling
       ansible.builtin.command:
-        cmd: kubectl run upgrade-smoke-{{ ansible_date_time.epoch }} --image=busybox:latest --restart=Never --rm -i --command -- echo "Upgrade test successful"
+        cmd: kubectl run upgrade-smoke-{{ ansible_date_time.epoch }} --image={{ smoke_test_image }} --restart=Never --rm -i --command -- echo "Upgrade test successful"
       register: scheduling_test
       changed_when: false
       failed_when: false

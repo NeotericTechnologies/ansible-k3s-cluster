@@ -137,7 +137,7 @@
 
     - name: Test pod scheduling
       ansible.builtin.command:
-        cmd: kubectl run scale-smoke-test --image=busybox:latest --restart=Never --rm -i --command -- echo "Scale test successful"
+        cmd: kubectl run scale-smoke-test --image={{ smoke_test_image }} --restart=Never --rm -i --command -- echo "Scale test successful"
       register: pod_test
       changed_when: false
       failed_when: false

@@ -120,4 +120,4 @@ This role has been updated to support kube-vip v1.1.2, which includes several br
 
 - [kube-vip Documentation](https://kube-vip.io/)
 - [kube-vip v1.1.2 Release Notes](https://github.com/kube-vip/kube-vip/releases/tag/v1.1.2)
-- [Feature Specification FR-011, FR-012](../../specs/001-k3s-ansible-baseline/spec.md)
+- [Feature Specification FR-011, FR-012](../../../specs/001-k3s-ansible-baseline/spec.md)
