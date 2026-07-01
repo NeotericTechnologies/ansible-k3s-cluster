@@ -57,11 +57,15 @@
 ### Implementation for User Story 1
 
 - [ ] T020 [P] [US1] Define component-specific HA minimum targets for core components near version variables in ansible/group_vars/all.yml
-- [ ] T021 [P] [US1] Define component-specific HA minimum targets for addon components near version variables in ansible/group_vars/all.yml
+- [ ] T021 [US1] Define component-specific HA minimum targets for addon components near version variables in ansible/group_vars/all.yml
 - [ ] T022 [US1] Enforce HA targets for k3s control-plane service and kube-vip in ansible/playbooks/cluster-core.yml
 - [ ] T023 [US1] Enforce HA targets for cert-manager, multus, traefik, rancher, rancher-monitoring, and synology-csi in ansible/playbooks/cluster-addons.yml
 - [ ] T024 [US1] Implement component-level post-run state collection for enabled components in ansible/roles/k3s-common/tasks/collect-ha-observations.yml
 - [ ] T025 [US1] Integrate HA observation collection with hard-fail validator in ansible/roles/k3s-common/tasks/validate-ha-targets.yml
+- [ ] T043 [US1] Encode executable critical-component subset variables for resilience checks in ansible/group_vars/all.yml and ansible/inventories/test-cluster/group_vars/all.yml
+- [ ] T044 [US1] Add HA disruption resilience smoke playbook for the critical subset in tests/ansible/smoke/ha-disruption-test.yml
+- [ ] T045 [US1] Implement SC-003 availability calculation and threshold assertions in tests/ansible/smoke/ha-disruption-test.yml
+- [ ] T046 [US1] Add lifecycle task wiring to execute critical-subset resilience validation in ansible/playbooks/cluster-core.yml and ansible/playbooks/cluster-addons.yml
 
 **Checkpoint**: User Story 1 is independently functional and testable as MVP.
 
@@ -156,7 +160,7 @@
 ### User Story 1
 
 - Run T018 and T019 in parallel (different test files).
-- Run T020 and T021 in parallel (same file but separate sections can be batched carefully).
+- Run T020 first, then T021 (same file and intentionally sequenced to reduce edit contention).
 
 ### User Story 2
 

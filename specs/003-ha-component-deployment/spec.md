@@ -88,6 +88,7 @@ As a maintainer, I want clear documentation of HA behavior and minimum replica e
 - **FR-012**: Component-specific minimum HA targets MUST be managed in the same top-level configuration location as the corresponding component version definitions.
 - **FR-013**: The specification MUST define an explicit critical-component subset used for resilience and availability validation scenarios.
 - **FR-014**: The critical-component subset for resilience validation consists of k3s control plane server service, kube-vip, and Traefik.
+- **FR-015**: The system MUST execute resilience validation against the critical-component subset using the SC-003 measurement protocol and fail when any listed component misses the threshold.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -103,7 +104,7 @@ As a maintainer, I want clear documentation of HA behavior and minimum replica e
 
 - **SC-001**: 100% of in-scope components in HA clusters meet their documented availability expectations after provisioning completes.
 - **SC-002**: In validation runs covering both HA and non-HA inventories, 100% of components apply the correct topology-specific availability behavior and meet their documented component-specific minimum HA targets.
-- **SC-003**: During simulated single-node disruption in an HA cluster, all components in the explicit critical-component subset remain available for at least 99% of requests over the test window.
+- **SC-003**: During a 10-minute simulated single-server disruption in an HA cluster, each component in the explicit critical-component subset MUST maintain >=99.0% availability, measured as successful requests divided by total requests from an external probe source issuing at least 1 request per second per component.
 - **SC-004**: At least 90% of maintainers reviewing component configuration changes report that HA expectations are clear and testable using repository documentation alone.
 
 ## Assumptions

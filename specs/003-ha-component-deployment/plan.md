@@ -12,12 +12,6 @@ Apply topology-aware HA behavior for all repository-managed core and addon compo
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
-
 **Language/Version**: Ansible Core 2.15+ (YAML playbooks and Jinja2 templates)
 
 **Primary Dependencies**: Ansible roles/playbooks under `ansible/playbooks` and `ansible/roles`, `kubernetes.core` modules, Helm-managed addons where already used
@@ -31,6 +25,8 @@ Apply topology-aware HA behavior for all repository-managed core and addon compo
 **Project Type**: Infrastructure-as-code automation repository (Ansible)
 
 **Performance Goals**: In HA topology, 100% of enabled in-scope components meet documented HA minimum targets; critical subset availability >=99% during single-node disruption window
+
+**Disruption Measurement**: SC-003 uses a 10-minute single-server disruption test window with >=1 external probe request/second/component; availability is computed as successful requests / total requests per critical component and must be >=99.0%
 
 **Constraints**: Preserve non-HA defaults for <3 server clusters, preserve explicit operator overrides, fail run on HA target violations, and keep HA target variables at same top-level scope as corresponding component version variables
 
@@ -76,13 +72,6 @@ specs/003-ha-component-deployment/
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
-
 ```text
 ansible/
 ├── playbooks/
