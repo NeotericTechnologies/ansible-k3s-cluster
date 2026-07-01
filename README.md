@@ -149,17 +149,43 @@ ansible/
 
 ## Usage
 
+### ssh
+
+```bash
+ssh-agent bash
+ssh-add <path to your private key here>
+```
+
+**Example:**
+
+> [!NOTE]
+> The project level `.ssh` is an ignored folder.
+
+```bash
+ssh-agent bash
+ssh-add ./.ssh/Private\ SSH\ Key\ -\ Neoteric\ -\ wade.openssh
+```
+
 ### Provision Core Cluster
 
 ```bash
-ansible-playbook -i inventories/production ansible/playbooks/cluster-core.yml
+ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-core.yml
+```
+
+```bash
+ansible-playbook -i ansible/inventories/test-cluster ansible/playbooks/cluster-core.yml
 ```
 
 ### Deploy Add-ons
 
 ```bash
-ansible-playbook -i inventories/production ansible/playbooks/cluster-addons.yml
+ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-addons.yml
 ```
+
+```bash
+ansible-playbook -i ansible/inventories/test-cluster ansible/playbooks/cluster-addons.yml
+```
+
 
 ### Update Configuration
 
@@ -167,10 +193,10 @@ Modify variables in `group_vars/` and re-run playbooks to apply changes:
 
 ```bash
 # Update core cluster settings
-ansible-playbook -i inventories/production ansible/playbooks/cluster-core.yml
+ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-core.yml
 
 # Update add-on configuration
-ansible-playbook -i inventories/production ansible/playbooks/cluster-addons.yml
+ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-addons.yml
 ```
 
 ### Scale Nodes
@@ -178,7 +204,7 @@ ansible-playbook -i inventories/production ansible/playbooks/cluster-addons.yml
 Add new hosts to inventory, then:
 
 ```bash
-ansible-playbook -i inventories/production ansible/playbooks/scale-nodes.yml
+ansible-playbook -i ansible/inventories/production ansible/playbooks/scale-nodes.yml
 ```
 
 ### Upgrade k3s Version
@@ -186,7 +212,7 @@ ansible-playbook -i inventories/production ansible/playbooks/scale-nodes.yml
 Update `k3s_version` in `group_vars/all.yml`, then:
 
 ```bash
-ansible-playbook -i inventories/production ansible/playbooks/upgrade-k3s.yml
+ansible-playbook -i ansible/inventories/production ansible/playbooks/upgrade-k3s.yml
 ```
 
 ## Documentation
@@ -210,13 +236,18 @@ ansible-lint ansible/playbooks/cluster-addons.yml
 ### Dry-Run (Check Mode)
 
 ```bash
-ansible-playbook -i inventories/production ansible/playbooks/cluster-core.yml --check
+ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-core.yml --check
 ```
 
 ### Smoke Tests
 
 ```bash
 ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
+```
+
+### Multus Tests
+```bash
+ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/multus-dhcp-test.yml
 ```
 
 ## Architecture
@@ -269,8 +300,8 @@ ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.ym
 
 ### Cluster not provisioning
 
-1. Check prerequisites: `ansible-playbook -i inventories/production ansible/playbooks/cluster-core.yml --tags prerequisites`
-2. Verify SSH access: `ansible -i inventories/production all -m ping`
+1. Check prerequisites: `ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-core.yml --tags prerequisites`
+2. Verify SSH access: `ansible -i ansible/inventories/production all -m ping`
 3. Check control-plane VIP: `ping <control_plane_vip>`
 
 ### Control-plane VIP not accessible

@@ -11,7 +11,8 @@
             "extensions": [
                 "github.copilot-chat",
                 "redhat.vscode-yaml",
-                "redhat.ansible"
+                "redhat.ansible",
+                "yzhang.markdown-all-in-one"
             ]
          }
     },
