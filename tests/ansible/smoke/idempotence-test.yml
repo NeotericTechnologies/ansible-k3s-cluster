@@ -1,0 +1,58 @@
+---
+# Idempotence Smoke Test
+# Purpose: Verify that playbooks can be run multiple times without disruptive changes
+# Reference: T042, US2
+
+- name: Idempotence Test - Run 1 (Initial Deployment)
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Test header
+      ansible.builtin.debug:
+        msg: |
+          ===== Idempotence Smoke Test =====
+          This test runs cluster-core.yml and cluster-addons.yml twice
+          to verify clean convergence without disruptive changes.
+          
+          Run 1: Initial deployment (changes expected)
+          Run 2: Idempotent re-run (minimal/no changes expected)
+
+- name: Run 1 - Deploy cluster core
+  import_playbook: ../../../ansible/playbooks/cluster-core.yml
+
+- name: Run 1 - Deploy cluster add-ons
+  import_playbook: ../../../ansible/playbooks/cluster-addons.yml
+
+- name: Idempotence Test - Run 2 (Verify Clean Convergence)
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Run 2 header
+      ansible.builtin.debug:
+        msg: |
+          ===== Idempotence Test - Run 2 =====
+          Re-running playbooks with no variable changes.
+          Expecting minimal or no changes (idempotent behavior).
+
+- name: Run 2 - Re-run cluster core (should be idempotent)
+  import_playbook: ../../../ansible/playbooks/cluster-core.yml
+
+- name: Run 2 - Re-run cluster add-ons (should be idempotent)
+  import_playbook: ../../../ansible/playbooks/cluster-addons.yml
+
+- name: Idempotence Test - Summary
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Test summary
+      ansible.builtin.debug:
+        msg: |
+          ===== Idempotence Test Complete =====
+          ✓ Both playbooks ran successfully twice
+          ✓ Verify task outputs showed minimal changes on Run 2
+          ✓ Cluster remains operational after idempotent re-runs
+          
+          Manual verification:
+          - Check that Run 2 showed mostly "ok" status, not "changed"
+          - Verify no pods were restarted unnecessarily
+          - Confirm cluster health: kubectl get nodes

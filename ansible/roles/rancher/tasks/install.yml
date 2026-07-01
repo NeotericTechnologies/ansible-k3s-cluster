@@ -1,0 +1,50 @@
+---
+# ansible/roles/rancher/tasks/install.yml
+# Purpose: Deploy Rancher via Helm
+# Reference: FR-007
+
+- name: Create cattle-system namespace
+  ansible.builtin.command: >-
+    kubectl create namespace cattle-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: rancher_cattle_ns
+  changed_when: "'created' in rancher_cattle_ns.stdout"
+  failed_when: rancher_cattle_ns.rc != 0 and 'AlreadyExists' not in rancher_cattle_ns.stderr
+
+- name: Generate Rancher Helm values
+  ansible.builtin.template:
+    src: rancher-values.yaml.j2
+    dest: /tmp/rancher-values.yaml
+    mode: '0644'
+
+- name: Install Rancher via Helm
+  ansible.builtin.shell: |
+    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+    helm repo update
+    helm upgrade --install rancher rancher-stable/rancher \
+      --namespace cattle-system \
+      --values /tmp/rancher-values.yaml \
+      --version {{ rancher_version }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: rancher_install
+  changed_when: "'deployed' in rancher_install.stdout or 'upgraded' in rancher_install.stdout"
+
+- name: Clean up temporary values file
+  ansible.builtin.file:
+    path: /tmp/rancher-values.yaml
+    state: absent
+
+- name: Wait for Rancher to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=available deployment rancher
+    -n cattle-system
+    --timeout=600s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: rancher_ready
+  retries: 10
+  delay: 30
+  until: rancher_ready.rc == 0
+  changed_when: false

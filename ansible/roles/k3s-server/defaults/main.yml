@@ -1,0 +1,9 @@
+---
+# ansible/roles/k3s-server/defaults/main.yml
+# Purpose: Default variables for k3s-server role
+# Reference: Configured in group_vars/k3s_servers.yml
+
+# These defaults can be overridden in group_vars or inventory
+k3s_server_extra_args: ""
+k3s_server_labels: {}
+k3s_server_taints: []

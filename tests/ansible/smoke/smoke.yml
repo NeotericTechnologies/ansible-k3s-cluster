@@ -1,0 +1,58 @@
+---
+# Smoke Test Playbook
+# Purpose: Basic smoke tests for k3s cluster validation
+# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
+
+- name: k3s Cluster Smoke Tests
+  hosts: k3s_servers[0]
+  gather_facts: true
+  tasks:
+    - name: Check if k3s is installed
+      ansible.builtin.command: k3s --version
+      register: k3s_version_output
+      changed_when: false
+      failed_when: false
+
+    - name: Report k3s version
+      ansible.builtin.debug:
+        msg: "k3s version: {{ k3s_version_output.stdout }}"
+      when: k3s_version_output.rc == 0
+
+    - name: Check if k3s service is running
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+      check_mode: true
+      register: k3s_service_status
+
+    - name: Verify kubectl is available
+      ansible.builtin.command: kubectl version --client
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kubectl_version
+      changed_when: false
+      failed_when: false
+
+    - name: Get cluster nodes
+      ansible.builtin.command: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kubectl_nodes
+      changed_when: false
+      failed_when: false
+
+    - name: Display cluster nodes
+      ansible.builtin.debug:
+        var: kubectl_nodes.stdout_lines
+      when: kubectl_nodes.rc == 0
+
+    - name: Check control-plane VIP reachability
+      ansible.builtin.wait_for:
+        host: "{{ control_plane_vip }}"
+        port: "{{ api_port }}"
+        timeout: 5
+      when: control_plane_vip is defined
+
+    - name: Smoke test summary
+      ansible.builtin.debug:
+        msg: "Smoke tests completed. Review output above for any failures."

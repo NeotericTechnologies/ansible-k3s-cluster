@@ -1,0 +1,11 @@
+---
+# ansible/roles/traefik/tasks/main.yml
+# Purpose: Configure Traefik ingress controller
+# Reference: FR-009
+
+- name: Include Traefik configuration tasks
+  ansible.builtin.include_tasks: configure.yml
+  when: traefik_enabled | default(true)
+  tags:
+    - configure
+    - traefik

@@ -1,0 +1,105 @@
+---
+# cluster-core.yml
+# Purpose: Provision and manage k3s core cluster infrastructure
+#
+# This playbook handles:
+# - Host prerequisite validation
+# - k3s server (control-plane) installation with embedded etcd HA
+# - k3s agent (worker) node installation
+# - kube-vip VIP and service load balancer configuration
+#
+# Usage:
+#   ansible-playbook -i inventories/production ansible/playbooks/cluster-core.yml
+#
+# Reference: FR-001, US1
+
+- name: Validate host prerequisites for all nodes
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  roles:
+    - role: k3s-common
+      tags: ['prerequisites', 'validation']
+
+- name: Deploy k3s control-plane (server) nodes
+  hosts: k3s_servers
+  become: true
+  gather_facts: false
+  serial: 1  # Deploy control-plane nodes one at a time for stability
+  roles:
+    - role: k3s-server
+      tags: ['k3s-server', 'control-plane']
+
+- name: Deploy kube-vip for control-plane VIP and service load balancing
+  hosts: k3s_servers
+  become: true
+  gather_facts: false
+  roles:
+    - role: kube-vip
+      tags: ['kube-vip', 'vip']
+
+- name: Deploy k3s worker (agent) nodes
+  hosts: k3s_agents
+  become: true
+  gather_facts: false
+  roles:
+    - role: k3s-agent
+      tags: ['k3s-agent', 'workers']
+      when: groups['k3s_agents'] | default([]) | length > 0
+
+- name: Validate cluster health
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Wait for all nodes to be ready
+      ansible.builtin.command: >-
+        kubectl wait --for=condition=ready node --all --timeout=300s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: nodes_ready
+      retries: 5
+      delay: 10
+      until: nodes_ready.rc == 0
+      changed_when: false
+
+    - name: Get cluster nodes
+      ansible.builtin.command: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cluster_nodes
+      changed_when: false
+
+    - name: Display cluster status
+      ansible.builtin.debug:
+        msg: |
+          ===== k3s Cluster Status =====
+          {{ cluster_nodes.stdout }}
+
+          Control-plane VIP: {{ control_plane_vip }}:{{ api_port }}
+          Cluster CIDR: {{ cluster_cidr }}
+          Service CIDR: {{ service_cidr }}
+
+    - name: Verify control-plane VIP is accessible
+      ansible.builtin.command: >-
+        kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
+        --server https://{{ control_plane_vip }}:{{ api_port }}
+        get --raw /healthz
+      register: vip_health
+      retries: 3
+      delay: 5
+      until: vip_health.rc == 0
+      changed_when: false
+
+    - name: Cluster deployment summary
+      ansible.builtin.debug:
+        msg: |
+          ===== Cluster Deployment Complete =====
+          ✓ k3s core cluster is operational
+          ✓ Control-plane VIP accessible at https://{{ control_plane_vip }}:{{ api_port }}
+          ✓ All nodes are ready
+
+          Next steps:
+          - Run cluster-addons.yml to deploy platform add-ons
+          - Configure kubectl: export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          - Access cluster: kubectl get nodes

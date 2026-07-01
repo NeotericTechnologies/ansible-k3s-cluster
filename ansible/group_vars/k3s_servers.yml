@@ -1,0 +1,27 @@
+---
+# group_vars/k3s_servers.yml
+# Purpose: Variables specific to k3s control-plane (server) nodes
+# Reference: specs/001-k3s-ansible-baseline/data-model.md
+
+# k3s server-specific flags
+k3s_server_enabled: true
+
+# Control-plane taints (default: none, allowing workloads on control-plane)
+# For dedicated control-plane nodes, uncomment:
+# k3s_server_taints:
+#   - "CriticalAddonsOnly=true:NoExecute"
+
+# Node labels for control-plane
+k3s_server_labels:
+  node-role.kubernetes.io/control-plane: "true"
+
+# k3s installation mode for servers
+k3s_server_init: "{{ 'server' if ha_mode == 'embedded-etcd-ha' else 'server' }}"
+
+# Additional k3s server arguments
+k3s_server_extra_args: >-
+  --disable traefik
+  --disable servicelb
+  --flannel-backend=vxlan
+  --write-kubeconfig-mode=644
+  --tls-san={{ control_plane_vip }}

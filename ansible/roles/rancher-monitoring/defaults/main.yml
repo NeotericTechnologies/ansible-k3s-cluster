@@ -1,0 +1,5 @@
+---
+rancher_monitoring_enabled: false
+rancher_monitoring_version: "103.0.3"
+rancher_monitoring_retention: "7d"
+rancher_monitoring_scrape_targets_overrides: {}

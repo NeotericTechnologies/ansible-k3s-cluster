@@ -1,0 +1,136 @@
+---
+# group_vars/all.yml
+# Purpose: Cluster-wide configuration shared by all k3s nodes
+# Reference: specs/001-k3s-ansible-baseline/data-model.md
+
+# Cluster identity
+cluster_name: "k3s-baseline"
+
+# k3s version (pinned for consistent upgrades)
+k3s_version: "v1.28.5+k3s1"
+
+# Cluster networking
+cluster_cidr: "10.42.0.0/16"
+service_cidr: "10.43.0.0/16"
+
+# Control-plane access (VIP managed by kube-vip)
+control_plane_vip: "192.168.1.100"
+api_port: 6443
+
+# HA mode: single-node | embedded-etcd-ha
+ha_mode: "embedded-etcd-ha"
+
+# kube-vip configuration for control-plane VIP and service load balancing
+kube_vip_enabled: true
+kube_vip_version: "v1.1.2"
+kube_vip_cloud_provider_version: "v0.0.12"
+kube_vip_interface: "eth0"
+kube_vip_lb_enable: true
+kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+
+# Add-ons enablement (deployed via cluster-addons.yml)
+cert_manager_enabled: false
+multus_enabled: false
+rancher_enabled: false
+rancher_monitoring_enabled: false
+traefik_enabled: true  # k3s includes Traefik by default, role configures it
+synology_csi_enabled: false
+
+# cert-manager DNS-01 configuration (when enabled)
+cert_manager_version: "v1.13.3"
+cert_manager_email: "admin@example.com"
+cert_manager_dns_provider: "cloudflare"  # Options: cloudflare, route53, etc.
+cert_manager_dns_provider_credentials: {}  # Provider-specific credentials (secret)
+cert_manager_staging_issuer: "letsencrypt-staging"
+cert_manager_production_issuer: "letsencrypt-production"
+
+# multus CNI configuration (when enabled)
+# See ansible/roles/multus/README.md for full variable reference
+multus_version: "v4.2.4-thick"
+multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based IPAM
+multus_dhcp_daemon_image: "alpine:3"  # Image for DHCP daemon initContainer + main container
+multus_cni_plugins_version: "v1.9.1"  # CNI plugins release (initContainer downloads tarball)
+multus_vlan_networks: []
+# Example:
+# multus_vlan_networks:
+#   - name: iot-vlan
+#     # Must match an interface that exists on every target node.
+#     # Using enp6s18 (same NIC as kube_vip_interface) avoids "Link not found" from macvlan.
+#     interface: enp6s18
+#     # Leave vlan_id unset unless the host already has a matching VLAN subinterface (e.g. enp6s18.10).
+#     ipam_type: dhcp          # dhcp (default) | host-local | static
+#
+#   - name: iot-vlan-2
+#     interface: eth0
+#     vlan_id: 50
+#     ipam_type: dhcp          # dhcp (default) | host-local | static
+#
+#   - name: storage-net
+#     interface: eth0
+#     vlan_id: 100
+#     ipam_type: host-local
+#     cidr: 10.100.0.0/24
+#     gateway: 10.100.0.1
+
+
+# Rancher configuration (when enabled)
+rancher_version: "2.8.0"
+rancher_hostname: "rancher.example.com"
+rancher_ingress_class: "traefik"
+rancher_tls_source: "cert-manager"
+
+# rancher-monitoring configuration (when enabled)
+rancher_monitoring_version: "103.0.3"
+rancher_monitoring_retention: "7d"
+
+# Traefik ingress configuration
+traefik_service_type: "LoadBalancer"  # Uses kube-vip for LoadBalancer services
+traefik_entrypoints:
+  - web
+  - websecure
+
+# Synology CSI configuration (when enabled)
+# See ansible/roles/synology-csi/defaults/main.yml for full variable reference
+synology_csi_version: "v1.2.1"
+synology_csi_namespace: "synology-csi"
+synology_csi_endpoint: ""
+synology_csi_port: 8443
+synology_csi_tls_verify: false
+synology_csi_username: ""
+synology_csi_password: ""  # Store in Ansible Vault
+synology_csi_snapshots_enabled: false
+synology_csi_snapshotter_version: "v8.5.0"
+synology_csi_storage_classes:
+  - name: "synology-iscsi-retain"
+    protocol: "iscsi"
+    is_default: true
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    parameters:
+      fsType: "ext4"
+      location: "/volume1"
+  - name: "synology-nfs-retain"
+    protocol: "nfs"
+    is_default: false
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    parameters:
+      location: "/volume1"
+
+# csi-driver-nfs configuration (NFS sub-directory provisioning via kubernetes-csi/csi-driver-nfs)
+# Deploys nfs.csi.k8s.io driver via Helm; creates sub-directories in a pre-existing NFS share per PVC
+# See ansible/roles/synology-csi/defaults/main.yml for full variable reference
+csi_nfs_enabled: false
+csi_nfs_version: "v4.13.2"
+csi_nfs_storage_classes:
+  - name: "nfs-subdir"
+    server: "{{ synology_csi_endpoint }}"
+    share: "/volume1/k8s-nfs"
+    is_default: false
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    sub_dir: "${pv.metadata.name}"
+    on_delete: "retain"
+    mount_options:
+      - hard
+      - nfsvers=4.1

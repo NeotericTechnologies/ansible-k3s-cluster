@@ -1,0 +1,279 @@
+---
+# Scale k3s cluster by adding or removing nodes based on inventory
+#
+# This playbook compares the current cluster state with the inventory
+# to determine which nodes should be added or removed.
+#
+# Prerequisites:
+# - An existing k3s cluster provisioned by cluster-core.yml
+# - Updated inventory reflecting desired cluster state
+# - kubectl access configured on first control-plane node
+#
+# Usage:
+#   ansible-playbook -i inventories/prod/hosts.ini playbooks/scale-nodes.yml
+#
+# Safety:
+# - Control-plane removals preserve etcd quorum (minimum 1, prefer odd numbers)
+# - Worker nodes are drained before removal
+# - Validation checks ensure cluster health after changes
+
+- name: Gather cluster state and inventory facts
+  hosts: k3s_servers[0]
+  gather_facts: true
+  tasks:
+    - name: Get current cluster nodes
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o json
+      register: cluster_nodes_json
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Parse cluster node list
+      ansible.builtin.set_fact:
+        cluster_node_names: "{{ (cluster_nodes_json.stdout | from_json).items | map(attribute='metadata.name') | list }}"
+
+    - name: Get inventory control-plane hostnames
+      ansible.builtin.set_fact:
+        inventory_servers: "{{ groups['k3s_servers'] | default([]) }}"
+
+    - name: Get inventory worker hostnames
+      ansible.builtin.set_fact:
+        inventory_agents: "{{ groups['k3s_agents'] | default([]) }}"
+
+    - name: Combine all inventory nodes
+      ansible.builtin.set_fact:
+        inventory_all_nodes: "{{ inventory_servers + inventory_agents }}"
+
+    - name: Identify nodes to add (in inventory but not in cluster)
+      ansible.builtin.set_fact:
+        nodes_to_add: "{{ inventory_all_nodes | difference(cluster_node_names) }}"
+
+    - name: Identify nodes to remove (in cluster but not in inventory)
+      ansible.builtin.set_fact:
+        nodes_to_remove: "{{ cluster_node_names | difference(inventory_all_nodes) }}"
+
+    - name: Display scaling plan
+      ansible.builtin.debug:
+        msg:
+          - "Current cluster nodes: {{ cluster_node_names | length }}"
+          - "Inventory nodes: {{ inventory_all_nodes | length }}"
+          - "Nodes to add: {{ nodes_to_add }}"
+          - "Nodes to remove: {{ nodes_to_remove }}"
+
+    - name: Store scaling plan for other plays
+      ansible.builtin.set_fact:
+        scaling_plan:
+          nodes_to_add: "{{ nodes_to_add }}"
+          nodes_to_remove: "{{ nodes_to_remove }}"
+      delegate_to: localhost
+      delegate_facts: true
+
+# Add new control-plane nodes
+- name: Add new control-plane nodes
+  hosts: k3s_servers
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Check if this node needs to be added
+      ansible.builtin.set_fact:
+        should_add: "{{ inventory_hostname in hostvars['localhost']['scaling_plan']['nodes_to_add'] }}"
+
+    - name: Run k3s-server role for new control-plane nodes
+      ansible.builtin.include_role:
+        name: k3s-server
+      when: should_add | bool
+      tags: ['k3s-server']
+
+    - name: Wait for new control-plane node to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=300s
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+      when: should_add | bool
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# Add new worker nodes
+- name: Add new worker nodes
+  hosts: k3s_agents
+  gather_facts: true
+  tasks:
+    - name: Check if this node needs to be added
+      ansible.builtin.set_fact:
+        should_add: "{{ inventory_hostname in hostvars['localhost']['scaling_plan']['nodes_to_add'] }}"
+
+    - name: Run k3s-agent role for new worker nodes
+      ansible.builtin.include_role:
+        name: k3s-agent
+      when: should_add | bool
+      tags: ['k3s-agent']
+
+    - name: Wait for new worker node to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout=300s
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+      when: should_add | bool
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# Remove nodes no longer in inventory
+- name: Remove nodes from cluster
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Get nodes to remove
+      ansible.builtin.set_fact:
+        nodes_to_remove: "{{ hostvars['localhost']['scaling_plan']['nodes_to_remove'] }}"
+
+    - name: Check if any control-plane nodes are being removed
+      ansible.builtin.set_fact:
+        removing_servers: "{{ nodes_to_remove | intersect(groups['k3s_servers'] | default([])) }}"
+
+    - name: Get current control-plane node count
+      ansible.builtin.command:
+        cmd: kubectl get nodes -l node-role.kubernetes.io/control-plane=true --no-headers
+      register: current_servers
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Calculate control-plane nodes after removal
+      ansible.builtin.set_fact:
+        servers_after_removal: "{{ (current_servers.stdout_lines | length) - (removing_servers | length) }}"
+
+    - name: Validate etcd quorum will be preserved
+      ansible.builtin.assert:
+        that:
+          - servers_after_removal | int >= 1
+        fail_msg: "Cannot remove control-plane nodes: would leave {{ servers_after_removal }} control-plane nodes. Minimum is 1."
+        success_msg: "Control-plane removal is safe: {{ servers_after_removal }} control-plane nodes will remain."
+      when: removing_servers | length > 0
+
+    - name: Warn about even number of control-plane nodes
+      ansible.builtin.debug:
+        msg: "WARNING: After removal, {{ servers_after_removal }} control-plane nodes will remain (even number). For HA, prefer odd numbers (3, 5, etc)."
+      when:
+        - removing_servers | length > 0
+        - servers_after_removal | int > 1
+        - servers_after_removal | int % 2 == 0
+
+    - name: Drain nodes scheduled for removal
+      ansible.builtin.command:
+        cmd: >
+          kubectl drain {{ item }}
+          --ignore-daemonsets
+          --delete-emptydir-data
+          --force
+          --grace-period=300
+          --timeout=600s
+      loop: "{{ nodes_to_remove }}"
+      when: nodes_to_remove | length > 0
+      register: drain_result
+      failed_when:
+        - drain_result.rc != 0
+        - "'cannot delete' not in drain_result.stderr"
+      changed_when:
+        - drain_result.rc == 0
+        - "'node/{{ item }} cordoned' in drain_result.stdout"
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Delete nodes from cluster
+      ansible.builtin.command:
+        cmd: kubectl delete node {{ item }}
+      loop: "{{ nodes_to_remove }}"
+      when: nodes_to_remove | length > 0
+      register: delete_result
+      failed_when:
+        - delete_result.rc != 0
+        - "'not found' not in delete_result.stderr"
+      changed_when:
+        - delete_result.rc == 0
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Display removal summary
+      ansible.builtin.debug:
+        msg: "Successfully removed {{ nodes_to_remove | length }} node(s) from cluster: {{ nodes_to_remove }}"
+      when: nodes_to_remove | length > 0
+
+# Validate final cluster state
+- name: Validate updated cluster state
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Wait for all nodes to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait --for=condition=Ready nodes --all --timeout=300s
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Get final node list
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o wide
+      register: final_nodes
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Display final cluster state
+      ansible.builtin.debug:
+        msg: "{{ final_nodes.stdout_lines }}"
+
+    - name: Verify inventory matches cluster
+      ansible.builtin.command:
+        cmd: kubectl get nodes -o json
+      register: final_cluster_json
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Parse final node list
+      ansible.builtin.set_fact:
+        final_node_names: "{{ (final_cluster_json.stdout | from_json).items | map(attribute='metadata.name') | list }}"
+
+    - name: Get expected inventory nodes
+      ansible.builtin.set_fact:
+        expected_nodes: "{{ hostvars['localhost']['scaling_plan']['inventory_all_nodes'] }}"
+      delegate_to: localhost
+
+    - name: Check for unexpected nodes
+      ansible.builtin.set_fact:
+        unexpected_nodes: "{{ final_node_names | difference(expected_nodes) }}"
+
+    - name: Check for missing nodes
+      ansible.builtin.set_fact:
+        missing_nodes: "{{ expected_nodes | difference(final_node_names) }}"
+
+    - name: Report validation results
+      ansible.builtin.debug:
+        msg:
+          - "Cluster state validation:"
+          - "  Expected nodes: {{ expected_nodes | length }}"
+          - "  Actual nodes: {{ final_node_names | length }}"
+          - "  Unexpected nodes: {{ unexpected_nodes }}"
+          - "  Missing nodes: {{ missing_nodes }}"
+
+    - name: Validate cluster matches inventory
+      ansible.builtin.assert:
+        that:
+          - unexpected_nodes | length == 0
+          - missing_nodes | length == 0
+        fail_msg: "Cluster state does not match inventory. Check unexpected/missing nodes above."
+        success_msg: "✓ Cluster state matches inventory. Scaling operation complete."
+
+    - name: Test pod scheduling on new workers
+      ansible.builtin.command:
+        cmd: kubectl run scaling-test-{{ ansible_facts.date_time.epoch }} --image=busybox:latest --restart=Never --rm -i --command -- echo "Scheduling test successful"
+      register: scheduling_test
+      changed_when: false
+      failed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+    - name: Display scheduling test result
+      ansible.builtin.debug:
+        msg: "{{ 'Pod scheduling works on updated cluster' if scheduling_test.rc == 0 else 'WARNING: Pod scheduling test failed' }}"

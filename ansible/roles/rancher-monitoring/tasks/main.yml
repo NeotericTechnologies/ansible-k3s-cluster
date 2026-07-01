@@ -1,0 +1,11 @@
+---
+# ansible/roles/rancher-monitoring/tasks/main.yml
+# Purpose: Deploy rancher-monitoring for observability
+# Reference: FR-008
+
+- name: Include rancher-monitoring installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: rancher_monitoring_enabled | default(false)
+  tags:
+    - install
+    - monitoring

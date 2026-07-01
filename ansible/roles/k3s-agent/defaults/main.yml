@@ -1,0 +1,9 @@
+---
+# ansible/roles/k3s-agent/defaults/main.yml
+# Purpose: Default variables for k3s-agent role
+# Reference: Configured in group_vars/k3s_agents.yml
+
+# These defaults can be overridden in group_vars or inventory
+k3s_agent_extra_args: ""
+k3s_agent_labels: {}
+k3s_agent_taints: []

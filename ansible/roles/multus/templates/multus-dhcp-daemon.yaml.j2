@@ -1,0 +1,124 @@
+---
+# Multus DHCP daemon DaemonSet
+# Purpose: Runs the CNI DHCP daemon on each node to proxy DHCP requests from
+# pods using DHCP-based IPAM to the external DHCP server on the VLAN.
+# The dhcp binary is installed by an initContainer that downloads the official
+# containernetworking/plugins release tarball and extracts only the dhcp binary.
+# Reference: https://www.cni.dev/plugins/current/ipam/dhcp/
+# Constraint: No Ansible-time binary installation on nodes (R-016)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: multus-dhcp-daemon
+  namespace: {{ multus_namespace }}
+  labels:
+    app: multus-dhcp-daemon
+    k8s-app: multus-dhcp
+spec:
+  selector:
+    matchLabels:
+      app: multus-dhcp-daemon
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: multus-dhcp-daemon
+        k8s-app: multus-dhcp
+    spec:
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
+      initContainers:
+        - name: install-cni-plugins
+          image: {{ multus_dhcp_daemon_image }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              DESIRED_VERSION="{{ multus_cni_plugins_version }}"
+              VERSION_FILE="/host/cni-bin/.cni-ipam-dhcp-plugin-version"
+              if [ -x /host/cni-bin/dhcp ] && [ -x /host/cni-bin/macvlan ] && [ -f "${VERSION_FILE}" ]; then
+                CURRENT_VERSION=$(cat "${VERSION_FILE}")
+                if [ "${CURRENT_VERSION}" = "${DESIRED_VERSION}" ]; then
+                  echo "dhcp and macvlan binaries already at version ${DESIRED_VERSION}, skipping download"
+                  exit 0
+                fi
+                echo "Upgrading CNI plugins from ${CURRENT_VERSION} to ${DESIRED_VERSION}"
+              fi
+              ARCH=$(uname -m)
+              case "$ARCH" in
+                x86_64)  ARCH="amd64" ;;
+                aarch64) ARCH="arm64" ;;
+              esac
+              URL="https://github.com/containernetworking/plugins/releases/download/${DESIRED_VERSION}/cni-plugins-linux-${ARCH}-${DESIRED_VERSION}.tgz"
+              echo "Downloading CNI plugins from ${URL}"
+              wget -q -O /tmp/cni-plugins.tgz "${URL}"
+              tar xzf /tmp/cni-plugins.tgz -C /tmp ./dhcp ./macvlan
+              cp /tmp/dhcp /host/cni-bin/dhcp
+              cp /tmp/macvlan /host/cni-bin/macvlan
+              chmod 0755 /host/cni-bin/dhcp
+              chmod 0755 /host/cni-bin/macvlan
+              echo "${DESIRED_VERSION}" > "${VERSION_FILE}"
+              rm -f /tmp/cni-plugins.tgz /tmp/dhcp /tmp/macvlan
+              echo "dhcp and macvlan binaries installed successfully (version ${DESIRED_VERSION})"
+          volumeMounts:
+            - name: cni-bin
+              mountPath: /host/cni-bin
+        - name: clean-dhcp-socket
+          image: {{ multus_dhcp_daemon_image }}
+          command: ["/bin/sh", "-c", "rm -f /host/run/cni/dhcp.sock"]
+          volumeMounts:
+            - name: run-cni
+              mountPath: /host/run/cni
+      containers:
+        - name: dhcp-daemon
+          image: {{ multus_dhcp_daemon_image }}
+          command:
+            - /host/cni-bin/dhcp
+            - daemon
+            - -hostprefix
+            - /host
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: cni-bin
+              mountPath: /host/cni-bin
+              readOnly: true
+            - name: run-cni
+              mountPath: /host/run/cni
+            - name: proc
+              mountPath: /host/proc
+            - name: netns
+              mountPath: /host/var/run/netns
+              mountPropagation: HostToContainer
+      volumes:
+        - name: cni-bin
+          hostPath:
+            path: {{ multus_cni_bin_dir }}
+            type: Directory
+        - name: run-cni
+          hostPath:
+            path: /run/cni
+            type: DirectoryOrCreate
+        - name: proc
+          hostPath:
+            path: /proc
+            type: Directory
+        - name: netns
+          hostPath:
+            path: /run/netns
+            type: DirectoryOrCreate

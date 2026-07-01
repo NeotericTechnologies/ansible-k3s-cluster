@@ -1,0 +1,6 @@
+---
+traefik_enabled: true
+traefik_service_type: "LoadBalancer"
+traefik_entrypoints:
+  - web
+  - websecure

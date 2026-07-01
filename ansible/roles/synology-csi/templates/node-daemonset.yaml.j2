@@ -1,0 +1,86 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: synology-csi-node
+  namespace: {{ synology_csi_namespace }}
+  labels:
+    app.kubernetes.io/name: synology-csi-node
+    app.kubernetes.io/managed-by: ansible
+spec:
+  selector:
+    matchLabels:
+      app: synology-csi-node
+  template:
+    metadata:
+      labels:
+        app: synology-csi-node
+    spec:
+      serviceAccountName: csi-node-sa
+      hostNetwork: true
+      containers:
+        - name: csi-driver
+          image: {{ synology_csi_node_driver_image }}
+          args:
+            - --nodeid=$(KUBE_NODE_NAME)
+            - --endpoint=unix:///csi/csi.sock
+            - --client-info=/etc/synology/client-info.yml
+            - --log-level=info
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: kubelet-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: Bidirectional
+            - name: plugin-dir
+              mountPath: /csi
+            - name: client-info
+              mountPath: /etc/synology
+              readOnly: true
+            - name: host-dev
+              mountPath: /dev
+            - name: host-run
+              mountPath: /run/udev
+            - name: iscsi-lib
+              mountPath: /etc/iscsi
+        - name: csi-node-driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.3
+          args:
+            - --csi-address=/csi/csi.sock
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.san.synology.com/csi.sock
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+      volumes:
+        - name: kubelet-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.san.synology.com/
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: client-info
+          secret:
+            secretName: client-info-secret
+        - name: host-dev
+          hostPath:
+            path: /dev
+        - name: host-run
+          hostPath:
+            path: /run/udev
+        - name: iscsi-lib
+          hostPath:
+            path: /etc/iscsi
+            type: DirectoryOrCreate

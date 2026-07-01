@@ -1,0 +1,24 @@
+---
+# rancher-monitoring Helm values template
+# Reference: FR-008
+
+prometheus:
+  prometheusSpec:
+    retention: {{ rancher_monitoring_retention | default('7d') }}
+    resources:
+      requests:
+        cpu: {{ rancher_monitoring_prometheus_cpu | default('250m') }}
+        memory: {{ rancher_monitoring_prometheus_memory | default('750Mi') }}
+{% if rancher_monitoring_scrape_targets_overrides | default({}) | length > 0 %}
+    additionalScrapeConfigs:
+{% for target in rancher_monitoring_scrape_targets_overrides %}
+    - job_name: "{{ target.job_name }}"
+      static_configs:
+      - targets: {{ target.targets | to_json }}
+{% endfor %}
+{% endif %}
+
+grafana:
+  enabled: true
+  persistence:
+    enabled: {{ rancher_monitoring_grafana_persistence | default(false) | lower }}

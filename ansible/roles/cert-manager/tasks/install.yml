@@ -1,0 +1,121 @@
+---
+# ansible/roles/cert-manager/tasks/install.yml
+# Purpose: Deploy cert-manager and configure DNS-01 ClusterIssuers
+# Reference: FR-005, FR-017
+
+- name: Install cert-manager CRDs
+  ansible.builtin.command: >-
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.crds.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_crds
+  changed_when: "'created' in cert_manager_crds.stdout or 'configured' in cert_manager_crds.stdout"
+
+- name: Create cert-manager namespace
+  ansible.builtin.command: kubectl create namespace cert-manager
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_ns
+  changed_when: "'created' in cert_manager_ns.stdout"
+  failed_when: cert_manager_ns.rc != 0 and 'AlreadyExists' not in cert_manager_ns.stderr
+
+- name: Deploy cert-manager via kubectl
+  ansible.builtin.command: >-
+    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/{{ cert_manager_version }}/cert-manager.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_deploy
+  changed_when: "'created' in cert_manager_deploy.stdout or 'configured' in cert_manager_deploy.stdout"
+
+- name: Wait for cert-manager to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=available deployment --all
+    -n cert-manager
+    --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cert_manager_ready
+  retries: 5
+  delay: 10
+  until: cert_manager_ready.rc == 0
+  changed_when: false
+
+- name: Create DNS provider credentials secret
+  ansible.builtin.template:
+    src: dns-credentials-secret.yaml.j2
+    dest: /tmp/cert-manager-dns-secret.yaml
+    mode: '0600'
+  when: cert_manager_dns_provider_credentials | default({}) | length > 0
+  no_log: true  # Don't log credentials
+
+- name: Apply DNS provider credentials secret
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/cert-manager-dns-secret.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: dns_secret
+  changed_when: "'created' in dns_secret.stdout or 'configured' in dns_secret.stdout"
+  when: cert_manager_dns_provider_credentials | default({}) | length > 0
+  no_log: true
+
+- name: Remove temporary credentials file
+  ansible.builtin.file:
+    path: /tmp/cert-manager-dns-secret.yaml
+    state: absent
+  when: cert_manager_dns_provider_credentials | default({}) | length > 0
+
+- name: Deploy Let's Encrypt staging ClusterIssuer
+  ansible.builtin.template:
+    src: clusterissuer-staging.yaml.j2
+    dest: /tmp/clusterissuer-staging.yaml
+    mode: '0644'
+
+- name: Apply staging ClusterIssuer
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/clusterissuer-staging.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: staging_issuer
+  changed_when: "'created' in staging_issuer.stdout or 'configured' in staging_issuer.stdout"
+
+- name: Deploy Let's Encrypt production ClusterIssuer
+  ansible.builtin.template:
+    src: clusterissuer-production.yaml.j2
+    dest: /tmp/clusterissuer-production.yaml
+    mode: '0644'
+
+- name: Apply production ClusterIssuer
+  ansible.builtin.command: >-
+    kubectl apply -f /tmp/clusterissuer-production.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: production_issuer
+  changed_when: "'created' in production_issuer.stdout or 'configured' in production_issuer.stdout"
+
+- name: Clean up temporary manifests
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/clusterissuer-staging.yaml
+    - /tmp/clusterissuer-production.yaml
+
+- name: Verify ClusterIssuers are ready
+  ansible.builtin.command: >-
+    kubectl get clusterissuers
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: clusterissuers
+  changed_when: false
+
+- name: cert-manager deployment summary
+  ansible.builtin.debug:
+    msg: |
+      cert-manager deployed successfully:
+      - Version: {{ cert_manager_version }}
+      - DNS Provider: {{ cert_manager_dns_provider }}
+      - Staging Issuer: {{ cert_manager_staging_issuer }}
+      - Production Issuer: {{ cert_manager_production_issuer }}
+
+      ClusterIssuers:
+      {{ clusterissuers.stdout }}

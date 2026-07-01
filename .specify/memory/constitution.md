@@ -1,5 +1,14 @@
 # ansible-k3s-cluster Constitution
 
+# Agent Output Discipline:
+- Default output mode: silent
+- No narration of actions
+- No explanation unless explicitly requested
+- No reasoning disclosure
+- File changes via diffs only
+- Prefer structured outputs to prose
+- Success = no output unless necessary
+
 ## Core Principles
 
 ### I. Minimal, Focused Playbooks
@@ -19,7 +28,7 @@ Default configuration must be secure by default: minimal open ports, TLS enabled
 
 ## Ansible & k3s Requirements
 
-- Playbooks must be organized with a clear entry point (e.g., site.yml or cluster.yml), roles for host preparation and k3s installation, and group/host variables for cluster configuration.
+- Playbooks must be organized with a clear entry point (e.g., site.yml or a dedicated core cluster playbook), roles for host preparation and k3s installation, and group/host variables for cluster configuration.
 - Supported environments (e.g., Debian/Ubuntu-like, systemd-based Linux on x86_64/arm64) must be explicitly documented, and tasks must fail fast with clear messages on unsupported platforms.
 - k3s installation must:
 	- Pin k3s version via a variable and avoid "latest" by default.
@@ -41,4 +50,4 @@ Default configuration must be secure by default: minimal open ports, TLS enabled
 - Non-negotiable k3s constraints (version pinning, role separation, security defaults, and explicit networking assumptions) must be reviewed in every change touching cluster provisioning.
 - Any amendment to these principles or requirements must be documented in version control with rationale, and must include notes on impact to existing clusters.
 
-**Version**: 1.0.0 | **Ratified**: 2026-02-16 | **Last Amended**: 2026-02-16
+**Version**: 1.1.0 | **Ratified**: 2026-05-16 | **Last Amended**: 2026-05-16

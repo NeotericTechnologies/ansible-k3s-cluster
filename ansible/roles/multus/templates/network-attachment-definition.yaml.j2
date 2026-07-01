@@ -1,0 +1,41 @@
+---
+# NetworkAttachmentDefinition for VLAN-based secondary network
+# Reference: FR-006
+# Supports IPAM types: dhcp (default), host-local, static
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: {{ item.name }}
+  namespace: {{ item.namespace | default('default') }}
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "type": "macvlan",
+      "master": "{{ item.interface }}{% if item.vlan_id is defined %}.{{ item.vlan_id }}{% endif %}",
+      "mode": "bridge",
+{% if (item.ipam_type | default('dhcp')) == 'dhcp' %}
+      "ipam": {
+        "type": "dhcp"
+      }
+{% elif (item.ipam_type | default('dhcp')) == 'host-local' %}
+      "ipam": {
+        "type": "host-local",
+        "subnet": "{{ item.cidr }}",
+        "rangeStart": "{{ item.cidr | ansible.utils.ipaddr('network') | ansible.utils.ipmath(10) }}",
+        "rangeEnd": "{{ item.cidr | ansible.utils.ipaddr('network') | ansible.utils.ipmath(250) }}",
+        "gateway": "{{ item.gateway | default(item.cidr | ansible.utils.ipaddr('1') | ansible.utils.ipaddr('address')) }}"
+      }
+{% elif (item.ipam_type | default('dhcp')) == 'static' %}
+      "ipam": {
+        "type": "static",
+        "addresses": [
+          {
+            "address": "{{ item.cidr }}"{% if item.gateway is defined %},
+            "gateway": "{{ item.gateway }}"
+{% endif %}
+          }
+        ]
+      }
+{% endif %}
+    }

@@ -1,0 +1,11 @@
+---
+# ansible/roles/cert-manager/tasks/main.yml
+# Purpose: Deploy cert-manager with provider-agnostic DNS-01 issuers
+# Reference: FR-005, FR-017
+
+- name: Include cert-manager installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: cert_manager_enabled | default(false)
+  tags:
+    - install
+    - cert-manager

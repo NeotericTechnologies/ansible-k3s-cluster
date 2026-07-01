@@ -1,0 +1,280 @@
+---
+# tests/ansible/smoke/multus-dhcp-test.yml
+# Purpose: Validate multus DHCP daemon and DHCP-based NetworkAttachmentDefinition
+# Reference: FR-006, T095
+# Preconditions:
+#   - Cluster provisioned with cluster-core.yml
+#   - cluster-addons.yml run with multus_enabled: true and a VLAN network using ipam_type: dhcp
+#   - A DHCP server must be available on the configured VLAN for pods to receive addresses
+
+- name: Multus DHCP smoke test
+  hosts: k3s_servers[0]
+  gather_facts: false
+  vars:
+    kubeconfig: "/etc/rancher/k3s/k3s.yaml"
+    test_namespace: "multus-dhcp-test"
+    test_nad_name: "dhcp-test-net"
+    test_pod_name: "dhcp-test-pod"
+  tasks:
+    - name: Verify multus DHCP daemon DaemonSet is running
+      ansible.builtin.command: >-
+        kubectl get daemonset multus-dhcp-daemon -n kube-system
+        -o jsonpath='{.status.numberReady}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: dhcp_daemon_ready
+      failed_when: (dhcp_daemon_ready.stdout | int) < 1
+      changed_when: false
+
+    - name: Get desired number of DHCP daemon pods
+      ansible.builtin.command: >-
+        kubectl get daemonset multus-dhcp-daemon -n kube-system
+        -o jsonpath='{.status.desiredNumberScheduled}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: dhcp_daemon_desired
+      changed_when: false
+
+    - name: Assert all DHCP daemon pods are ready
+      ansible.builtin.assert:
+        that:
+          - dhcp_daemon_ready.stdout == dhcp_daemon_desired.stdout
+        fail_msg: >-
+          DHCP daemon DaemonSet not fully ready:
+          {{ dhcp_daemon_ready.stdout }}/{{ dhcp_daemon_desired.stdout }} pods ready
+        success_msg: >-
+          DHCP daemon DaemonSet healthy:
+          {{ dhcp_daemon_ready.stdout }}/{{ dhcp_daemon_desired.stdout }} pods ready
+
+    - name: Create test namespace
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl create namespace {{ test_namespace }} --dry-run=client -o yaml | \
+        kubectl apply -f -
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Verify a DHCP-type NetworkAttachmentDefinition exists
+      ansible.builtin.command: >-
+        kubectl get net-attach-def -A -o json
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: nad_list
+      changed_when: false
+
+    - name: Parse NAD list and find DHCP NAD
+      ansible.builtin.set_fact:
+        dhcp_nads: >-
+          {%- set out = [] -%}
+          {%- set nad_items = (nad_list.stdout | from_json)['items'] | default([]) -%}
+          {%- for nad in nad_items -%}
+          {%- set cfg = nad.spec.config | default('') -%}
+          {%- if '"type":"dhcp"' in cfg or '"type": "dhcp"' in cfg -%}
+          {%- set _ = out.append(nad) -%}
+          {%- endif -%}
+          {%- endfor -%}
+          {{ out }}
+
+    - name: Assert at least one DHCP NAD exists
+      ansible.builtin.assert:
+        that:
+          - dhcp_nads | length > 0
+        fail_msg: >-
+          No NetworkAttachmentDefinition with DHCP IPAM found in the cluster.
+          kubectl returned {{ ((nad_list.stdout | from_json)['items'] | default([]) | length) }} total NADs.
+          Ensure cluster-addons was run with multus_enabled: true and at least one
+          multus_vlan_networks entry using ipam_type: dhcp.
+        success_msg: "Found {{ dhcp_nads | length }} DHCP-based NetworkAttachmentDefinition(s)"
+
+    - name: Parse selected DHCP NAD config JSON
+      ansible.builtin.set_fact:
+        selected_dhcp_nad_config: "{{ (dhcp_nads | first).spec.config | from_json }}"
+
+    - name: Check NAD master link exists on node
+      ansible.builtin.command: >-
+        ip link show {{ selected_dhcp_nad_config.master }}
+      register: nad_master_link_check
+      changed_when: false
+      failed_when: false
+
+    - name: Assert NAD master link exists
+      ansible.builtin.assert:
+        that:
+          - nad_master_link_check.rc == 0
+        fail_msg: >-
+          NAD master link {{ selected_dhcp_nad_config.master }} does not exist on host {{ inventory_hostname }}.
+          Update multus_vlan_networks interface/vlan_id to a valid host link (or pre-create VLAN subinterfaces).
+        success_msg: "NAD master link {{ selected_dhcp_nad_config.master }} exists on {{ inventory_hostname }}"
+
+    # R-016 Validation: Verify initContainer-based DHCP binary deployment
+    - name: Verify DHCP daemon DaemonSet has install-cni-plugins initContainer
+      ansible.builtin.command: >-
+        kubectl get daemonset multus-dhcp-daemon -n kube-system
+        -o jsonpath='{.spec.template.spec.initContainers[?(@.name=="install-cni-plugins")].name}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: init_container_check
+      changed_when: false
+
+    - name: Assert install-cni-plugins initContainer exists
+      ansible.builtin.assert:
+        that:
+          - init_container_check.stdout == "install-cni-plugins"
+        fail_msg: "DHCP daemon DaemonSet missing required initContainer 'install-cni-plugins'"
+        success_msg: "initContainer 'install-cni-plugins' present in DHCP daemon DaemonSet"
+
+    - name: Get a running DHCP daemon pod name
+      ansible.builtin.command: >-
+        kubectl get pods -n kube-system -l app=multus-dhcp-daemon
+        -o jsonpath='{.items[0].metadata.name}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: dhcp_pod_name
+      changed_when: false
+
+    - name: Verify initContainer completed successfully
+      ansible.builtin.command: >-
+        kubectl get pod {{ dhcp_pod_name.stdout }} -n kube-system
+        -o jsonpath='{.status.initContainerStatuses[?(@.name=="install-cni-plugins")].state.terminated.reason}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: init_status
+      changed_when: false
+
+    - name: Assert initContainer terminated with Completed status
+      ansible.builtin.assert:
+        that:
+          - init_status.stdout == "Completed"
+        fail_msg: "initContainer 'install-cni-plugins' did not complete successfully: {{ init_status.stdout }}"
+        success_msg: "initContainer 'install-cni-plugins' completed successfully"
+
+    - name: Verify dhcp and macvlan binaries exist in CNI bin dir via exec into DHCP daemon pod
+      ansible.builtin.command: >-
+        kubectl exec {{ dhcp_pod_name.stdout }} -n kube-system -c dhcp-daemon --
+        ls -la /host/cni-bin/dhcp /host/cni-bin/macvlan
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: dhcp_binary_check
+      changed_when: false
+
+    - name: Assert dhcp and macvlan binaries are present and executable
+      ansible.builtin.assert:
+        that:
+          - dhcp_binary_check.rc == 0
+          - "'/host/cni-bin/dhcp' in dhcp_binary_check.stdout"
+          - "'/host/cni-bin/macvlan' in dhcp_binary_check.stdout"
+        fail_msg: "Required CNI binaries (dhcp/macvlan) not found at expected CNI bin dir path"
+        success_msg: "dhcp and macvlan binaries verified at /host/cni-bin (host: {{ multus_cni_bin_dir | default('/var/lib/rancher/k3s/data/current/bin') }})"
+
+    - name: Verify no Ansible-managed dhcp binary download artifacts remain
+      ansible.builtin.command: >-
+        kubectl exec {{ dhcp_pod_name.stdout }} -n kube-system -c dhcp-daemon --
+        ls /tmp/cni-plugins*.tgz
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: tarball_remnants
+      failed_when: tarball_remnants.rc == 0
+      changed_when: false
+      ignore_errors: true
+
+    - name: Assert no leftover tarballs
+      ansible.builtin.assert:
+        that:
+          - tarball_remnants.rc != 0
+        fail_msg: "Found leftover CNI plugins tarball in pod — initContainer cleanup failed"
+        success_msg: "No leftover tarballs found — initContainer cleanup verified"
+
+    - name: Deploy test pod with DHCP-based secondary interface
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "-"
+        stdin: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: {{ test_pod_name }}
+            namespace: {{ test_namespace }}
+            annotations:
+              k8s.v1.cni.cncf.io/networks: "{{ (dhcp_nads | first).metadata.namespace }}/{{ (dhcp_nads | first).metadata.name }}"
+          spec:
+            containers:
+              - name: test
+                image: busybox:stable
+                command: ["sleep", "300"]
+                resources:
+                  requests:
+                    cpu: 10m
+                    memory: 16Mi
+                  limits:
+                    cpu: 50m
+                    memory: 32Mi
+            terminationGracePeriodSeconds: 0
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Wait for test pod to be running
+      ansible.builtin.command: >-
+        kubectl wait pod/{{ test_pod_name }} -n {{ test_namespace }}
+        --for=condition=Ready --timeout=120s
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: pod_ready
+      retries: 3
+      delay: 5
+      until: pod_ready.rc == 0
+      changed_when: false
+
+    - name: Get pod network status annotation
+      ansible.builtin.command: >-
+        kubectl get pod {{ test_pod_name }} -n {{ test_namespace }}
+        -o jsonpath='{.metadata.annotations.k8s\.v1\.cni\.cncf\.io/network-status}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: network_status_raw
+      changed_when: false
+
+    - name: Parse network status
+      ansible.builtin.set_fact:
+        network_status: "{{ network_status_raw.stdout | from_json }}"
+
+    - name: Assert pod has secondary interface with IP from DHCP
+      ansible.builtin.assert:
+        that:
+          - network_status | length > 1
+          - network_status[1].ips | default([]) | length > 0
+        fail_msg: >-
+          Pod did not receive a DHCP-assigned IP on secondary interface.
+          Network status: {{ network_status | to_nice_json }}
+        success_msg: >-
+          Pod received DHCP-assigned IP {{ network_status[1].ips[0] }}
+          on interface {{ network_status[1].interface | default('net1') }}
+
+    - name: Cleanup test pod
+      ansible.builtin.command: >-
+        kubectl delete pod {{ test_pod_name }} -n {{ test_namespace }}
+        --grace-period=0 --force --ignore-not-found=true
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Cleanup test namespace
+      ansible.builtin.command: >-
+        kubectl delete namespace {{ test_namespace }} --ignore-not-found=true
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Multus DHCP smoke test PASSED
+      ansible.builtin.debug:
+        msg: |
+          ✓ DHCP daemon DaemonSet is running ({{ dhcp_daemon_ready.stdout }} pods)
+          ✓ DHCP-based NetworkAttachmentDefinition(s) exist
+          ✓ Test pod received DHCP-assigned IP on secondary interface
+          ✓ Cleanup complete

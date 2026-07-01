@@ -1,0 +1,85 @@
+---
+# ansible/roles/synology-csi/defaults/main.yml
+# Synology CSI driver configuration
+# Reference: FR-015, data-model SynologyCsiConfig
+
+# Enable/disable Synology CSI deployment
+synology_csi_enabled: false
+
+# CSI driver version/tag
+synology_csi_version: "v1.2.1"
+
+# Dedicated namespace for all Synology CSI components
+synology_csi_namespace: "synology-csi"
+
+# NAS connection settings (HTTPS with self-signed cert support)
+synology_csi_endpoint: ""
+synology_csi_port: 8443
+synology_csi_tls_verify: false
+
+# Credentials — store in Ansible Vault
+synology_csi_username: ""
+synology_csi_password: ""
+
+# Snapshot support
+synology_csi_snapshots_enabled: false
+synology_csi_snapshotter_version: "v8.5.0"
+
+# Storage classes — list of definitions supporting iSCSI and/or NFS
+# Each entry:
+#   name: StorageClass name
+#   protocol: "iscsi" or "nfs"
+#   is_default: true/false (at most one default)
+#   reclaim_policy: "Delete" or "Retain"
+#   volume_binding_mode: "Immediate" or "WaitForFirstConsumer"
+#   parameters: protocol-specific parameters dict
+#   parameters.location: DSM volume root path (e.g. /volume1), not a subfolder path
+synology_csi_storage_classes:
+  - name: "synology-iscsi-retain"
+    protocol: "iscsi"
+    is_default: true
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    parameters:
+      fsType: "ext4"
+      location: "/volume1"
+  - name: "synology-nfs-retain"
+    protocol: "nfs"
+    is_default: false
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    parameters:
+      location: "/volume1"
+
+# CSI driver images
+synology_csi_node_driver_image: "synology/synology-csi:{{ synology_csi_version }}"
+synology_csi_controller_image: "synology/synology-csi:{{ synology_csi_version }}"
+
+# csi-driver-nfs (kubernetes-csi/csi-driver-nfs) for NFS sub-directory provisioning
+# Reference: FR-018, R-014, data-model SynologyCsiConfig.csi_nfs_*
+csi_nfs_enabled: false
+csi_nfs_version: "v4.13.2"
+
+# NFS sub-directory storage classes — list of definitions
+# Each entry:
+#   name: StorageClass name
+#   server: NFS server address
+#   share: NFS export path (pre-existing share on NAS)
+#   is_default: true/false (at most one default)
+#   reclaim_policy: "Delete" or "Retain"
+#   volume_binding_mode: "Immediate" or "WaitForFirstConsumer"
+#   sub_dir: sub-directory template (default: "${pv.metadata.name}")
+#   on_delete: "retain" or "delete" — action on PV deletion
+#   mount_options: list of NFS mount options (default: ["hard", "nfsvers=4.1"])
+csi_nfs_storage_classes:
+  - name: "nfs-subdir"
+    server: "{{ synology_csi_endpoint }}"
+    share: "/volume1/k8s-nfs"
+    is_default: false
+    reclaim_policy: "Retain"
+    volume_binding_mode: "Immediate"
+    sub_dir: "${pv.metadata.name}"
+    on_delete: "retain"
+    mount_options:
+      - hard
+      - nfsvers=4.1

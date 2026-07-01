@@ -1,0 +1,40 @@
+---
+# ansible/roles/traefik/tasks/configure.yml
+# Purpose: Configure Traefik ingress via Helm (k3s default Traefik disabled for kube-vip LB)
+# Reference: FR-009
+
+- name: Generate Traefik Helm values
+  ansible.builtin.template:
+    src: traefik-values.yaml.j2
+    dest: /tmp/traefik-values.yaml
+    mode: '0644'
+
+- name: Deploy Traefik via Helm
+  ansible.builtin.shell: |
+    helm repo add traefik https://traefik.github.io/charts
+    helm repo update
+    helm upgrade --install traefik traefik/traefik \
+      --namespace kube-system \
+      --values /tmp/traefik-values.yaml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: traefik_install
+  changed_when: "'deployed' in traefik_install.stdout or 'upgraded' in traefik_install.stdout"
+
+- name: Clean up temporary values file
+  ansible.builtin.file:
+    path: /tmp/traefik-values.yaml
+    state: absent
+
+- name: Wait for Traefik to be ready
+  ansible.builtin.command: >-
+    kubectl wait --for=condition=available deployment traefik
+    -n kube-system
+    --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: traefik_ready
+  retries: 5
+  delay: 10
+  until: traefik_ready.rc == 0
+  changed_when: false

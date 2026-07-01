@@ -1,0 +1,26 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synology-csi-snapshotter
+  namespace: {{ synology_csi_namespace }}
+  labels:
+    app.kubernetes.io/name: synology-csi-snapshotter
+    app.kubernetes.io/managed-by: ansible
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: synology-csi-snapshotter
+  template:
+    metadata:
+      labels:
+        app: synology-csi-snapshotter
+    spec:
+      serviceAccountName: csi-controller-sa
+      containers:
+        - name: snapshot-controller
+          image: registry.k8s.io/sig-storage/snapshot-controller:{{ synology_csi_snapshotter_version }}
+          args:
+            - --v=5
+            - --leader-election=false

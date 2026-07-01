@@ -1,0 +1,21 @@
+---
+# ansible/roles/k3s-common/defaults/main.yml
+# Purpose: Default variables for k3s-common role
+# Reference: docs/ansible-structure.md
+
+# Host prerequisite thresholds (FR-013)
+k3s_min_cpu_cores: 1
+k3s_min_memory_mb: 1024
+k3s_min_disk_gb: 20
+
+# Control-plane nodes should have higher thresholds
+k3s_server_min_cpu_cores: 2
+k3s_server_min_memory_mb: 2048
+
+# Network connectivity check
+k3s_check_internet: true
+
+# One-time host bootstrap actions
+k3s_initial_server_setup: false
+k3s_reboot_on_bootstrap: true
+k3s_initial_setup_marker_path: /var/lib/ansible-k3s/.initial-setup-complete

@@ -1,0 +1,58 @@
+---
+# ansible/roles/k3s-common/tasks/dependencies.yml
+# Purpose: Install common dependencies required by k3s
+# Reference: docs/ansible-structure.md
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Install required packages for k3s
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - apt-transport-https
+      - software-properties-common
+      - iptables
+      - python3
+      - python3-pip
+    state: present
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Install kubernetes Python library for kubernetes.core modules
+  ansible.builtin.pip:
+    name: kubernetes>=24.2.0
+    state: present
+    extra_args: --break-system-packages
+
+- name: Ensure systemd is running
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Check if Helm is installed
+  ansible.builtin.command: helm version --short
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Download Helm install script
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    dest: /tmp/get-helm-3.sh
+    mode: '0755'
+  when: helm_check.rc != 0
+
+- name: Install Helm
+  ansible.builtin.command: /tmp/get-helm-3.sh
+  args:
+    creates: /usr/local/bin/helm
+  when: helm_check.rc != 0
+
+- name: Remove Helm install script
+  ansible.builtin.file:
+    path: /tmp/get-helm-3.sh
+    state: absent
+  when: helm_check.rc != 0

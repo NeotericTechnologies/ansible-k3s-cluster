@@ -1,0 +1,12 @@
+---
+# ansible/roles/cert-manager/defaults/main.yml
+# Purpose: Default variables for cert-manager role
+# Reference: Configured in group_vars/all.yml
+
+cert_manager_enabled: false
+cert_manager_version: "v1.13.3"
+cert_manager_email: "admin@example.com"
+cert_manager_dns_provider: "cloudflare"
+cert_manager_dns_provider_credentials: {}
+cert_manager_staging_issuer: "letsencrypt-staging"
+cert_manager_production_issuer: "letsencrypt-production"

@@ -1,0 +1,11 @@
+---
+# ansible/roles/multus/tasks/main.yml
+# Purpose: Deploy multus CNI for VLAN-based secondary networking
+# Reference: FR-006
+
+- name: Include multus installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: multus_enabled | default(false)
+  tags:
+    - install
+    - multus

@@ -1,0 +1,22 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ item.name }}
+{% if item.is_default | default(false) %}
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+{% endif %}
+provisioner: csi.san.synology.com
+parameters:
+  fsType: "{{ item.parameters.fsType | default('ext4') }}"
+  protocol: "iscsi"
+{% if item.parameters.location is defined %}
+  location: "{{ item.parameters.location }}"
+{% endif %}
+{% for key, value in (item.parameters | default({})).items() if key not in ['fsType', 'location'] %}
+  {{ key }}: "{{ value }}"
+{% endfor %}
+reclaimPolicy: {{ item.reclaim_policy | default('Retain') }}
+allowVolumeExpansion: true
+volumeBindingMode: {{ item.volume_binding_mode | default('Immediate') }}

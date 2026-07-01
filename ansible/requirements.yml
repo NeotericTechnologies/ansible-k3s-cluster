@@ -1,0 +1,13 @@
+---
+# ansible/requirements.yml
+# Ansible Galaxy collections required for cluster management
+# Custom roles (k3s-server, k3s-agent, k3s-common) supersede k3s-io/k3s-ansible
+# with patterns reused per research R-005
+
+collections:
+  - name: kubernetes.core
+    version: ">=2.4.0"
+  - name: community.kubernetes
+    version: ">=3.0.0"
+  - name: ansible.posix
+    version: ">=1.5.0"

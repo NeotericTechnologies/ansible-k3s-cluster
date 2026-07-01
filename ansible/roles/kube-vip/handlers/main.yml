@@ -1,0 +1,10 @@
+---
+# ansible/roles/kube-vip/handlers/main.yml
+
+- name: Restart kube-vip
+  ansible.builtin.command: >-
+    kubectl rollout restart daemonset/kube-vip -n kube-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: inventory_hostname == groups['k3s_servers'][0]
+  changed_when: true

@@ -1,0 +1,19 @@
+---
+# Rancher Helm values template
+# Reference: FR-007
+
+hostname: {{ rancher_hostname }}
+replicas: {{ rancher_replicas | default(1) }}
+ingress:
+  tls:
+    source: {{ rancher_tls_source | default('rancher') }}
+  ingressClassName: {{ rancher_ingress_class | default('traefik') }}
+
+bootstrapPassword: {{ rancher_bootstrap_password | default('') }}
+
+{% if rancher_tls_source == 'letsEncrypt' %}
+letsEncrypt:
+  email: {{ cert_manager_email | default('admin@example.com') }}
+  ingress:
+    class: {{ rancher_ingress_class | default('traefik') }}
+{% endif %}
