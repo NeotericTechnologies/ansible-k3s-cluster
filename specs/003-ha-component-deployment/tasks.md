@@ -207,3 +207,11 @@
 - `[P]` indicates tasks expected to be parallelizable with minimal dependency overlap.
 - Every task includes an explicit file path and checklist format for immediate LLM execution.
 - Story labels are applied only to user-story phases, as required.
+
+## Phase 7: Convergence
+
+- [ ] T047 Wire topology-aware addon deployment replica resolution from `ha_component_policies` into addon role inputs in ansible/playbooks/cluster-addons.yml per FR-002 (missing)
+- [ ] T048 Update Traefik and Rancher Helm values rendering to consume resolved topology-aware replica targets instead of implicit single-replica defaults in ansible/roles/traefik/templates/traefik-values.yaml.j2 and ansible/roles/rancher/templates/rancher-values.yaml.j2 per FR-002 (missing)
+- [ ] T049 Implement deterministic cert-manager replica enforcement for HA and non-HA topologies during deployment in ansible/roles/cert-manager/tasks/install.yml per FR-002 (missing)
+- [ ] T050 Replace hardcoded csi-driver-nfs controller replica count with resolved topology-aware policy target in ansible/roles/synology-csi/templates/csi-driver-nfs-values.yaml.j2 per FR-002 (contradicts)
+- [ ] T051 Align Synology CSI controller and snapshotter replica counts with resolved topology-aware policy targets in ansible/roles/synology-csi/templates/controller.yaml.j2 and ansible/roles/synology-csi/templates/snapshotter.yaml.j2 per FR-011 (contradicts)
