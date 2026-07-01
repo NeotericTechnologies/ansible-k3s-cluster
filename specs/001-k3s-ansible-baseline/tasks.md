@@ -92,7 +92,7 @@ All tasks MUST comply with these constraints per R-013 and R-016:
 ### Add-on Roles: cert-manager
 
 - [X] T026 [P] [US1] Define cert-manager role defaults in ansible/roles/cert-manager/defaults/main.yml (enabled flag, email, dns_provider, issuer names)
-- [X] T027 [P] [US1] Create DNS provider credentials secret template in ansible/roles/cert-manager/templates/dns-provider-secret.yaml.j2
+- [X] T027 [P] [US1] Create DNS provider credentials secret template in ansible/roles/cert-manager/templates/dns-credentials-secret.yaml.j2
 - [X] T028 [P] [US1] Create staging ClusterIssuer template in ansible/roles/cert-manager/templates/clusterissuer-staging.yaml.j2
 - [X] T029 [P] [US1] Create production ClusterIssuer template in ansible/roles/cert-manager/templates/clusterissuer-production.yaml.j2
 - [X] T030 [US1] Implement cert-manager install tasks in ansible/roles/cert-manager/tasks/install.yml (Helm chart deploy, wait for readiness)
