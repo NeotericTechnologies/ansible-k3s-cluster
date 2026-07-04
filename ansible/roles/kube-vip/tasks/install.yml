@@ -87,12 +87,15 @@
 
 - name: Apply kube-vip DaemonSet via API
   kubernetes.core.k8s:
-    definition: "{{ lookup('template', 'kube-vip-daemonset.yaml.j2') | from_yaml }}"
+    definition: "{{ item }}"
     state: present
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     host: https://127.0.0.1:6443
     validate_certs: false
-  when: inventory_hostname == groups['k3s_servers'][0]
+  loop: "{{ lookup('template', 'kube-vip-daemonset.yaml.j2') | from_yaml_all | list }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - item is not none
   notify: Restart kube-vip
 
 - name: Wait for kube-vip DaemonSet to be ready
@@ -117,25 +120,29 @@
 
 - name: Apply kube-vip cloud controller via API
   kubernetes.core.k8s:
-    definition: "{{ lookup('template', 'kube-vip-cloud-controller.yaml.j2') | from_yaml }}"
+    definition: "{{ item }}"
     state: present
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     host: https://127.0.0.1:6443
     validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-cloud-controller.yaml.j2') | from_yaml_all | list }}"
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - kube_vip_lb_enable | default(false)
+    - item is not none
 
 - name: Apply kube-vip ConfigMap via API
   kubernetes.core.k8s:
-    definition: "{{ lookup('template', 'kube-vip-configmap.yaml.j2') | from_yaml }}"
+    definition: "{{ item }}"
     state: present
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     host: https://127.0.0.1:6443
     validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-configmap.yaml.j2') | from_yaml_all | list }}"
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - kube_vip_lb_enable | default(false)
+    - item is not none
 
 - name: Verify control-plane VIP is reachable
   ansible.builtin.wait_for:
