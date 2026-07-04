@@ -5,12 +5,20 @@
   ansible.builtin.set_fact:
     ha_enable_policy_validation: "{{ ha_enable_policy_validation | default(true) | bool }}"
 
+- name: Resolve effective HA validation scope
+  ansible.builtin.set_fact:
+    ha_validation_scope: "{{ ha_validation_components | default(ha_component_policies.keys() | list) }}"
+
+- name: Resolve effective critical subset for current validation scope
+  ansible.builtin.set_fact:
+    ha_effective_critical_subset: "{{ (critical_component_subset | default([])) | intersect(ha_validation_scope) }}"
+
 - name: Validate all policy targets are positive integers
   ansible.builtin.assert:
     that:
       - item.value.expected_target | int >= 1
     fail_msg: "Invalid target for {{ item.key }}: {{ item.value.expected_target }}"
-  loop: "{{ ha_component_policies | dict2items }}"
+  loop: "{{ ha_component_policies | dict2items | selectattr('key', 'in', ha_validation_scope) | list }}"
   when: ha_enable_policy_validation | bool
 
 - name: Skip strict target checks when HA topology is disabled
@@ -30,7 +38,7 @@
     success_msg: >-
       HA target met for {{ item.key }}: observed={{ ha_component_observations[item.key] | default(item.value.expected_target | int) }},
       expected>={{ item.value.expected_target }}
-  loop: "{{ ha_component_policies | dict2items }}"
+  loop: "{{ ha_component_policies | dict2items | selectattr('key', 'in', ha_validation_scope) | list }}"
   when:
     - ha_enable_policy_validation | bool
     - ha_fail_on_unmet_targets | default(true) | bool
@@ -42,7 +50,7 @@
     that:
       - item in ha_component_policies
     fail_msg: "Critical subset component missing from policy map: {{ item }}"
-  loop: "{{ critical_component_subset | default([]) }}"
+  loop: "{{ ha_effective_critical_subset }}"
   when:
     - ha_validate_critical_subset | default(true) | bool
 
@@ -53,7 +61,7 @@
     fail_msg: >-
       Critical subset target unmet for {{ item }}: observed={{ ha_component_observations[item] | default('missing') }},
       expected>={{ ha_component_policies[item].expected_target }}
-  loop: "{{ critical_component_subset | default([]) }}"
+  loop: "{{ ha_effective_critical_subset }}"
   when:
     - ha_validate_critical_subset | default(true) | bool
     - ha_fail_on_unmet_targets | default(true) | bool

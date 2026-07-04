@@ -12,12 +12,95 @@
     mode: '0644'
   when: inventory_hostname == groups['k3s_servers'][0]
 
+- name: Ensure k3s service is running on bootstrap server
+  ansible.builtin.systemd:
+    name: k3s
+    enabled: true
+    state: started
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Wait for local Kubernetes API port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 6443
+    timeout: 300
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Validate Kubernetes API is ready for kube-vip bootstrap
+  block:
+    - name: Wait for Kubernetes API readiness endpoint
+      ansible.builtin.command: >-
+        kubectl --request-timeout=10s --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true get --raw=/readyz
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_api_readyz
+      retries: 10
+      delay: 10
+      until: kube_api_readyz.rc == 0
+      changed_when: false
+
+    - name: Wait for Kubernetes API discovery to become available
+      ansible.builtin.command: >-
+        kubectl --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true api-resources --request-timeout=10s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_api_discovery
+      retries: 10
+      delay: 10
+      until: kube_api_discovery.rc == 0
+      changed_when: false
+  rescue:
+    - name: Collect k3s service status for diagnostics
+      ansible.builtin.command: systemctl status k3s --no-pager -l
+      register: kube_vip_diag_systemctl
+      changed_when: false
+      failed_when: false
+
+    - name: Collect recent k3s journal logs for diagnostics
+      ansible.builtin.command: journalctl -u k3s -n 200 --no-pager
+      register: kube_vip_diag_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Collect /readyz verbose output for diagnostics
+      ansible.builtin.command: >-
+        kubectl --request-timeout=10s --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true get --raw=/readyz?verbose
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_diag_readyz
+      changed_when: false
+      failed_when: false
+
+    - name: Print kube-vip bootstrap diagnostics
+      ansible.builtin.debug:
+        msg: |
+          kube-vip bootstrap blocked: Kubernetes API is not ready.
+
+          systemctl status k3s:
+          {{ kube_vip_diag_systemctl.stdout | default('no output') }}
+
+          journalctl -u k3s -n 200:
+          {{ kube_vip_diag_journal.stdout | default('no output') }}
+
+          kubectl get --raw=/readyz?verbose:
+          {{ kube_vip_diag_readyz.stdout | default(kube_vip_diag_readyz.stderr | default('no output')) }}
+
+    - name: Fail when Kubernetes API is not ready for kube-vip
+      ansible.builtin.fail:
+        msg: >-
+          kube-vip bootstrap failed because Kubernetes API readiness/discovery checks did not succeed.
+          Review the diagnostics printed above.
+  when: inventory_hostname == groups['k3s_servers'][0]
+
 - name: Apply kube-vip DaemonSet via API
   ansible.builtin.command: >-
-    kubectl apply -f /tmp/kube-vip-daemonset.yaml
+    kubectl --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true apply --validate=false -f /tmp/kube-vip-daemonset.yaml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: kube_vip_apply
+  retries: 10
+  delay: 10
+  until: kube_vip_apply.rc == 0
   changed_when: "'created' in kube_vip_apply.stdout or 'configured' in kube_vip_apply.stdout"
   when: inventory_hostname == groups['k3s_servers'][0]
   notify: Restart kube-vip
@@ -30,7 +113,7 @@
 
 - name: Wait for kube-vip DaemonSet to be ready
   ansible.builtin.command: >-
-    kubectl rollout status daemonset/kube-vip
+    kubectl --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true rollout status daemonset/kube-vip
     -n kube-system
     --timeout=300s
   environment:
@@ -40,7 +123,7 @@
   delay: 10
   until: kube_vip_status.rc == 0
   changed_when: false
-  failed_when: false
+  failed_when: kube_vip_status.rc != 0
   when: inventory_hostname == groups['k3s_servers'][0]
 
 - name: Template kube-vip cloud controller manifest
@@ -54,10 +137,13 @@
 
 - name: Apply kube-vip cloud controller via API
   ansible.builtin.command: >-
-    kubectl apply -f /tmp/kube-vip-cloud-controller.yaml
+    kubectl --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true apply --validate=false -f /tmp/kube-vip-cloud-controller.yaml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: kube_vip_cc_apply
+  retries: 10
+  delay: 10
+  until: kube_vip_cc_apply.rc == 0
   changed_when: "'created' in kube_vip_cc_apply.stdout or 'configured' in kube_vip_cc_apply.stdout"
   when:
     - inventory_hostname == groups['k3s_servers'][0]
@@ -82,10 +168,13 @@
 
 - name: Apply kube-vip ConfigMap via API
   ansible.builtin.command: >-
-    kubectl apply -f /tmp/kube-vip-configmap.yaml
+    kubectl --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true apply --validate=false -f /tmp/kube-vip-configmap.yaml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: kube_vip_cm_apply
+  retries: 10
+  delay: 10
+  until: kube_vip_cm_apply.rc == 0
   changed_when: "'created' in kube_vip_cm_apply.stdout or 'configured' in kube_vip_cm_apply.stdout"
   when:
     - inventory_hostname == groups['k3s_servers'][0]

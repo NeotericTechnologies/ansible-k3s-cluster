@@ -39,7 +39,9 @@
 
 - name: Collect multus daemonset availability
   ansible.builtin.command: >-
-    kubectl get daemonset -A -l app.kubernetes.io/name=multus -o jsonpath='{range .items[*]}{.status.numberAvailable}{"\n"}{end}'
+    kubectl get daemonset kube-multus-ds
+    -n {{ multus_namespace | default('kube-system') }}
+    -o jsonpath='{.status.numberAvailable}'
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: ha_multus_available
@@ -48,7 +50,9 @@
 
 - name: Collect Rancher deployment availability
   ansible.builtin.command: >-
-    kubectl get deployment -n cattle-system -l app.kubernetes.io/name=rancher -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+    kubectl get deployment rancher
+    -n cattle-system
+    -o jsonpath='{.status.availableReplicas}'
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: ha_rancher_available
@@ -64,9 +68,11 @@
   changed_when: false
   failed_when: false
 
-- name: Collect Synology CSI deployment availability
+- name: Collect Synology CSI controller availability
   ansible.builtin.command: >-
-    kubectl get deployment -n {{ synology_csi_namespace | default('synology-csi') }} -l app.kubernetes.io/name=synology-csi -o jsonpath='{range .items[*]}{.status.availableReplicas}{"\n"}{end}'
+    kubectl get statefulset synology-csi-controller
+    -n {{ synology_csi_namespace | default('synology-csi') }}
+    -o jsonpath='{.status.readyReplicas}'
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: ha_synology_available

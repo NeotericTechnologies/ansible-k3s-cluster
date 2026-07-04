@@ -101,6 +101,12 @@
     - name: Collect HA observations for core components
       ansible.builtin.include_tasks: ../roles/k3s-common/tasks/collect-ha-observations.yml
 
+    - name: Scope HA validation to core lifecycle components
+      ansible.builtin.set_fact:
+        ha_validation_components:
+          - k3s-control-plane
+          - kube-vip
+
     - name: Validate topology-aware HA targets for core lifecycle
       ansible.builtin.include_tasks: ../roles/k3s-common/tasks/validate-ha-targets.yml
 
