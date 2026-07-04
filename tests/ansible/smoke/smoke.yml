@@ -7,6 +7,11 @@
   hosts: k3s_servers[0]
   gather_facts: true
   tasks:
+    - name: Load shared cluster defaults used by smoke assertions
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../../ansible/group_vars/all.yml"
+        name: smoke_defaults
+
     - name: Check if k3s is installed
       ansible.builtin.command: k3s --version
       register: k3s_version_output
@@ -61,17 +66,17 @@
     - name: Verify HA targets are defined for enabled components
       ansible.builtin.assert:
         that:
-          - k3s_server_ha_min_replicas | int >= 1
-          - kube_vip_ha_min_replicas | int >= 1
-          - traefik_ha_min_replicas | int >= 1
+          - smoke_defaults.k3s_server_ha_min_replicas | default(0) | int >= 1
+          - smoke_defaults.kube_vip_ha_min_replicas | default(0) | int >= 1
+          - smoke_defaults.traefik_ha_min_replicas | default(0) | int >= 1
         fail_msg: "Required HA target variables are missing or invalid"
 
     - name: Validate non-HA preservation branch behavior
       ansible.builtin.assert:
         that:
-          - k3s_server_non_ha_default_replicas | int >= 1
-          - kube_vip_non_ha_default_replicas | int >= 1
-          - traefik_non_ha_default_replicas | int >= 1
+          - smoke_defaults.k3s_server_non_ha_default_replicas | default(0) | int >= 1
+          - smoke_defaults.kube_vip_non_ha_default_replicas | default(0) | int >= 1
+          - smoke_defaults.traefik_non_ha_default_replicas | default(0) | int >= 1
         fail_msg: "Required non-HA default target variables are missing or invalid"
 
     - name: Display topology-specific smoke context
@@ -79,7 +84,7 @@
         msg:
           - "Topology server count: {{ smoke_server_count }}"
           - "HA topology enabled: {{ smoke_is_ha }}"
-          - "Expected traefik target: {{ (traefik_ha_min_replicas if smoke_is_ha else traefik_non_ha_default_replicas) | int }}"
+          - "Expected traefik target: {{ (smoke_defaults.traefik_ha_min_replicas if smoke_is_ha else smoke_defaults.traefik_non_ha_default_replicas) | int }}"
 
     - name: Smoke test summary
       ansible.builtin.debug:

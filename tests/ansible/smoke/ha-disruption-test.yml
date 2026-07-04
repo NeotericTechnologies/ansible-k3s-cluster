@@ -5,11 +5,18 @@
 - name: HA Disruption Resilience Test
   hosts: k3s_servers[0]
   gather_facts: false
-  vars:
-    disruption_window_seconds: "{{ ha_disruption_window_seconds | default(600) | int }}"
-    probe_rps: "{{ ha_probe_requests_per_second | default(1) | int }}"
-    availability_threshold: "{{ ha_probe_min_availability_percent | default(99.0) | float }}"
   tasks:
+    - name: Load shared HA disruption defaults
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../../ansible/group_vars/all.yml"
+        name: smoke_defaults
+
+    - name: Resolve disruption timing thresholds
+      ansible.builtin.set_fact:
+        disruption_window_seconds: "{{ smoke_defaults.ha_disruption_window_seconds | default(600) | int }}"
+        probe_rps: "{{ smoke_defaults.ha_probe_requests_per_second | default(1) | int }}"
+        availability_threshold: "{{ smoke_defaults.ha_probe_min_availability_percent | default(99.0) | float }}"
+
     - name: Determine HA topology for disruption test
       ansible.builtin.set_fact:
         disruption_server_count: "{{ groups['k3s_servers'] | default([]) | length }}"
@@ -22,8 +29,8 @@
     - name: Ensure critical probes are defined
       ansible.builtin.assert:
         that:
-          - critical_component_subset | default([]) | length > 0
-          - critical_component_probes is mapping
+          - smoke_defaults.critical_component_subset | default([]) | length > 0
+          - smoke_defaults.critical_component_probes is mapping
         fail_msg: "critical_component_subset and critical_component_probes must be defined for disruption tests"
 
     - name: Calculate total probes per component
@@ -35,8 +42,8 @@
         set -eu
         success=0
         total={{ total_probes_per_component }}
-        url="{{ critical_component_probes[item].url }}"
-        insecure="{{ critical_component_probes[item].insecure | default(false) | bool }}"
+        url="{{ smoke_defaults.critical_component_probes[item].url }}"
+        insecure="{{ smoke_defaults.critical_component_probes[item].insecure | default(false) | bool }}"
         for _ in $(seq 1 "$total"); do
           if [[ "$insecure" == "True" ]]; then
             curl -ksf --max-time 2 "$url" >/dev/null 2>&1 && success=$((success+1)) || true
@@ -49,7 +56,7 @@
         echo "total=${total}"
       args:
         executable: /bin/bash
-      loop: "{{ critical_component_subset }}"
+      loop: "{{ smoke_defaults.critical_component_subset }}"
       loop_control:
         label: "{{ item }}"
       register: disruption_probe_results
@@ -78,4 +85,4 @@
           required={{ availability_threshold }}%
         success_msg: >-
           SC-003 threshold met for {{ item }}: availability={{ disruption_component_availability[item] | float }}%
-      loop: "{{ critical_component_subset }}"
+      loop: "{{ smoke_defaults.critical_component_subset }}"
