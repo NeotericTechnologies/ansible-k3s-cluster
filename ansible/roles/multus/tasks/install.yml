@@ -13,29 +13,29 @@
   loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
 
 - name: Deploy multus thick plugin DaemonSet and RBAC
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - apply
-      - -f
-      - "-"
-    stdin: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') }}"
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: "{{ multus_kubeconfig }}"
+  loop: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') | from_yaml_all | list }}"
+  when: item is not none
   register: multus_deploy_result
-  changed_when: >-
-    'created' in multus_deploy_result.stdout or
-    'configured' in multus_deploy_result.stdout
 
 - name: Wait for multus DaemonSet to be ready
-  ansible.builtin.command: >-
-    kubectl rollout status daemonset/kube-multus-ds -n {{ multus_namespace }} --timeout=180s
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  register: multus_ready
-  retries: 3
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: kube-multus-ds
+    namespace: "{{ multus_namespace }}"
+    kubeconfig: "{{ multus_kubeconfig }}"
+  register: multus_ds
+  retries: 18
   delay: 10
-  until: multus_ready.rc == 0
+  until: >-
+    (multus_ds.resources | default([]) | length) > 0 and
+    (multus_ds.resources[0].status.numberReady | default(0) | int) ==
+    (multus_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
+    (multus_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
   when: multus_deploy_result is defined and multus_deploy_result.changed
 
@@ -54,68 +54,50 @@
      multus_vlan_networks | selectattr('ipam_type', 'defined') | selectattr('ipam_type', 'equalto', 'dhcp') | list | length > 0)
 
 - name: Apply NetworkAttachmentDefinitions
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - apply
-      - -f
-      - "-"
-    stdin: "{{ lookup('template', 'network-attachment-definition.yaml.j2') }}"
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'network-attachment-definition.yaml.j2') | from_yaml }}"
+    state: present
+    kubeconfig: "{{ multus_kubeconfig }}"
   loop: "{{ multus_vlan_networks }}"
   register: multus_nad_apply
-  changed_when: >-
-    multus_nad_apply.stdout is defined and
-    ('created' in multus_nad_apply.stdout or 'configured' in multus_nad_apply.stdout)
   when: multus_vlan_networks | default([]) | length > 0
 
 - name: Deploy multus DHCP daemon DaemonSet
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - apply
-      - -f
-      - "-"
-    stdin: "{{ lookup('template', 'multus-dhcp-daemon.yaml.j2') }}"
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
+  kubernetes.core.k8s:
+    definition: "{{ lookup('template', 'multus-dhcp-daemon.yaml.j2') | from_yaml }}"
+    state: present
+    kubeconfig: "{{ multus_kubeconfig }}"
   register: multus_dhcp_deploy_result
-  changed_when: >-
-    'created' in multus_dhcp_deploy_result.stdout or
-    'configured' in multus_dhcp_deploy_result.stdout
   when: multus_dhcp_daemon_enabled | default(true)
 
 - name: Wait for multus DHCP daemon DaemonSet to be ready
-  ansible.builtin.command: >-
-    kubectl rollout status daemonset/multus-dhcp-daemon -n {{ multus_namespace }} --timeout=120s
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  register: multus_dhcp_ready
-  retries: 3
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: multus-dhcp-daemon
+    namespace: "{{ multus_namespace }}"
+    kubeconfig: "{{ multus_kubeconfig }}"
+  register: multus_dhcp_ds
+  retries: 18
   delay: 10
-  until: multus_dhcp_ready.rc == 0
+  until: >-
+    (multus_dhcp_ds.resources | default([]) | length) > 0 and
+    (multus_dhcp_ds.resources[0].status.numberReady | default(0) | int) ==
+    (multus_dhcp_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
+    (multus_dhcp_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
   when: >-
     multus_dhcp_daemon_enabled | default(true) and
     multus_dhcp_deploy_result is defined and multus_dhcp_deploy_result.changed
 
 - name: Remove multus DHCP daemon DaemonSet when disabled
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - delete
-      - daemonset
-      - multus-dhcp-daemon
-      - -n
-      - "{{ multus_namespace }}"
-      - --ignore-not-found=true
-  environment:
-    KUBECONFIG: "{{ multus_kubeconfig }}"
-  register: multus_dhcp_remove_result
-  changed_when: >-
-    multus_dhcp_remove_result.stdout is defined and
-    'deleted' in multus_dhcp_remove_result.stdout
+  kubernetes.core.k8s:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: multus-dhcp-daemon
+    namespace: "{{ multus_namespace }}"
+    state: absent
+    kubeconfig: "{{ multus_kubeconfig }}"
   when: not (multus_dhcp_daemon_enabled | default(true))
 
 - name: Multus deployment summary

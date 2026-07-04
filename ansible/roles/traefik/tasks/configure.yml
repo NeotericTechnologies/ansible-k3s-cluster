@@ -27,14 +27,16 @@
     state: absent
 
 - name: Wait for Traefik to be ready
-  ansible.builtin.command: >-
-    kubectl wait --for=condition=available deployment traefik
-    -n kube-system
-    --timeout=300s
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: traefik_ready
-  retries: 5
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: traefik
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: traefik_deploy
+  retries: 30
   delay: 10
-  until: traefik_ready.rc == 0
+  until: >-
+    (traefik_deploy.resources | default([]) | length) > 0 and
+    (traefik_deploy.resources[0].status.availableReplicas | default(0) | int) >= 1
   changed_when: false
