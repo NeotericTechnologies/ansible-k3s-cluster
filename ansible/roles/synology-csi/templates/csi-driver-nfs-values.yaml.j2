@@ -7,7 +7,7 @@ driver:
   name: nfs.csi.k8s.io
 
 controller:
-  replicas: 1
+  replicas: {{ csi_nfs_replicas | default(1) }}
 
 node:
   dnsPolicy: ClusterFirstWithHostNet

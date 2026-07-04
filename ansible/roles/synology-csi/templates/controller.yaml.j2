@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/managed-by: ansible
 spec:
   serviceName: synology-csi-controller
-  replicas: 1
+  replicas: {{ synology_csi_replicas | default(1) }}
   selector:
     matchLabels:
       app: synology-csi-controller

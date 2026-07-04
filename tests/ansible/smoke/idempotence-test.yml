@@ -13,7 +13,7 @@
           ===== Idempotence Smoke Test =====
           This test runs cluster-core.yml and cluster-addons.yml twice
           to verify clean convergence without disruptive changes.
-          
+
           Run 1: Initial deployment (changes expected)
           Run 2: Idempotent re-run (minimal/no changes expected)
 
@@ -44,6 +44,14 @@
   hosts: localhost
   gather_facts: false
   tasks:
+    - name: Assert HA target variables are present for idempotence validation
+      ansible.builtin.assert:
+        that:
+          - k3s_server_ha_min_replicas | int >= 1
+          - kube_vip_ha_min_replicas | int >= 1
+          - traefik_ha_min_replicas | int >= 1
+        fail_msg: "HA target variables are not defined correctly for idempotence checks"
+
     - name: Test summary
       ansible.builtin.debug:
         msg: |
@@ -51,7 +59,7 @@
           ✓ Both playbooks ran successfully twice
           ✓ Verify task outputs showed minimal changes on Run 2
           ✓ Cluster remains operational after idempotent re-runs
-          
+
           Manual verification:
           - Check that Run 2 showed mostly "ok" status, not "changed"
           - Verify no pods were restarted unnecessarily

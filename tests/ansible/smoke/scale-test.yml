@@ -85,6 +85,24 @@
           - "- scale-nodes.yml will prevent removing the last control-plane node"
           - "- For HA, odd numbers (3, 5, 7) are recommended"
 
+- name: Test Scenario 4 - Override Precedence
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Validate optional override map shape
+      ansible.builtin.assert:
+        that:
+          - ha_component_overrides is not defined or ha_component_overrides is mapping
+        fail_msg: "ha_component_overrides must be a mapping when defined"
+
+    - name: Override precedence instructions
+      ansible.builtin.debug:
+        msg:
+          - "To validate override precedence during scale operations:"
+          - "1. Set ha_component_overrides in inventory group vars (example: traefik.expected_target=3)"
+          - "2. Run scale-nodes.yml"
+          - "3. Confirm validation uses override target instead of default HA target"
+
 - name: Automated Add/Remove Worker Flow (Optional)
   hosts: localhost
   gather_facts: no

@@ -26,7 +26,7 @@
   ansible.builtin.pip:
     name: kubernetes>=24.2.0
     state: present
-    extra_args: --break-system-packages
+    extra_args: --break-system-packages --ignore-installed
 
 - name: Ensure systemd is running
   ansible.builtin.systemd:

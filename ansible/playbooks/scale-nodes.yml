@@ -21,6 +21,9 @@
   hosts: k3s_servers[0]
   gather_facts: true
   tasks:
+    - name: Resolve topology-aware HA policy
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
+
     - name: Get current cluster nodes
       ansible.builtin.command:
         cmd: kubectl get nodes -o json
@@ -277,3 +280,9 @@
     - name: Display scheduling test result
       ansible.builtin.debug:
         msg: "{{ 'Pod scheduling works on updated cluster' if scheduling_test.rc == 0 else 'WARNING: Pod scheduling test failed' }}"
+
+    - name: Collect HA observations after scaling
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/collect-ha-observations.yml
+
+    - name: Validate topology-aware HA targets after scaling
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/validate-ha-targets.yml

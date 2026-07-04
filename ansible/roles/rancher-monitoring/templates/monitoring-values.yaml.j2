@@ -4,6 +4,7 @@
 
 prometheus:
   prometheusSpec:
+    replicas: {{ rancher_monitoring_replicas | default(1) }}
     retention: {{ rancher_monitoring_retention | default('7d') }}
     resources:
       requests:
@@ -20,5 +21,6 @@ prometheus:
 
 grafana:
   enabled: true
+  replicas: {{ rancher_monitoring_replicas | default(1) }}
   persistence:
     enabled: {{ rancher_monitoring_grafana_persistence | default(false) | lower }}

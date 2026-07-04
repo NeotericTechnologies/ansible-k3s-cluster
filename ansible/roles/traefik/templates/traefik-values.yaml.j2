@@ -15,20 +15,16 @@ ports:
     exposedPort: 443
     protocol: TCP
 
-{% if traefik_additional_entrypoints is defined %}
 additionalArguments:
+  - "--log.level={{ traefik_log_level | default('ERROR') }}"
+{% if traefik_additional_entrypoints is defined %}
 {% for ep in traefik_additional_entrypoints %}
   - "--entrypoints.{{ ep.name }}.address=:{{ ep.port }}/{{ ep.protocol | default('tcp') }}"
 {% endfor %}
 {% endif %}
-
 deployment:
   replicas: {{ traefik_replicas | default(1) }}
 
 ingressRoute:
   dashboard:
     enabled: {{ traefik_dashboard_enabled | default(false) | lower }}
-
-logs:
-  general:
-    level: {{ traefik_log_level | default('ERROR') }}

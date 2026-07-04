@@ -9,6 +9,8 @@ Auto-generated from all feature plans. Last updated: 2026-02-16
 - Optional Synology CSI for persistent volumes; embedded etcd for HA state (001-k3s-ansible-baseline)
 - Ansible YAML playbooks/roles plus Markdown documentation + Ansible Core role/playbook structure, inventory/group_vars model, shell-based repository validation commands (`rg`, `ansible-playbook --syntax-check`, `ansible-lint`) (002-repository-cleanup)
 - Git repository filesystem artifacts (playbooks, roles, inventories, docs, tests) (002-repository-cleanup)
+- Ansible Core 2.15+ (YAML playbooks and Jinja2 templates) + Ansible roles/playbooks under `ansible/playbooks` and `ansible/roles`, `kubernetes.core` modules, Helm-managed addons where already used (003-ha-component-deployment)
+- Git repository configuration files (`ansible/group_vars`, inventory `group_vars`, role defaults) and Kubernetes cluster state for runtime validation (003-ha-component-deployment)
 
 - Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+ + Ansible, k3s, k3s-io/k3s-ansible collection, cert-manager, multus CNI, Rancher and rancher-monitoring stack, Traefik ingress, kube-vip (or equivalent LB/VIP mechanism), optional Synology CSI driver (001-k3s-ansible-baseline)
 
@@ -28,9 +30,9 @@ tests/
 Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+: Follow standard conventions
 
 ## Recent Changes
+- 003-ha-component-deployment: Added Ansible Core 2.15+ (YAML playbooks and Jinja2 templates) + Ansible roles/playbooks under `ansible/playbooks` and `ansible/roles`, `kubernetes.core` modules, Helm-managed addons where already used
 - 002-repository-cleanup: Added Ansible YAML playbooks/roles plus Markdown documentation + Ansible Core role/playbook structure, inventory/group_vars model, shell-based repository validation commands (`rg`, `ansible-playbook --syntax-check`, `ansible-lint`)
 - 001-k3s-ansible-baseline: Added Ansible Core 2.15+ (YAML playbooks, Jinja2 templates) + k3s (pinned version), kube-vip (DaemonSet mode), Helm (for Rancher, rancher-monitoring, Traefik, cert-manager charts), Ansible collections (`kubernetes.core`, `community.kubernetes`)
-- 001-k3s-ansible-baseline: Added YAML-based Ansible playbooks and roles (Ansible Core 2.15+) + `ansible-core`, `ansible-lint`, k3s binaries, Helm charts for Rancher/rancher-monitoring, Kubernetes manifests/templates for cert-manager, multus, Traefik, kube-vip, Synology CSI
 
 
 <!-- MANUAL ADDITIONS START -->
