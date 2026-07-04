@@ -6,7 +6,7 @@
 
 ## Summary
 
-Standardize all Kubernetes resource operations across `cert-manager`, `multus`, `traefik`, `kube-vip`, `rancher`, and `rancher-monitoring` roles to use the `kubernetes.core.k8s` and `kubernetes.core.k8s_info` Ansible modules, replacing ad-hoc `kubectl` shell invocations. The `kubernetes.core` collection (≥2.4.0) is already declared in `ansible/requirements.yml`. Migration patterns are: `kubectl apply` → `kubernetes.core.k8s` with `definition:`; `kubectl create namespace` → `kubernetes.core.k8s` with `state: present`; `kubectl wait`/`kubectl rollout status` → `kubernetes.core.k8s_info` polling loops; `kubectl scale` → `kubernetes.core.k8s` spec patch on `replicas`. Raw API health probes, Helm operations, and k3s service management are explicitly exempt.
+Standardize all Kubernetes resource operations across `cert-manager`, `multus`, `traefik`, `kube-vip`, and `rancher` roles (plus `rancher-monitoring` at lower priority, conditional on higher-priority roles completing first) to use the `kubernetes.core.k8s` and `kubernetes.core.k8s_info` Ansible modules, replacing ad-hoc `kubectl` shell invocations. The `kubernetes.core` collection (≥2.4.0) is already declared in `ansible/requirements.yml`. Migration patterns are: `kubectl apply` → `kubernetes.core.k8s` with `definition:`; `kubectl create namespace` → `kubernetes.core.k8s` with `state: present`; `kubectl wait`/`kubectl rollout status` → `kubernetes.core.k8s_info` polling loops; `kubectl scale` → `kubernetes.core.k8s` spec patch on `replicas`. Raw API health probes, Helm operations, and k3s service management are explicitly exempt.
 
 ## Technical Context
 
@@ -26,7 +26,7 @@ Standardize all Kubernetes resource operations across `cert-manager`, `multus`, 
 
 **Constraints**: `validate_certs: false` and explicit `host: https://127.0.0.1:6443` required for kube-vip bootstrap-phase tasks (API not yet fully trusted); multi-document YAML manifests (cert-manager) require `from_yaml_all` filter + loop; `no_log: true` must be preserved on DNS credential secret tasks
 
-**Scale/Scope**: 6 roles, ~35 task invocations migrated; no playbook or inventory changes
+**Scale/Scope**: 6 roles, 23 task invocations migrated; no playbook or inventory changes
 
 ## Constitution Check
 

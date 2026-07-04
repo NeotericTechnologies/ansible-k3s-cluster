@@ -22,7 +22,7 @@ description: "Task list for kubernetes.core.k8s module standardization refactor"
 
 **Purpose**: Verify collection prerequisites are in place before beginning role migrations.
 
-- [ ] T001 Verify `kubernetes.core >= 2.4.0` and `community.kubernetes >= 3.0.0` are declared in `ansible/requirements.yml` (per R-001; no change expected — confirm and proceed)
+- [ ] T001 Verify `kubernetes.core >= 2.4.0` and `community.kubernetes >= 3.0.0` are declared in `ansible/requirements.yml` (per R-001; no change expected — confirm and proceed; if version is insufficient, run `ansible-galaxy collection install 'kubernetes.core>=2.4.0' 'community.kubernetes>=3.0.0'` before continuing)
 
 ---
 
@@ -88,6 +88,8 @@ description: "Task list for kubernetes.core.k8s module standardization refactor"
 
 - [ ] T011 [P] [US3] Review and confirm Helm shell tasks are unchanged in: (a) `ansible/roles/traefik/tasks/configure.yml` — `Deploy Traefik via Helm` (`ansible.builtin.shell: helm upgrade --install ...`); (b) `ansible/roles/rancher/tasks/install.yml` — `Install Rancher via Helm`; (c) `ansible/roles/rancher-monitoring/tasks/install.yml` — `Install rancher-monitoring via Helm`
 
+- [ ] T012 [P] [US3] Verify k3s service management and binary version check tasks in `ansible/roles/k3s-server/tasks/install.yml`, `ansible/roles/k3s-agent/tasks/install.yml`, and `ansible/roles/k3s-common/tasks/` are unchanged as `ansible.builtin.command` tasks — confirm `k3s --version`, `k3s-agent --version`, and systemd service operations are not migrated; cross-reference against data-model.md Exemption Registry (FR-009)
+
 **Checkpoint**: Exempt operations verified unchanged. User Story 3 complete. Proceed to Phase 6 (rancher-monitoring) or directly to Phase 7 if rancher-monitoring is deferred.
 
 ---
@@ -100,9 +102,9 @@ description: "Task list for kubernetes.core.k8s module standardization refactor"
 
 **Independent Test**: Re-run rancher-monitoring role; namespace creation reports `ok` (not AlreadyExists failure); readiness wait uses `kubernetes.core.k8s_info` polling.
 
-- [ ] T012 [US1] Replace `kubectl create namespace cattle-monitoring-system` in `ansible/roles/rancher-monitoring/tasks/install.yml` with `kubernetes.core.k8s` `kind: Namespace` `state: present`; remove AlreadyExists guard (R-007)
+- [ ] T013 [US1] Replace `kubectl create namespace cattle-monitoring-system` in `ansible/roles/rancher-monitoring/tasks/install.yml` with `kubernetes.core.k8s` `kind: Namespace` `state: present`; remove AlreadyExists guard (R-007)
 
-- [ ] T013 [US2] Replace `kubectl wait --for=condition=available deployment -l app.kubernetes.io/name=grafana -n cattle-monitoring-system` in `ansible/roles/rancher-monitoring/tasks/install.yml` with `kubernetes.core.k8s_info` polling using `label_selectors: ["app.kubernetes.io/name=grafana"]`, checking `status.availableReplicas >= 1` with `retries: 20` and `delay: 30` to match the original 600s timeout budget (R-005)
+- [ ] T014 [US2] Replace `kubectl wait --for=condition=available deployment -l app.kubernetes.io/name=grafana -n cattle-monitoring-system` in `ansible/roles/rancher-monitoring/tasks/install.yml` with `kubernetes.core.k8s_info` polling using `label_selectors: ["app.kubernetes.io/name=grafana"]`, checking `status.availableReplicas >= 1` with `retries: 20` and `delay: 30` to match the original 600s timeout budget (R-005)
 
 **Checkpoint**: rancher-monitoring fully migrated. All six in-scope roles now use `kubernetes.core.k8s`/`k8s_info` exclusively for resource operations.
 
@@ -112,11 +114,11 @@ description: "Task list for kubernetes.core.k8s module standardization refactor"
 
 **Purpose**: Static verification, lint, and smoke test validation to confirm all success criteria are met.
 
-- [ ] T014 [P] Run `ansible-lint` on all refactored roles and confirm exit code 0: `ansible-lint ansible/roles/cert-manager/ ansible/roles/multus/ ansible/roles/traefik/ ansible/roles/kube-vip/ ansible/roles/rancher/ ansible/roles/rancher-monitoring/` (quickstart.md Validation 2)
+- [ ] T015 [P] Run `ansible-lint` on all refactored roles and confirm exit code 0: `ansible-lint ansible/roles/cert-manager/ ansible/roles/multus/ ansible/roles/traefik/ ansible/roles/kube-vip/ ansible/roles/rancher/ ansible/roles/rancher-monitoring/` (quickstart.md Validation 2)
 
-- [ ] T015 [P] Run static grep validation per quickstart.md Validation 1 — confirm zero `kubectl apply`, `kubectl create`, `kubectl delete`, `kubectl patch`, `kubectl scale`, `kubectl wait`, and `kubectl rollout` invocations in refactored role task files (SC-001, SC-002); permitted matches: `kubectl --raw=/readyz`, `kubectl ... api-resources` in `kube-vip/tasks/install.yml` only
+- [ ] T016 [P] Run static grep validation per quickstart.md Validation 1 — confirm zero `kubectl apply`, `kubectl create`, `kubectl delete`, `kubectl patch`, `kubectl scale`, `kubectl wait`, and `kubectl rollout` invocations in refactored role task files (SC-001, SC-002); permitted matches: `kubectl --raw=/readyz`, `kubectl ... api-resources` in `kube-vip/tasks/install.yml` only
 
-- [ ] T016 Run full clean deployment (quickstart.md Validation 4) and idempotence smoke test (quickstart.md Validation 3: `tests/ansible/smoke/idempotence-test.yml`) against test cluster; confirm `failed=0` on clean deploy and `changed=0` for all refactored roles on second run (SC-003, SC-004, SC-005)
+- [ ] T017 Run full clean deployment (quickstart.md Validation 4), idempotence smoke test (quickstart.md Validation 3: `tests/ansible/smoke/idempotence-test.yml`), and existing smoke suite (quickstart.md Validation 5: `tests/ansible/smoke/ha-disruption-test.yml`, `tests/ansible/smoke/scale-test.yml`, `tests/ansible/smoke/multus-dhcp-test.yml`) against test cluster; confirm `failed=0` on clean deploy, `changed=0` for all refactored roles on second run, and all smoke tests pass (SC-003, SC-004, SC-005)
 
 ---
 
@@ -130,7 +132,7 @@ description: "Task list for kubernetes.core.k8s module standardization refactor"
 - **Phase 4 (US2)**: Depends on Phase 2; can proceed in parallel with Phase 3 since edits are to different sections of the same files — but validating Phase 3 first is recommended before beginning Phase 4
 - **Phase 5 (US3)**: Depends on Phase 2; can proceed in parallel with Phases 3 and 4 (verification only)
 - **Phase 6 (rancher-monitoring)**: Depends on Phases 3 and 4 passing validation
-- **Phase 7 (Polish)**: Depends on all desired phases complete; T014/T015 [P] can run in parallel
+- **Phase 7 (Polish)**: Depends on all desired phases complete; T015/T016 [P] can run in parallel
 
 ### User Story Dependencies
 
@@ -159,7 +161,7 @@ T008  ansible/roles/traefik/tasks/configure.yml       ──┤ (different files
 T009  ansible/roles/kube-vip/tasks/install.yml        ──┘
 ```
 
-Polish tasks T014 and T015 can run in parallel (grep and lint are independent).
+Polish tasks T015 and T016 can run in parallel (grep and lint are independent).
 
 ---
 
@@ -183,8 +185,8 @@ Each task maps to canonical migration patterns in `research.md`:
 | P-APPLY-REMOTE (`uri` + `from_yaml_all`) | R-002 | T002 (a, c) |
 | P-APPLY-TEMPLATE (`lookup('template')` + `from_yaml`) | R-003 | T002 (d, e), T003, T004 |
 | P-APPLY-STDIN (`lookup('template')` + `from_yaml`) | R-003 | T003 |
-| P-NAMESPACE (`state: present`) | R-007 | T002 (b), T005, T012 |
-| P-WAIT-DEPLOY (`k8s_info` Deployment poll) | R-005 | T006, T008, T013 |
+| P-NAMESPACE (`state: present`) | R-007 | T002 (b), T005, T013 |
+| P-WAIT-DEPLOY (`k8s_info` Deployment poll) | R-005 | T006, T008, T014 |
 | P-WAIT-DS (`k8s_info` DaemonSet poll) | R-006 | T007, T009 |
 | P-SCALE (spec.replicas patch) | R-010 | T002 (f) |
 | kube-vip host/validate_certs | R-004 | T004, T009 |

@@ -72,7 +72,7 @@ An operator provisions a cluster and all non-resource operations (k3s bootstrap 
 - **FR-004**: Readiness waits that previously used `kubectl wait --for=condition=available` MUST be replaced with `kubernetes.core.k8s_info` polling loops using `retries` and `until` conditions.
 - **FR-005**: DaemonSet rollout waits that previously used `kubectl rollout status` MUST be replaced with `kubernetes.core.k8s_info` polling loops checking pod count or `ready` conditions.
 - **FR-006**: All refactored tasks MUST produce correct idempotent change detection — reporting `changed: true` only when the resource state was actually modified.
-- **FR-007**: In the `kube-vip` role, only the DaemonSet manifest apply task MUST be migrated to `kubernetes.core.k8s`. All health-probe and diagnostic tasks (`/readyz`, `api-resources` discovery, `journalctl`, `systemctl status`) MUST remain as `ansible.builtin.command` tasks — these have no `kubernetes.core.k8s` equivalent and validate API availability before the apply step runs.
+- **FR-007**: In the `kube-vip` role, all manifest apply tasks (DaemonSet, cloud controller, and ConfigMap) MUST be migrated to `kubernetes.core.k8s`. All health-probe and diagnostic tasks (`/readyz`, `api-resources` discovery, `journalctl`, `systemctl status`) MUST remain as `ansible.builtin.command` tasks — these have no `kubernetes.core.k8s` equivalent and validate API availability before any apply step runs.
 - **FR-008**: Helm-based deployments (e.g., Traefik) MUST remain as shell/command tasks — Helm operations are out of scope for this module.
 - **FR-009**: k3s service management and version checks (`k3s --version`, systemd) MUST remain unchanged.
 - **FR-010**: The `kubernetes.core` Ansible collection MUST be declared as a dependency in `ansible/requirements.yml` if not already present.
@@ -99,7 +99,7 @@ An operator provisions a cluster and all non-resource operations (k3s bootstrap 
 
 ### Session 2026-07-04
 
-- Q: For kube-vip, which tasks are in scope for migration vs exempt? → A: Migrate only the DaemonSet manifest apply task; all health-probe and diagnostic tasks (`/readyz`, `api-resources`, `journalctl`, `systemctl`) remain as `ansible.builtin.command`.
+- Q: For kube-vip, which tasks are in scope for migration vs exempt? → A: Migrate all manifest apply tasks (DaemonSet, cloud controller, ConfigMap); all health-probe and diagnostic tasks (`/readyz`, `api-resources`, `journalctl`, `systemctl`) remain as `ansible.builtin.command`.
 - Q: For cert-manager's remote URL manifests, what fetch approach is required? → A: `ansible.builtin.uri` (return_content: true) to fetch YAML at runtime, then apply via `kubernetes.core.k8s` with `definition:` — no local file copy.
 - Q: Are `kubectl scale` commands in scope for migration under FR-001 and SC-001? → A: Yes — migrate to `kubernetes.core.k8s` patching the `replicas` field; SC-001 now explicitly covers `kubectl scale`.
 - Q: Is `rancher-monitoring` definitively out of scope or conditionally in scope? → A: In scope at lower priority — only namespace creation and readiness wait tasks are migrated; Helm install remains exempt. Included in DoD only after higher-priority roles are complete.
@@ -110,7 +110,7 @@ An operator provisions a cluster and all non-resource operations (k3s bootstrap 
 - The `kubernetes.core` Ansible collection is already installed or available via `ansible/requirements.yml` — it is already used by the `synology-csi` and `rancher` roles.
 - All roles run with access to a valid kubeconfig (at `/etc/rancher/k3s/k3s.yaml` or via `KUBECONFIG`) — no change to kubeconfig handling is required.
 - Helm-based deployments (Traefik) are explicitly out of scope; the `kubernetes.core.helm` module is a separate concern and not part of this refactor.
-- The kube-vip role's bootstrap API health probes (`/readyz`, `api-resources`) and all diagnostic tasks (`journalctl`, `systemctl status`) are exempt. Only the DaemonSet manifest apply task is migrated to `kubernetes.core.k8s`; the existing readiness checks guarantee API availability before that apply step runs.
+- The kube-vip role's bootstrap API health probes (`/readyz`, `api-resources`) and all diagnostic tasks (`journalctl`, `systemctl status`) are exempt. All manifest apply tasks (DaemonSet, cloud controller, ConfigMap) are migrated to `kubernetes.core.k8s`; the existing readiness checks guarantee API availability before any apply step runs.
 - Remote manifest URLs (e.g., cert-manager CRDs and deployment YAML from GitHub) will require a fetch step before applying via `kubernetes.core.k8s`; this is an acceptable trade-off for consistency.
 - `rancher-monitoring` is in scope at lower priority. Only its `kubectl create namespace` and `kubectl wait` tasks are migrated; the Helm install operation remains exempt per FR-008. It is included in the DoD only after `cert-manager`, `multus`, `kube-vip`, `traefik`, and `rancher` are complete.
 - No changes to playbook entry points, inventory, or group/host variables are required.
