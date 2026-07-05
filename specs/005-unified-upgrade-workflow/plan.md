@@ -70,9 +70,13 @@ ansible/
 │   ├── upgrade-k3s.yml             # EXISTING: deprecated but functional
 │   ├── scale-nodes.yml             # EXISTING: unchanged
 │   └── includes/                   # NEW: modular upgrade includes
+│       ├── vars/
+│       │   └── upgrade-components.yml  # Component registry
 │       ├── detect-versions.yml     # Gather live component versions
 │       ├── compute-plan.yml        # Compute upgrade plan and validate constraints
 │       ├── upgrade-k3s-rolling.yml # Rolling k3s upgrade (servers then agents)
+│       ├── upgrade-rancher.yml     # Rancher-specific Helm upgrade
+│       ├── upgrade-kube-vip.yml    # kube-vip manifest-based upgrade
 │       └── upgrade-addon.yml       # Generic Helm-based add-on upgrade
 ├── group_vars/
 │   └── all.yml                     # MODIFIED: add component_compatibility variable

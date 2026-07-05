@@ -81,6 +81,8 @@
 
 **Independent Test**: Change one component version only → verify only that component's tasks run (via --check or actual execution).
 
+**Depends on**: Phase 3 (US1) — site.yml must exist with component includes
+
 ### Implementation for User Story 3
 
 - [ ] T022 [P] [US3] Add `when: component_plan[item].action in ['install', 'upgrade']` conditions to each component include in ansible/playbooks/site.yml
@@ -105,6 +107,8 @@
 - [ ] T028 [US4] Add any_errors_fatal:true to rolling upgrade plays to stop on first failure in ansible/playbooks/includes/upgrade-k3s-rolling.yml
 - [ ] T029 [US4] Add pause between node upgrades (upgrade_pause_between_nodes variable) in ansible/playbooks/includes/upgrade-k3s-rolling.yml
 - [ ] T030 [US4] Wire upgrade-k3s-rolling.yml include into site.yml with conditional (only when k3s action is upgrade) in ansible/playbooks/site.yml
+- [ ] T031 [US4] Implement kube-vip manifest-based upgrade include (re-apply static pod manifest with new version) at ansible/playbooks/includes/upgrade-kube-vip.yml
+- [ ] T032 [US4] Implement manifest_label version detection for non-Helm components (kube-vip, multus) in ansible/playbooks/includes/detect-versions.yml
 
 **Checkpoint**: Rolling k3s upgrades maintain cluster availability with proper drain/uncordon cycle
 
@@ -114,10 +118,10 @@
 
 **Purpose**: Documentation, deprecation notices, backward compatibility validation
 
-- [ ] T031 [P] Add deprecation notice comment to ansible/playbooks/upgrade-k3s.yml header pointing to site.yml
-- [ ] T032 [P] Update README.md with unified workflow documentation (single command for install/upgrade)
-- [ ] T033 [P] Add smoke test scenario for site.yml no-op run in tests/ansible/smoke/
-- [ ] T034 Validate backward compatibility: ensure cluster-core.yml and cluster-addons.yml still function independently (manual check / --check mode)
+- [ ] T033 [P] Add deprecation notice comment to ansible/playbooks/upgrade-k3s.yml header pointing to site.yml
+- [ ] T034 [P] Update README.md with unified workflow documentation (single command for install/upgrade)
+- [ ] T035 [P] Add smoke test scenario for site.yml no-op run in tests/ansible/smoke/
+- [ ] T036 Validate backward compatibility: ensure cluster-core.yml and cluster-addons.yml still function independently (manual check / --check mode)
 
 ---
 
@@ -125,7 +129,7 @@
 
 ```
 Phase 1 (Setup) → Phase 2 (Foundational) → Phase 3 (US1) → Phase 4 (US2)
-                                          → Phase 5 (US3) [parallel with US2]
+                                          → Phase 5 (US3) [after US1, parallel with US2/US4]
                                           → Phase 6 (US4) [parallel with US2]
 Phase 3-6 complete → Phase 7 (Polish)
 ```
@@ -134,7 +138,7 @@ Phase 3-6 complete → Phase 7 (Polish)
 
 1. **US1** (P1): Depends on Phase 1 + 2. Delivers MVP — single playbook for install/upgrade.
 2. **US2** (P1): Depends on US1 (site.yml must exist). Adds ordering + constraint enforcement.
-3. **US3** (P2): Depends on Phase 2 (detect-versions). Can parallelize with US2.
+3. **US3** (P2): Depends on US1 (site.yml with component includes must exist). Adds selective execution.
 4. **US4** (P2): Depends on Phase 2 (compute-plan). Can parallelize with US2.
 
 ### Parallel Execution Examples

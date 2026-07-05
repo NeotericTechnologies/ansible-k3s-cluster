@@ -71,6 +71,36 @@ upgrade_components:
       namespace: cattle-monitoring-system
     upgrade_priority: 32
     play_file: includes/upgrade-addon.yml
+
+  - name: kube_vip
+    version_var: kube_vip_version
+    enabled_var: kube_vip_enabled
+    detect_method: manifest_label
+    detect_args:
+      label_selector: "app.kubernetes.io/name=kube-vip"
+      namespace: kube-system
+    upgrade_priority: 15  # After Rancher, before k3s (deployed on control-plane)
+    play_file: includes/upgrade-kube-vip.yml
+
+  - name: multus
+    version_var: multus_version
+    enabled_var: multus_enabled
+    detect_method: manifest_label
+    detect_args:
+      label_selector: "app=multus"
+      namespace: kube-system
+    upgrade_priority: 33
+    play_file: includes/upgrade-addon.yml
+
+  - name: synology_csi
+    version_var: synology_csi_version
+    enabled_var: synology_csi_enabled
+    detect_method: helm_release
+    detect_args:
+      release_name: synology-csi
+      namespace: synology-csi
+    upgrade_priority: 34
+    play_file: includes/upgrade-addon.yml
 ```
 
 ### Component Compatibility (variable structure)
@@ -118,5 +148,7 @@ Component Lifecycle:
 1. If `action == downgrade` and `allow_downgrade != true` → FAIL
 2. If k3s desired version > `component_compatibility.rancher.k3s_max_version` → FAIL
 3. If k3s desired version < `component_compatibility.rancher.k3s_min_version` → FAIL
+4. If a component has no entry in `component_compatibility`, it is treated as having no constraints (unconstrained components are always allowed) → explicit entry required for any component that has version dependencies
+5. All components in `upgrade_components` registry MUST have an explicit `component_compatibility` entry (even if empty `{}`) to confirm constraints were intentionally evaluated
 4. If k3s desired version < `component_compatibility.cert_manager.k3s_min_version` and cert_manager is being upgraded → FAIL
 5. All nodes in target inventory must be reachable → FAIL if any unreachable

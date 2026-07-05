@@ -87,9 +87,9 @@ As a cluster operator, I want k3s upgrades to proceed in a safe rolling fashion 
 
 - What happens when the operator downgrades a component version? → System blocks with a clear error unless an explicit override variable (e.g., `allow_downgrade: true`) is set.
 - How does the system handle a partially failed previous upgrade (cluster in mixed-version state)? → System queries live state, so it detects the actual versions on each node/component and converges toward the desired state regardless of prior failures.
-- What happens when a component's dependency information is unavailable or undefined?
+- What happens when a component's dependency information is unavailable or undefined? → All components in the registry MUST have an explicit `component_compatibility` entry (even if empty `{}`). The system fails if a registered component lacks a compatibility entry, ensuring constraints are always intentionally evaluated.
 - How does the system behave when the cluster is unreachable or a node is offline during upgrade? → System stops the entire upgrade with a clear error identifying the unreachable node(s); no partial upgrades proceed.
-- What happens when the operator upgrades k3s to a version incompatible with the currently deployed Rancher version?
+- What happens when the operator upgrades k3s to a version incompatible with the currently deployed Rancher version? → System validates k3s target against deployed Rancher's k3s_max_version; fails with constraint error per FR-006/FR-009 before making any changes.
 
 ## Requirements *(mandatory)*
 
@@ -113,7 +113,7 @@ As a cluster operator, I want k3s upgrades to proceed in a safe rolling fashion 
 ### Key Entities
 
 - **Component**: A deployable unit with a version, dependencies, and an associated role/playbook (e.g., k3s, Rancher, cert-manager, traefik, kube-vip, synology-csi, multus).
-- **Dependency Graph**: A directed acyclic graph defining ordering constraints between components (e.g., k3s depends on Rancher being upgraded first, since Rancher defines the maximum compatible k3s version).
+- **Dependency Graph**: Version constraint pairs with fixed priority ordering between components (e.g., Rancher must upgrade before k3s because Rancher defines the maximum compatible k3s version). Implemented as a constraint map rather than a dynamic topological sort, since the relationships are simple and well-defined.
 - **Upgrade Plan**: The computed set of components that need changes and their execution order for a given run.
 - **Health Check**: A validation step confirming cluster/node health at a specific point during the upgrade sequence.
 
