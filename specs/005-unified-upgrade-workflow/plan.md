@@ -71,7 +71,7 @@ ansible/
 │   ├── scale-nodes.yml             # EXISTING: unchanged
 │   └── includes/                   # NEW: modular upgrade includes
 │       ├── vars/
-│       │   └── upgrade-components.yml  # Component registry
+│       │   └── component-registry.yml  # Component registry with priorities
 │       ├── detect-versions.yml     # Gather live component versions
 │       ├── compute-plan.yml        # Compute upgrade plan and validate constraints
 │       ├── upgrade-k3s-rolling.yml # Rolling k3s upgrade (servers then agents)

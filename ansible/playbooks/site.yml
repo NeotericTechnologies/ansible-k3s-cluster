@@ -44,7 +44,7 @@
   become: true
   gather_facts: false
   vars_files:
-    - includes/vars/upgrade-components.yml
+    - includes/vars/component-registry.yml
   tasks:
     - name: Resolve topology-aware HA policy
       ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
@@ -64,6 +64,15 @@
 
     - name: Compute upgrade plan and validate constraints
       ansible.builtin.include_tasks: includes/compute-plan.yml
+
+    - name: Confirm plan before applying changes
+      ansible.builtin.pause:
+        prompt: |-
+          Review the upgrade/install plan above.
+          Press ENTER to continue, or press Ctrl+C then A to abort.
+      when:
+        - (is_fresh_install | default(false) | bool) or (has_changes | default(false) | bool)
+        - not (auto_approve_plan | default(false) | bool)
 
 # =============================================================================
 # Play 3: Fresh install path — cluster-core
@@ -179,7 +188,7 @@
   become: true
   gather_facts: false
   vars_files:
-    - includes/vars/upgrade-components.yml
+    - includes/vars/component-registry.yml
   tasks:
     # T017: No-op path
     - name: Skip upgrade path if fresh install or no changes

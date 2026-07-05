@@ -93,6 +93,8 @@
     host: https://127.0.0.1:6443
     validate_certs: false
   loop: "{{ lookup('template', 'kube-vip-daemonset.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - item is not none
@@ -126,6 +128,8 @@
     host: https://127.0.0.1:6443
     validate_certs: false
   loop: "{{ lookup('template', 'kube-vip-cloud-controller.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - kube_vip_lb_enable | default(false)
@@ -139,6 +143,8 @@
     host: https://127.0.0.1:6443
     validate_certs: false
   loop: "{{ lookup('template', 'kube-vip-configmap.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - kube_vip_lb_enable | default(false)

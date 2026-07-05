@@ -1,16 +1,32 @@
 ---
-# upgrade-components.yml
-# Component registry for the unified upgrade workflow
+# component-registry.yml
+# Component registry for the unified upgrade and deployment workflow
 # Reference: specs/005-unified-upgrade-workflow/data-model.md
 #
 # Each component defines:
-#   name:           Identifier used in upgrade_plan facts
-#   version_var:    Ansible variable holding desired version
-#   enabled_var:    Ansible variable for enablement (null = always enabled)
-#   detect_method:  How to discover live version (k3s_binary, helm_release, manifest_label)
-#   detect_args:    Method-specific arguments
-#   upgrade_priority: Execution order (lower = earlier)
-#   play_file:      Include file that performs the upgrade
+#   name:                    Identifier used in upgrade_plan facts
+#   version_var:             Ansible variable holding desired version
+#   enabled_var:             Ansible variable for enablement (null = always enabled)
+#   detect_method:           How to discover live version (k3s_binary, helm_release, manifest_label)
+#   detect_args:             Method-specific arguments
+#   fresh_install_priority:  Execution order during fresh installs (lower = earlier)
+#   upgrade_priority:        Execution order during upgrades (lower = earlier)
+#   play_file:               Include file that performs the upgrade
+#
+# Priority notes:
+#   Fresh installs follow cluster-core + cluster-addons pattern:
+#     1. k3s must be installed first as cluster foundation
+#     2. kube-vip for control-plane VIP
+#     3. cert-manager (prerequisite for Rancher)
+#     4. multus
+#     5. traefik
+#     6. rancher
+#     7. rancher-monitoring
+#     8. synology-csi
+#   Upgrades follow dependency order:
+#     1. rancher (for compatibility with k3s versions)
+#     2. k3s (core cluster upgrade)
+#     3. kube-vip and remaining add-ons
 
 upgrade_components:
   - name: rancher
@@ -20,6 +36,7 @@ upgrade_components:
     detect_args:
       release_name: rancher
       namespace: cattle-system
+    fresh_install_priority: 23
     upgrade_priority: 10
     play_file: includes/upgrade-rancher.yml
 
@@ -30,7 +47,8 @@ upgrade_components:
     detect_args:
       label_selector: "app.kubernetes.io/name=kube-vip"
       namespace: kube-system
-    upgrade_priority: 15
+    fresh_install_priority: 10
+    upgrade_priority: 20
     play_file: includes/upgrade-kube-vip.yml
 
   - name: k3s
@@ -38,7 +56,8 @@ upgrade_components:
     enabled_var: null
     detect_method: k3s_binary
     detect_args: {}
-    upgrade_priority: 20
+    fresh_install_priority: 5
+    upgrade_priority: 15
     play_file: includes/upgrade-k3s-rolling.yml
 
   - name: cert_manager
@@ -48,6 +67,7 @@ upgrade_components:
     detect_args:
       release_name: cert-manager
       namespace: cert-manager
+    fresh_install_priority: 20
     upgrade_priority: 30
     play_file: includes/upgrade-addon.yml
 
@@ -58,6 +78,7 @@ upgrade_components:
     detect_args:
       release_name: traefik
       namespace: kube-system
+    fresh_install_priority: 22
     upgrade_priority: 31
     play_file: includes/upgrade-addon.yml
 
@@ -68,6 +89,7 @@ upgrade_components:
     detect_args:
       release_name: rancher-monitoring
       namespace: cattle-monitoring-system
+    fresh_install_priority: 24
     upgrade_priority: 32
     play_file: includes/upgrade-addon.yml
 
@@ -78,6 +100,7 @@ upgrade_components:
     detect_args:
       label_selector: "app=multus"
       namespace: kube-system
+    fresh_install_priority: 21
     upgrade_priority: 33
     play_file: includes/upgrade-addon.yml
 
@@ -88,5 +111,6 @@ upgrade_components:
     detect_args:
       release_name: synology-csi
       namespace: synology-csi
+    fresh_install_priority: 25
     upgrade_priority: 34
     play_file: includes/upgrade-addon.yml

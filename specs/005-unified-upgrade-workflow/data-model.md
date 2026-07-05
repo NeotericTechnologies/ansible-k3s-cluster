@@ -16,13 +16,18 @@ A deployable unit managed by the unified playbook.
 | enabled_var | string | Ansible variable name for enablement flag (e.g., `rancher_enabled`); `null` for k3s (always enabled) |
 | detect_method | enum | How to detect live version: `k3s_binary`, `helm_release`, `manifest_label` |
 | detect_args | dict | Arguments for detection (e.g., helm release name, namespace, label selector) |
-| upgrade_priority | int | Execution order (lower = earlier). Rancher=10, k3s=20, add-ons=30+ |
+| fresh_install_priority | int | Execution order during fresh installs (lower = earlier). k3s=5, kube-vip=10, cert-manager=20, multus=21, traefik=22, rancher=23, rancher-monitoring=24, synology-csi=25 |
+| upgrade_priority | int | Execution order during upgrades (lower = earlier). rancher=10, k3s=15, kube-vip=20, add-ons=30+ |
 | play_file | string | Relative path to the play/include that handles this component |
+
+**Priority Strategy**:
+- **Fresh installs**: Follow the original cluster-core then cluster-addons sequence exactly: k3s, kube-vip, cert-manager, multus, traefik, rancher, rancher-monitoring, synology-csi.
+- **Upgrades**: Rancher first for compatibility with k3s versions, then k3s core, then kube-vip and remaining add-ons.
 
 ### Component Registry (variable structure)
 
 ```yaml
-# Defined in a vars file loaded by the orchestrator
+# Defined in ansible/playbooks/includes/vars/component-registry.yml
 upgrade_components:
   - name: rancher
     version_var: rancher_version
@@ -31,15 +36,28 @@ upgrade_components:
     detect_args:
       release_name: rancher
       namespace: cattle-system
+    fresh_install_priority: 23
     upgrade_priority: 10
     play_file: includes/upgrade-rancher.yml
+
+  - name: kube_vip
+    version_var: kube_vip_version
+    enabled_var: kube_vip_enabled
+    detect_method: manifest_label
+    detect_args:
+      label_selector: "app.kubernetes.io/name=kube-vip"
+      namespace: kube-system
+    fresh_install_priority: 10
+    upgrade_priority: 20
+    play_file: includes/upgrade-kube-vip.yml
 
   - name: k3s
     version_var: k3s_version
     enabled_var: null  # always enabled
     detect_method: k3s_binary
     detect_args: {}
-    upgrade_priority: 20
+    fresh_install_priority: 5
+    upgrade_priority: 15
     play_file: includes/upgrade-k3s-rolling.yml
 
   - name: cert_manager
@@ -49,6 +67,7 @@ upgrade_components:
     detect_args:
       release_name: cert-manager
       namespace: cert-manager
+    fresh_install_priority: 20
     upgrade_priority: 30
     play_file: includes/upgrade-addon.yml
 
@@ -59,6 +78,7 @@ upgrade_components:
     detect_args:
       release_name: traefik
       namespace: kube-system
+    fresh_install_priority: 22
     upgrade_priority: 31
     play_file: includes/upgrade-addon.yml
 
@@ -69,18 +89,9 @@ upgrade_components:
     detect_args:
       release_name: rancher-monitoring
       namespace: cattle-monitoring-system
+    fresh_install_priority: 24
     upgrade_priority: 32
     play_file: includes/upgrade-addon.yml
-
-  - name: kube_vip
-    version_var: kube_vip_version
-    enabled_var: kube_vip_enabled
-    detect_method: manifest_label
-    detect_args:
-      label_selector: "app.kubernetes.io/name=kube-vip"
-      namespace: kube-system
-    upgrade_priority: 15  # After Rancher, before k3s (deployed on control-plane)
-    play_file: includes/upgrade-kube-vip.yml
 
   - name: multus
     version_var: multus_version
@@ -89,6 +100,7 @@ upgrade_components:
     detect_args:
       label_selector: "app=multus"
       namespace: kube-system
+    fresh_install_priority: 21
     upgrade_priority: 33
     play_file: includes/upgrade-addon.yml
 
@@ -99,6 +111,7 @@ upgrade_components:
     detect_args:
       release_name: synology-csi
       namespace: synology-csi
+    fresh_install_priority: 25
     upgrade_priority: 34
     play_file: includes/upgrade-addon.yml
 ```
@@ -120,7 +133,8 @@ component_compatibility:
 | Field | Type | Description |
 |-------|------|-------------|
 | components_to_upgrade | list[dict] | Components with version drift, sorted by `upgrade_priority` |
-| components_skipped | list[string] | Components with no version change or disabled |
+| components_unchanged | list[string] | Enabled components with no version change (`action: none`) |
+| components_not_enabled | list[string] | Disabled components skipped from install/upgrade |
 | constraint_violations | list[string] | Any constraint violations detected (empty if valid) |
 | is_fresh_install | bool | True if k3s is not yet installed on any node |
 

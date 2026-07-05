@@ -90,6 +90,42 @@
          | ternary(multus_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
                    'not_installed') }}
 
+- name: Detect cert-manager version from deployment image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get deployment cert-manager -n cert-manager
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: cert_manager_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse cert-manager version from image tag
+  ansible.builtin.set_fact:
+    cert_manager_live_version: >-
+      {{ (cert_manager_image_raw.rc == 0 and cert_manager_image_raw.stdout | length > 0)
+         | ternary(cert_manager_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
+- name: Detect synology-csi version from controller StatefulSet image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get statefulset synology-csi-controller -n synology-csi
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: synology_csi_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse synology-csi version from image tag
+  ansible.builtin.set_fact:
+    synology_csi_live_version: >-
+      {{ (synology_csi_image_raw.rc == 0 and synology_csi_image_raw.stdout | length > 0)
+         | ternary(synology_csi_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
 # --- Build detected_versions dict ---
 - name: Build detected versions dictionary
   ansible.builtin.set_fact:
@@ -97,11 +133,11 @@
       k3s: "{{ k3s_live_version }}"
       rancher: "{{ helm_version_map['rancher'] | default('not_installed') }}"
       kube_vip: "{{ kube_vip_live_version | regex_replace('^:', '') }}"
-      cert_manager: "{{ helm_version_map['cert-manager'] | default('not_installed') }}"
+      cert_manager: "{{ cert_manager_live_version | regex_replace('^:', '') }}"
       traefik: "{{ helm_version_map['traefik'] | default('not_installed') }}"
       rancher_monitoring: "{{ helm_version_map['rancher-monitoring'] | default('not_installed') }}"
       multus: "{{ multus_live_version | regex_replace('^:', '') }}"
-      synology_csi: "{{ helm_version_map['synology-csi'] | default('not_installed') }}"
+      synology_csi: "{{ synology_csi_live_version | regex_replace('^:', '') }}"
 
 - name: Set fresh install flag
   ansible.builtin.set_fact:
@@ -127,8 +163,8 @@
       }}
     _action: >-
       {% if not _enabled %}none
+      {% elif _live == 'not_installed' and ((is_fresh_install | default(false) | bool) or (_desired_is_set | bool)) %}install
       {% elif not _desired_is_set %}none
-      {% elif _live == 'not_installed' %}install
       {% elif _live == _desired %}none
       {% elif _can_compare and (_desired_norm is version(_live_norm, '>')) %}upgrade
       {% elif _can_compare and (_desired_norm is version(_live_norm, '<')) %}downgrade
@@ -136,7 +172,13 @@
       {% endif %}
     _entry:
       live_version: "{{ _live }}"
-      desired_version: "{{ _desired_is_set | bool | ternary(_desired, _live) }}"
+      desired_version: >-
+        {{ _desired_is_set | bool
+           | ternary(
+             _desired,
+             ((_enabled and _live == 'not_installed' and (is_fresh_install | default(false) | bool))
+              | ternary('role-default', _live))
+           ) }}
       action: "{{ _action | trim }}"
       enabled: "{{ _enabled }}"
   loop: "{{ upgrade_components }}"

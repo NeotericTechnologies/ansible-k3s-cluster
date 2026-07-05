@@ -7,9 +7,10 @@
 #   - component_plan: dict of component_name → {live_version, desired_version, action, enabled}
 #   - detected_versions: dict of component_name → live_version
 #   - is_fresh_install: bool
+#   - upgrade_components: registry of components with fresh_install_priority and upgrade_priority
 #
 # Sets facts:
-#   - upgrade_plan: dict with components_to_upgrade, components_skipped, constraint_violations
+#   - upgrade_plan: dict with components_to_upgrade, components_unchanged, components_not_enabled, constraint_violations
 #   - has_changes: bool
 #
 # Reference: FR-006, FR-009, FR-012, FR-014
@@ -85,25 +86,64 @@
     msg: "{{ constraint_violations | join('\n') }}"
   when: constraint_violations | length > 0
 
-# --- Compute final upgrade plan ---
-- name: Compute components to upgrade (sorted by priority)
+# --- Compute final upgrade plan with context-aware ordering ---
+# For fresh installs: use fresh_install_priority from component registry
+# For upgrades: use upgrade_priority from component registry
+- name: Build priority map from component registry for fresh installs
+  ansible.builtin.set_fact:
+    priority_map: >-
+      {{ dict(
+           (upgrade_components | map(attribute='name') | list)
+           | zip(upgrade_components | map(attribute='fresh_install_priority') | list)
+         ) }}
+  when: is_fresh_install | default(false) | bool
+
+- name: Build priority map from component registry for upgrades
+  ansible.builtin.set_fact:
+    priority_map: >-
+      {{ dict(
+           (upgrade_components | map(attribute='name') | list)
+           | zip(upgrade_components | map(attribute='upgrade_priority') | list)
+         ) }}
+  when: not (is_fresh_install | default(false) | bool)
+
+- name: Initialize components_to_upgrade list
+  ansible.builtin.set_fact:
+    components_to_upgrade: []
+
+- name: Apply context-aware priorities
   ansible.builtin.set_fact:
     components_to_upgrade: >-
-      {{ upgrade_components
-         | selectattr('name', 'in', _actionable_names)
-         | sort(attribute='upgrade_priority')
-         | list }}
+      {{ components_to_upgrade + [
+           item | combine({
+             '_context_priority': (priority_map[item.name] | default(item.upgrade_priority))
+           })
+         ] }}
+  loop: "{{ upgrade_components | selectattr('name', 'in', _actionable_names) | list }}"
   vars:
     _actionable_names: >-
       {{ component_plan | dict2items
          | selectattr('value.action', 'in', ['install', 'upgrade', 'downgrade'])
          | map(attribute='key') | list }}
 
-- name: Compute components skipped
+- name: Sort components_to_upgrade by context-aware priority
   ansible.builtin.set_fact:
-    components_skipped: >-
+    components_to_upgrade: >-
+      {{ components_to_upgrade | sort(attribute='_context_priority') }}
+
+- name: Compute components unchanged
+  ansible.builtin.set_fact:
+    components_unchanged: >-
       {{ component_plan | dict2items
+         | selectattr('value.enabled', 'equalto', true)
          | selectattr('value.action', 'equalto', 'none')
+         | map(attribute='key') | list }}
+
+- name: Compute components not enabled
+  ansible.builtin.set_fact:
+    components_not_enabled: >-
+      {{ component_plan | dict2items
+         | selectattr('value.enabled', 'equalto', false)
          | map(attribute='key') | list }}
 
 - name: Set has_changes flag
@@ -114,7 +154,8 @@
   ansible.builtin.set_fact:
     upgrade_plan:
       components_to_upgrade: "{{ components_to_upgrade }}"
-      components_skipped: "{{ components_skipped }}"
+      components_unchanged: "{{ components_unchanged }}"
+      components_not_enabled: "{{ components_not_enabled }}"
       constraint_violations: "{{ constraint_violations }}"
       is_fresh_install: "{{ is_fresh_install }}"
       has_changes: "{{ has_changes }}"
@@ -134,9 +175,10 @@
       {% endfor %}
         Execution order:
       {% for comp in components_to_upgrade %}
-          {{ loop.index }}. {{ comp.name }} (priority {{ comp.upgrade_priority }})
+          {{ loop.index }}. {{ comp.name }} (priority {{ comp._context_priority }})
       {% endfor %}
-        Components unchanged: {{ components_skipped | join(', ') }}
+        Components unchanged: {{ components_unchanged | join(', ') if (components_unchanged | length > 0) else 'none' }}
+        Components not enabled (skipped): {{ components_not_enabled | join(', ') if (components_not_enabled | length > 0) else 'none' }}
       {% endif %}
         Fresh install: {{ is_fresh_install }}
       ══════════════════════════════════════════════════
