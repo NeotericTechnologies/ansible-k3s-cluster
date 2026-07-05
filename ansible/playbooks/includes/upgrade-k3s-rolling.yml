@@ -1,0 +1,139 @@
+---
+# upgrade-k3s-rolling.yml
+# Purpose: Rolling k3s upgrade for a single node with cordon/drain/upgrade/uncordon
+#
+# Expected variables (set by caller):
+#   node_role: "server" or "agent"
+#
+# Called within a play with serial:1 and any_errors_fatal:true
+# so each node upgrades one at a time, stopping on first failure.
+#
+# Reference: FR-004, FR-005, FR-010, US4
+
+# --- T025/T026: Cordon, drain, upgrade, wait-for-ready, uncordon ---
+- name: "Display upgrade status for {{ inventory_hostname }}"
+  ansible.builtin.debug:
+    msg: >-
+      Upgrading k3s on {{ inventory_hostname }} ({{ node_role }})
+      → {{ k3s_version }}
+
+- name: "Cordon node {{ inventory_hostname }}"
+  ansible.builtin.command:
+    cmd: "kubectl cordon {{ inventory_hostname }}"
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: true
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: "Drain node {{ inventory_hostname }}"
+  ansible.builtin.command:
+    cmd: >-
+      kubectl drain {{ inventory_hostname }}
+      --ignore-daemonsets
+      --delete-emptydir-data
+      --timeout={{ upgrade_drain_timeout | default(300) }}s
+      --force
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: true
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Download k3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/get_k3s.sh
+    mode: '0755'
+    force: false
+
+- name: Install target k3s version (server)
+  ansible.builtin.command: /tmp/get_k3s.sh
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: >-
+      server
+      {% if groups['k3s_servers'].index(inventory_hostname) == 0 %}--cluster-init{% else %}--server https://{{ control_plane_vip }}:{{ api_port }}{% endif %}
+      {{ k3s_server_extra_args | default('') }}
+  register: k3s_upgrade_result
+  changed_when: "'No change detected' not in k3s_upgrade_result.stderr"
+  when: node_role == 'server'
+
+- name: Get node token from first control-plane (for agent)
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: node_token
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  when: node_role == 'agent'
+
+- name: Install target k3s version (agent)
+  ansible.builtin.command: /tmp/get_k3s.sh
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    K3S_URL: "https://{{ control_plane_vip | default(hostvars[groups['k3s_servers'][0]]['ansible_facts']['default_ipv4']['address']) }}:{{ api_port }}"
+    K3S_TOKEN: "{{ node_token.content | b64decode | trim }}"
+    INSTALL_K3S_EXEC: "agent {{ k3s_agent_extra_args | default('') }}"
+  register: k3s_upgrade_result
+  changed_when: "'No change detected' not in k3s_upgrade_result.stderr"
+  when: node_role == 'agent'
+
+- name: "Wait for k3s service to be stable on {{ inventory_hostname }}"
+  ansible.builtin.systemd:
+    name: "{{ (node_role == 'server') | ternary('k3s', 'k3s-agent') }}"
+    state: started
+  register: k3s_service_status
+  until: k3s_service_status.status.ActiveState == "active"
+  retries: 12
+  delay: 5
+
+- name: "Wait for node {{ inventory_hostname }} to be Ready"
+  ansible.builtin.command:
+    cmd: "kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout={{ upgrade_node_ready_timeout | default(300) }}s"
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: "Verify upgraded version on {{ inventory_hostname }}"
+  ansible.builtin.command:
+    cmd: k3s --version
+  register: upgraded_version
+  changed_when: false
+  failed_when: k3s_version not in upgraded_version.stdout
+
+- name: "Uncordon node {{ inventory_hostname }}"
+  ansible.builtin.command:
+    cmd: "kubectl uncordon {{ inventory_hostname }}"
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: true
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# --- T027: Health check — validate all nodes Ready before next node ---
+- name: Validate cluster health after node upgrade
+  ansible.builtin.command:
+    cmd: kubectl get nodes -o json
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  register: post_node_health
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Check all nodes are Ready
+  ansible.builtin.assert:
+    that:
+      - _not_ready | length == 0
+    fail_msg: "HEALTH_CHECK_FAILED: Node {{ inventory_hostname }} upgraded but cluster has unhealthy nodes: {{ _not_ready }}"
+    success_msg: "✓ {{ inventory_hostname }} upgraded successfully. All nodes Ready."
+  vars:
+    _nodes: "{{ post_node_health.stdout | from_json }}"
+    _not_ready: >-
+      {{ _nodes.items
+         | map(attribute='status.conditions')
+         | map('selectattr', 'type', 'equalto', 'Ready')
+         | map('first')
+         | selectattr('status', 'ne', 'True')
+         | list }}
+
+# --- T029: Pause between nodes ---
+- name: "Pause {{ upgrade_pause_between_nodes | default(10) }}s before next node"
+  ansible.builtin.pause:
+    seconds: "{{ upgrade_pause_between_nodes | default(10) }}"

@@ -1,4 +1,14 @@
 ---
+# DEPRECATED: This playbook is superseded by site.yml which provides unified
+# install/upgrade functionality with dependency-aware ordering, constraint
+# validation, and cordon/drain safety. Use site.yml for all new workflows:
+#
+#   ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
+#
+# This playbook remains functional for backward compatibility but will not
+# receive new features. See specs/005-unified-upgrade-workflow for details.
+#
+# ---
 # Rolling k3s upgrade playbook for minor and patch versions
 #
 # This playbook performs a rolling upgrade of k3s across control-plane

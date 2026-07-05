@@ -1,0 +1,39 @@
+---
+# upgrade-rancher.yml
+# Purpose: Rancher-specific Helm upgrade include
+#
+# Rancher is upgraded before k3s because Rancher defines the maximum
+# compatible k3s version. Upgrading Rancher first expands the compatibility
+# window for a subsequent k3s upgrade.
+#
+# Reference: FR-011, US2, specs/005-unified-upgrade-workflow
+
+- name: "Upgrading Rancher"
+  ansible.builtin.debug:
+    msg: >-
+      rancher: {{ hostvars[groups['k3s_servers'][0]].component_plan.rancher.live_version }}
+      → {{ hostvars[groups['k3s_servers'][0]].component_plan.rancher.desired_version }}
+
+- name: Include rancher role for upgrade
+  ansible.builtin.include_role:
+    name: rancher
+
+- name: Wait for Rancher deployment to be ready
+  ansible.builtin.command:
+    cmd: >-
+      kubectl rollout status deployment/rancher
+      -n cattle-system
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Verify Rancher is accessible
+  ansible.builtin.uri:
+    url: "https://{{ rancher_hostname }}/healthz"
+    validate_certs: false
+    status_code: 200
+  register: rancher_health
+  retries: 12
+  delay: 10
+  until: rancher_health.status == 200

@@ -14,10 +14,10 @@
 
 **Purpose**: Create the includes directory structure and new variables needed by the orchestrator
 
-- [ ] T001 Create playbook includes directory at ansible/playbooks/includes/
-- [ ] T002 [P] Add `component_compatibility` variable structure to ansible/group_vars/all.yml
-- [ ] T003 [P] Add `allow_downgrade`, `upgrade_drain_timeout`, `upgrade_node_ready_timeout`, `upgrade_pause_between_nodes` variables to ansible/group_vars/all.yml
-- [ ] T004 [P] Add `upgrade_components` registry variable file at ansible/playbooks/includes/vars/upgrade-components.yml
+- [X] T001 Create playbook includes directory at ansible/playbooks/includes/
+- [X] T002 [P] Add `component_compatibility` variable structure to ansible/group_vars/all.yml
+- [X] T003 [P] Add `allow_downgrade`, `upgrade_drain_timeout`, `upgrade_node_ready_timeout`, `upgrade_pause_between_nodes` variables to ansible/group_vars/all.yml
+- [X] T004 [P] Add `upgrade_components` registry variable file at ansible/playbooks/includes/vars/upgrade-components.yml
 
 ---
 
@@ -27,12 +27,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement live version detection for k3s binary (`k3s --version` on all nodes) in ansible/playbooks/includes/detect-versions.yml
-- [ ] T006 Implement live version detection for Helm-deployed components (`helm list`) in ansible/playbooks/includes/detect-versions.yml
-- [ ] T007 Implement version comparison logic (compute action: install/upgrade/downgrade/none per component) in ansible/playbooks/includes/compute-plan.yml
-- [ ] T008 Implement constraint validation (k3s vs rancher max/min) in ansible/playbooks/includes/compute-plan.yml
-- [ ] T009 Implement downgrade detection and blocking in ansible/playbooks/includes/compute-plan.yml
-- [ ] T010 Implement upgrade plan summary output (debug task printing plan before execution) in ansible/playbooks/includes/compute-plan.yml
+- [X] T005 Implement live version detection for k3s binary (`k3s --version` on all nodes) in ansible/playbooks/includes/detect-versions.yml
+- [X] T006 Implement live version detection for Helm-deployed components (`helm list`) in ansible/playbooks/includes/detect-versions.yml
+- [X] T007 Implement version comparison logic (compute action: install/upgrade/downgrade/none per component) in ansible/playbooks/includes/compute-plan.yml
+- [X] T008 Implement constraint validation (k3s vs rancher max/min) in ansible/playbooks/includes/compute-plan.yml
+- [X] T009 Implement downgrade detection and blocking in ansible/playbooks/includes/compute-plan.yml
+- [X] T010 Implement upgrade plan summary output (debug task printing plan before execution) in ansible/playbooks/includes/compute-plan.yml
 
 **Checkpoint**: Foundation ready — version detection and plan computation functional
 
@@ -46,13 +46,13 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Create the unified orchestrator playbook at ansible/playbooks/site.yml with pre-flight reachability check (any_errors_fatal: true)
-- [ ] T012 [US1] Add include of detect-versions.yml and compute-plan.yml as first plays in ansible/playbooks/site.yml
-- [ ] T013 [US1] Add conditional import of cluster-core.yml plays for fresh install path in ansible/playbooks/site.yml
-- [ ] T014 [US1] Add conditional import of cluster-addons.yml plays for fresh install path in ansible/playbooks/site.yml
-- [ ] T015 [US1] Add conditional include of upgrade-addon.yml for each Helm-based component (cert-manager, traefik, rancher-monitoring) in ansible/playbooks/site.yml
-- [ ] T016 [US1] Implement the generic Helm-based add-on upgrade include at ansible/playbooks/includes/upgrade-addon.yml
-- [ ] T017 [US1] Wire no-op path: when compute-plan determines no changes needed, print summary and skip all upgrade includes in ansible/playbooks/site.yml
+- [X] T011 [US1] Create the unified orchestrator playbook at ansible/playbooks/site.yml with pre-flight reachability check (any_errors_fatal: true)
+- [X] T012 [US1] Add include of detect-versions.yml and compute-plan.yml as first plays in ansible/playbooks/site.yml
+- [X] T013 [US1] Add conditional import of cluster-core.yml plays for fresh install path in ansible/playbooks/site.yml
+- [X] T014 [US1] Add conditional import of cluster-addons.yml plays for fresh install path in ansible/playbooks/site.yml
+- [X] T015 [US1] Add conditional include of upgrade-addon.yml for each Helm-based component (cert-manager, traefik, rancher-monitoring) in ansible/playbooks/site.yml
+- [X] T016 [US1] Implement the generic Helm-based add-on upgrade include at ansible/playbooks/includes/upgrade-addon.yml
+- [X] T017 [US1] Wire no-op path: when compute-plan determines no changes needed, print summary and skip all upgrade includes in ansible/playbooks/site.yml
 
 **Checkpoint**: site.yml handles fresh install and selective upgrades for Helm-based add-ons
 
@@ -66,10 +66,10 @@
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Add ordering logic to site.yml: Rancher upgrade include positioned before k3s upgrade include based on upgrade_priority in ansible/playbooks/site.yml
-- [ ] T019 [US2] Implement Rancher-specific upgrade include (Helm upgrade with version from rancher_version) at ansible/playbooks/includes/upgrade-rancher.yml
-- [ ] T020 [US2] Add fail-fast assertion in compute-plan.yml: fail playbook if constraint_violations is non-empty before any changes in ansible/playbooks/includes/compute-plan.yml
-- [ ] T021 [US2] Add validation for k3s version vs currently deployed Rancher's k3s_max when only k3s is being upgraded (no Rancher upgrade) in ansible/playbooks/includes/compute-plan.yml
+- [X] T018 [US2] Add ordering logic to site.yml: Rancher upgrade include positioned before k3s upgrade include based on upgrade_priority in ansible/playbooks/site.yml
+- [X] T019 [US2] Implement Rancher-specific upgrade include (Helm upgrade with version from rancher_version) at ansible/playbooks/includes/upgrade-rancher.yml
+- [X] T020 [US2] Add fail-fast assertion in compute-plan.yml: fail playbook if constraint_violations is non-empty before any changes in ansible/playbooks/includes/compute-plan.yml
+- [X] T021 [US2] Add validation for k3s version vs currently deployed Rancher's k3s_max when only k3s is being upgraded (no Rancher upgrade) in ansible/playbooks/includes/compute-plan.yml
 
 **Checkpoint**: Dependency ordering enforced; constraint violations rejected before changes
 
@@ -85,9 +85,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T022 [P] [US3] Add `when: component_plan[item].action in ['install', 'upgrade']` conditions to each component include in ansible/playbooks/site.yml
-- [ ] T023 [P] [US3] Ensure detect-versions.yml sets `component_plan` fact with per-component action for all registered components in ansible/playbooks/includes/detect-versions.yml
-- [ ] T024 [US3] Add idempotency guard: skip entire upgrade flow when all components report action=none in ansible/playbooks/site.yml
+- [X] T022 [P] [US3] Add `when: component_plan[item].action in ['install', 'upgrade']` conditions to each component include in ansible/playbooks/site.yml
+- [X] T023 [P] [US3] Ensure detect-versions.yml sets `component_plan` fact with per-component action for all registered components in ansible/playbooks/includes/detect-versions.yml
+- [X] T024 [US3] Add idempotency guard: skip entire upgrade flow when all components report action=none in ansible/playbooks/site.yml
 
 **Checkpoint**: Only changed components execute; no-op run produces zero changes
 
@@ -101,14 +101,14 @@
 
 ### Implementation for User Story 4
 
-- [ ] T025 [US4] Implement rolling k3s server upgrade play (serial:1) with cordon, drain, upgrade, wait-for-ready, uncordon in ansible/playbooks/includes/upgrade-k3s-rolling.yml
-- [ ] T026 [US4] Implement rolling k3s agent upgrade play (serial:1) with cordon, drain, upgrade, wait-for-ready, uncordon in ansible/playbooks/includes/upgrade-k3s-rolling.yml
-- [ ] T027 [US4] Add health check between nodes: validate cluster node count and all nodes Ready before proceeding to next node in ansible/playbooks/includes/upgrade-k3s-rolling.yml
-- [ ] T028 [US4] Add any_errors_fatal:true to rolling upgrade plays to stop on first failure in ansible/playbooks/includes/upgrade-k3s-rolling.yml
-- [ ] T029 [US4] Add pause between node upgrades (upgrade_pause_between_nodes variable) in ansible/playbooks/includes/upgrade-k3s-rolling.yml
-- [ ] T030 [US4] Wire upgrade-k3s-rolling.yml include into site.yml with conditional (only when k3s action is upgrade) in ansible/playbooks/site.yml
-- [ ] T031 [US4] Implement kube-vip manifest-based upgrade include (re-apply static pod manifest with new version) at ansible/playbooks/includes/upgrade-kube-vip.yml
-- [ ] T032 [US4] Implement manifest_label version detection for non-Helm components (kube-vip, multus) in ansible/playbooks/includes/detect-versions.yml
+- [X] T025 [US4] Implement rolling k3s server upgrade play (serial:1) with cordon, drain, upgrade, wait-for-ready, uncordon in ansible/playbooks/includes/upgrade-k3s-rolling.yml
+- [X] T026 [US4] Implement rolling k3s agent upgrade play (serial:1) with cordon, drain, upgrade, wait-for-ready, uncordon in ansible/playbooks/includes/upgrade-k3s-rolling.yml
+- [X] T027 [US4] Add health check between nodes: validate cluster node count and all nodes Ready before proceeding to next node in ansible/playbooks/includes/upgrade-k3s-rolling.yml
+- [X] T028 [US4] Add any_errors_fatal:true to rolling upgrade plays to stop on first failure in ansible/playbooks/includes/upgrade-k3s-rolling.yml
+- [X] T029 [US4] Add pause between node upgrades (upgrade_pause_between_nodes variable) in ansible/playbooks/includes/upgrade-k3s-rolling.yml
+- [X] T030 [US4] Wire upgrade-k3s-rolling.yml include into site.yml with conditional (only when k3s action is upgrade) in ansible/playbooks/site.yml
+- [X] T031 [US4] Implement kube-vip manifest-based upgrade include (re-apply static pod manifest with new version) at ansible/playbooks/includes/upgrade-kube-vip.yml
+- [X] T032 [US4] Implement manifest_label version detection for non-Helm components (kube-vip, multus) in ansible/playbooks/includes/detect-versions.yml
 
 **Checkpoint**: Rolling k3s upgrades maintain cluster availability with proper drain/uncordon cycle
 
@@ -118,10 +118,10 @@
 
 **Purpose**: Documentation, deprecation notices, backward compatibility validation
 
-- [ ] T033 [P] Add deprecation notice comment to ansible/playbooks/upgrade-k3s.yml header pointing to site.yml
-- [ ] T034 [P] Update README.md with unified workflow documentation (single command for install/upgrade)
-- [ ] T035 [P] Add smoke test scenario for site.yml no-op run in tests/ansible/smoke/
-- [ ] T036 Validate backward compatibility: ensure cluster-core.yml and cluster-addons.yml still function independently (manual check / --check mode)
+- [X] T033 [P] Add deprecation notice comment to ansible/playbooks/upgrade-k3s.yml header pointing to site.yml
+- [X] T034 [P] Update README.md with unified workflow documentation (single command for install/upgrade)
+- [X] T035 [P] Add smoke test scenario for site.yml no-op run in tests/ansible/smoke/
+- [X] T036 Validate backward compatibility: ensure cluster-core.yml and cluster-addons.yml still function independently (manual check / --check mode)
 
 ---
 

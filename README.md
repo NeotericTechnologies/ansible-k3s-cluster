@@ -105,6 +105,13 @@ See the [Multus role documentation](ansible/roles/multus/README.md) for full con
 ### 4. Provision Cluster
 
 ```bash
+# Recommended: Unified playbook for install and upgrades (same command)
+ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
+```
+
+Alternatively, use individual playbooks for granular control:
+
+```bash
 # Deploy k3s core cluster (control-plane + workers + kube-vip)
 ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-core.yml
 
@@ -147,10 +154,18 @@ ansible/
 │   ├── traefik/        # Ingress controller
 │   └── synology-csi/   # Synology persistent storage
 └── playbooks/           # Playbook entrypoints
+    ├── site.yml             # Unified install/upgrade orchestrator
     ├── cluster-core.yml     # Provision/update core cluster
     ├── cluster-addons.yml   # Deploy platform add-ons
     ├── scale-nodes.yml      # Add/remove nodes
-    └── upgrade-k3s.yml      # Minor/patch k3s upgrades
+    ├── upgrade-k3s.yml      # (deprecated) Minor/patch k3s upgrades
+    └── includes/            # Modular upgrade logic
+        ├── detect-versions.yml
+        ├── compute-plan.yml
+        ├── upgrade-k3s-rolling.yml
+        ├── upgrade-rancher.yml
+        ├── upgrade-kube-vip.yml
+        └── upgrade-addon.yml
 ```
 
 ## Usage
@@ -216,6 +231,27 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/scale-nodes
 ### Upgrade k3s Version
 
 Update `k3s_version` in `group_vars/all.yml`, then:
+
+```bash
+# Recommended: Unified workflow (handles dependency ordering, cordon/drain, constraint validation)
+ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
+```
+
+To upgrade Rancher and k3s together (Rancher is upgraded first automatically):
+
+```bash
+# Update rancher_version and k3s_version in group_vars/all.yml, then:
+ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
+```
+
+To allow a version downgrade:
+
+```bash
+ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml \
+  -e "allow_downgrade=true"
+```
+
+Legacy upgrade playbook (deprecated, still functional):
 
 ```bash
 ansible-playbook -i ansible/inventories/production ansible/playbooks/upgrade-k3s.yml

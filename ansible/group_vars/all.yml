@@ -181,3 +181,28 @@ critical_component_probes:
   traefik:
     url: "http://{{ control_plane_vip }}"
     insecure: false
+
+# =============================================================================
+# Unified Upgrade Workflow Configuration
+# Reference: specs/005-unified-upgrade-workflow
+# =============================================================================
+
+# Component version compatibility constraints (FR-003, FR-009)
+# Each registered component MUST have an explicit entry (even if empty {})
+component_compatibility:
+  rancher:
+    k3s_max_version: "v1.30.99+k3s99"
+    k3s_min_version: "v1.27.0+k3s1"
+  cert_manager:
+    k3s_min_version: "v1.25.0+k3s1"
+  kube_vip: {}
+  traefik: {}
+  multus: {}
+  synology_csi: {}
+  rancher_monitoring: {}
+
+# Upgrade safety controls
+allow_downgrade: false
+upgrade_drain_timeout: 300
+upgrade_node_ready_timeout: 300
+upgrade_pause_between_nodes: 10

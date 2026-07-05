@@ -1,0 +1,64 @@
+---
+# Unified Workflow No-Op Smoke Test
+# Purpose: Verify that site.yml produces zero changes when no versions have changed
+# Reference: T035, SC-006, FR-007, specs/005-unified-upgrade-workflow
+#
+# Usage:
+#   ansible-playbook -i ansible/inventories/test-cluster tests/ansible/smoke/site-noop-test.yml
+#
+# Prerequisites:
+#   - k3s cluster already deployed via site.yml or cluster-core.yml + cluster-addons.yml
+#   - All component versions in group_vars match what's deployed on the cluster
+
+- name: Unified Workflow No-Op Test - Pre-check
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Test header
+      ansible.builtin.debug:
+        msg: |
+          ===== site.yml No-Op Smoke Test =====
+          This test verifies that site.yml produces zero changes when
+          component versions match what's already deployed.
+
+          Expected: Plan shows "No changes needed" and completes in <2min.
+          Validates: SC-006, FR-007
+
+- name: Run site.yml in check mode (no-op validation)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    inventory_path: "{{ lookup('env', 'TEST_INVENTORY') | default('ansible/inventories/test-cluster', true) }}"
+  tasks:
+    - name: Record start time
+      ansible.builtin.set_fact:
+        test_start: "{{ now(utc=true) }}"
+
+    - name: Run site.yml in check mode
+      ansible.builtin.command:
+        cmd: >-
+          ansible-playbook -i {{ inventory_path }}
+          ansible/playbooks/site.yml
+          --check
+        chdir: "{{ playbook_dir }}/../../.."
+      register: site_check_result
+      changed_when: false
+
+    - name: Record end time
+      ansible.builtin.set_fact:
+        test_end: "{{ now(utc=true) }}"
+
+    - name: Validate no changes reported
+      ansible.builtin.assert:
+        that:
+          - "'changed=0' in site_check_result.stdout or 'No changes needed' in site_check_result.stdout"
+        fail_msg: "site.yml reported changes when none were expected: {{ site_check_result.stdout_lines[-5:] }}"
+        success_msg: "✓ site.yml no-op check passed — zero changes reported"
+
+    - name: Display execution summary
+      ansible.builtin.debug:
+        msg: |
+          ===== No-Op Test Complete =====
+          Result: PASS
+          Mode: --check (dry run)
+          Note: Full no-op run should complete in <2 minutes (SC-006)

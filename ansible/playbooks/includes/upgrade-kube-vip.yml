@@ -1,0 +1,43 @@
+---
+# upgrade-kube-vip.yml
+# Purpose: Upgrade kube-vip by re-applying the role with the new version
+#
+# kube-vip is deployed as a static pod manifest (not Helm), so upgrading
+# means re-running the kube-vip role which regenerates the manifest with
+# the new kube_vip_version variable.
+#
+# Reference: C1 resolution, specs/005-unified-upgrade-workflow
+
+- name: "Upgrading kube-vip"
+  ansible.builtin.debug:
+    msg: >-
+      kube-vip: {{ hostvars[groups['k3s_servers'][0]].component_plan.kube_vip.live_version }}
+      → {{ hostvars[groups['k3s_servers'][0]].component_plan.kube_vip.desired_version }}
+
+- name: Include kube-vip role for upgrade
+  ansible.builtin.include_role:
+    name: kube-vip
+
+- name: Wait for kube-vip pods to be running with new version
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get pods -n kube-system
+      -l "app.kubernetes.io/name=kube-vip"
+      -o jsonpath='{.items[*].spec.containers[0].image}'
+  register: kube_vip_upgraded_image
+  changed_when: false
+  retries: 12
+  delay: 5
+  until: kube_vip_version in kube_vip_upgraded_image.stdout
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Verify control-plane VIP is accessible after kube-vip upgrade
+  ansible.builtin.uri:
+    url: "https://{{ control_plane_vip }}:{{ api_port }}/healthz"
+    validate_certs: false
+    status_code: 200
+  register: vip_health
+  retries: 6
+  delay: 5
+  until: vip_health.status == 200

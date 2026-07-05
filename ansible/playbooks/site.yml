@@ -1,0 +1,324 @@
+---
+# site.yml
+# Purpose: Unified orchestrator for k3s cluster deployment and upgrades
+#
+# This single playbook handles both initial cluster deployment and component
+# upgrades. It detects live component versions, computes an upgrade plan based
+# on version drift and dependency constraints, and executes changes in the
+# correct order.
+#
+# Usage:
+#   # Fresh install or upgrade (same command)
+#   ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
+#
+#   # Allow version downgrades (safety override)
+#   ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml \
+#     -e "allow_downgrade=true"
+#
+# Behavior:
+#   - Fresh hosts: Full install (k3s core → kube-vip → enabled add-ons)
+#   - No version changes: No-op with summary
+#   - Version changes: Upgrade only changed components in dependency order
+#   - Constraint violation: Fail fast with clear error before any changes
+#   - Node unreachable: Fail immediately identifying unreachable node(s)
+#
+# Reference: FR-001, FR-013, FR-014, specs/005-unified-upgrade-workflow
+
+# =============================================================================
+# Play 1: Pre-flight reachability check (FR-013)
+# =============================================================================
+- name: Pre-flight reachability and state gathering
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  tasks:
+    - name: Verify all nodes are reachable
+      ansible.builtin.ping:
+
+# =============================================================================
+# Play 2: Detect versions and compute upgrade plan
+# =============================================================================
+- name: Detect versions and compute upgrade plan
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  vars_files:
+    - includes/vars/upgrade-components.yml
+  tasks:
+    - name: Resolve topology-aware HA policy
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
+
+    - name: Propagate resolved HA targets
+      ansible.builtin.set_fact:
+        kube_vip_cloud_controller_replicas: "{{ ha_component_policies['kube-vip'].expected_target | int }}"
+        traefik_replicas: "{{ ha_component_policies['traefik'].expected_target | int }}"
+        rancher_replicas: "{{ ha_component_policies['rancher'].expected_target | int }}"
+        cert_manager_replicas: "{{ ha_component_policies['cert-manager'].expected_target | int }}"
+        rancher_monitoring_replicas: "{{ ha_component_policies['rancher-monitoring'].expected_target | int }}"
+        synology_csi_replicas: "{{ ha_component_policies['synology-csi'].expected_target | int }}"
+        csi_nfs_replicas: "{{ ha_component_policies['csi-nfs'].expected_target | int }}"
+
+    - name: Detect live component versions
+      ansible.builtin.include_tasks: includes/detect-versions.yml
+
+    - name: Compute upgrade plan and validate constraints
+      ansible.builtin.include_tasks: includes/compute-plan.yml
+
+# =============================================================================
+# Play 3: Fresh install path — cluster-core
+# =============================================================================
+- name: Fresh install - Deploy k3s core cluster
+  hosts: k3s_cluster
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Skip if not a fresh install
+      ansible.builtin.meta: end_play
+      when: not (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+
+- name: Fresh install - Validate host prerequisites
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Skip if not a fresh install
+      ansible.builtin.meta: end_play
+      when: not (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+  roles:
+    - role: k3s-common
+      tags: ['prerequisites', 'validation']
+
+- name: Fresh install - Deploy k3s control-plane nodes
+  hosts: k3s_servers
+  become: true
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Skip if not a fresh install
+      ansible.builtin.meta: end_play
+      when: not (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+  roles:
+    - role: k3s-server
+      tags: ['k3s-server', 'control-plane']
+
+- name: Fresh install - Deploy kube-vip
+  hosts: k3s_servers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Skip if not a fresh install
+      ansible.builtin.meta: end_play
+      when: not (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+  roles:
+    - role: kube-vip
+      tags: ['kube-vip']
+      when: kube_vip_enabled | default(true) | bool
+
+- name: Fresh install - Deploy k3s agent nodes
+  hosts: k3s_agents
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Skip if not a fresh install
+      ansible.builtin.meta: end_play
+      when: not (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+  roles:
+    - role: k3s-agent
+      tags: ['k3s-agent', 'workers']
+
+# =============================================================================
+# Play 4: Fresh install path — cluster-addons
+# =============================================================================
+- name: Fresh install - Deploy platform add-ons
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Skip if not a fresh install
+      ansible.builtin.meta: end_play
+      when: not (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+
+    - name: Include cert-manager role
+      ansible.builtin.include_role:
+        name: cert-manager
+      when: cert_manager_enabled | default(false) | bool
+
+    - name: Include multus role
+      ansible.builtin.include_role:
+        name: multus
+      when: multus_enabled | default(false) | bool
+
+    - name: Include rancher role
+      ansible.builtin.include_role:
+        name: rancher
+      when: rancher_enabled | default(false) | bool
+
+    - name: Include rancher-monitoring role
+      ansible.builtin.include_role:
+        name: rancher-monitoring
+      when: rancher_monitoring_enabled | default(false) | bool
+
+    - name: Include traefik role
+      ansible.builtin.include_role:
+        name: traefik
+      when: traefik_enabled | default(true) | bool
+
+    - name: Include synology-csi role
+      ansible.builtin.include_role:
+        name: synology-csi
+      when: synology_csi_enabled | default(false) | bool
+
+# =============================================================================
+# Play 5: Upgrade path — No-op check and component upgrades
+# =============================================================================
+- name: Upgrade path - Execute component upgrades
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  vars_files:
+    - includes/vars/upgrade-components.yml
+  tasks:
+    # T017: No-op path
+    - name: Skip upgrade path if fresh install or no changes
+      ansible.builtin.meta: end_play
+      when: >-
+        (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool) or
+        not (hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool)
+
+    # T018/US2: Rancher upgrade (priority 10 — before k3s)
+    - name: Upgrade Rancher
+      ansible.builtin.include_tasks: includes/upgrade-rancher.yml
+      when: hostvars[groups['k3s_servers'][0]].component_plan.rancher.action in ['install', 'upgrade', 'downgrade']
+
+    # T031/US4: kube-vip upgrade (priority 15)
+    - name: Upgrade kube-vip
+      ansible.builtin.include_tasks: includes/upgrade-kube-vip.yml
+      when: hostvars[groups['k3s_servers'][0]].component_plan.kube_vip.action in ['install', 'upgrade', 'downgrade']
+
+# =============================================================================
+# Play 6: Upgrade path — Rolling k3s upgrade (priority 20)
+# =============================================================================
+- name: Upgrade path - Rolling k3s server upgrade
+  hosts: k3s_servers
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  tasks:
+    - name: Skip if k3s not being upgraded
+      ansible.builtin.meta: end_play
+      when: >-
+        (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool) or
+        hostvars[groups['k3s_servers'][0]].component_plan.k3s.action not in ['upgrade', 'downgrade']
+
+    - name: Include rolling k3s server upgrade tasks
+      ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
+      vars:
+        node_role: server
+
+- name: Upgrade path - Rolling k3s agent upgrade
+  hosts: k3s_agents
+  become: true
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+  tasks:
+    - name: Skip if k3s not being upgraded
+      ansible.builtin.meta: end_play
+      when: >-
+        (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool) or
+        hostvars[groups['k3s_servers'][0]].component_plan.k3s.action not in ['upgrade', 'downgrade']
+
+    - name: Include rolling k3s agent upgrade tasks
+      ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
+      vars:
+        node_role: agent
+
+# =============================================================================
+# Play 7: Upgrade path — Helm-based add-on upgrades (priority 30+)
+# =============================================================================
+- name: Upgrade path - Helm add-on upgrades
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Skip if fresh install or no changes
+      ansible.builtin.meta: end_play
+      when: >-
+        (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool) or
+        not (hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool)
+
+    # T015: cert-manager (priority 30)
+    - name: Upgrade cert-manager
+      ansible.builtin.include_tasks: includes/upgrade-addon.yml
+      vars:
+        addon_name: cert-manager
+        addon_component: cert_manager
+        addon_namespace: cert-manager
+        addon_role: cert-manager
+      when: hostvars[groups['k3s_servers'][0]].component_plan.cert_manager.action in ['install', 'upgrade', 'downgrade']
+
+    # traefik (priority 31)
+    - name: Upgrade traefik
+      ansible.builtin.include_tasks: includes/upgrade-addon.yml
+      vars:
+        addon_name: traefik
+        addon_component: traefik
+        addon_namespace: kube-system
+        addon_role: traefik
+      when: hostvars[groups['k3s_servers'][0]].component_plan.traefik.action in ['install', 'upgrade', 'downgrade']
+
+    # rancher-monitoring (priority 32)
+    - name: Upgrade rancher-monitoring
+      ansible.builtin.include_tasks: includes/upgrade-addon.yml
+      vars:
+        addon_name: rancher-monitoring
+        addon_component: rancher_monitoring
+        addon_namespace: cattle-monitoring-system
+        addon_role: rancher-monitoring
+      when: hostvars[groups['k3s_servers'][0]].component_plan.rancher_monitoring.action in ['install', 'upgrade', 'downgrade']
+
+    # multus (priority 33)
+    - name: Upgrade multus
+      ansible.builtin.include_tasks: includes/upgrade-addon.yml
+      vars:
+        addon_name: multus
+        addon_component: multus
+        addon_namespace: kube-system
+        addon_role: multus
+      when: hostvars[groups['k3s_servers'][0]].component_plan.multus.action in ['install', 'upgrade', 'downgrade']
+
+    # synology-csi (priority 34)
+    - name: Upgrade synology-csi
+      ansible.builtin.include_tasks: includes/upgrade-addon.yml
+      vars:
+        addon_name: synology-csi
+        addon_component: synology_csi
+        addon_namespace: synology-csi
+        addon_role: synology-csi
+      when: hostvars[groups['k3s_servers'][0]].component_plan.synology_csi.action in ['install', 'upgrade', 'downgrade']
+
+# =============================================================================
+# Play 8: Post-upgrade summary
+# =============================================================================
+- name: Post-upgrade summary
+  hosts: k3s_servers[0]
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Display completion summary
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════
+          Unified Workflow Complete
+          {% if hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool %}
+            Action: Fresh cluster deployment
+          {% elif hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool %}
+            Action: Component upgrades applied
+          {% else %}
+            Action: No changes needed (all components at desired versions)
+          {% endif %}
+          ══════════════════════════════════════════════════
