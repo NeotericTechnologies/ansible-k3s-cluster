@@ -11,20 +11,22 @@ A deployable unit managed by the unified playbook.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| name | string | Component identifier (e.g., `k3s`, `rancher`, `cert_manager`) |
+| name | string | Component identifier (e.g., `k3s_servers`, `k3s_agents`, `rancher`, `cert_manager`) |
 | version_var | string | Ansible variable name holding desired version (e.g., `k3s_version`, `rancher_version`) |
-| enabled_var | string | Ansible variable name for enablement flag (e.g., `rancher_enabled`); `null` for k3s (always enabled) |
+| enabled_var | string | Ansible variable name for enablement flag (e.g., `rancher_enabled`); `null` for k3s_servers/k3s_agents (always enabled) |
 | detect_method | enum | How to detect live version: `k3s_binary`, `helm_release`, `manifest_label` |
 | detect_args | dict | Arguments for detection (e.g., helm release name, namespace, label selector) |
-| fresh_install_priority | int | Execution order during fresh installs (lower = earlier). k3s=5, kube-vip=10, cert-manager=20, multus=21, traefik=22, rancher=23, rancher-monitoring=24, synology-csi=25 |
-| upgrade_priority | int | Execution order during upgrades (lower = earlier). rancher=10, k3s=15, kube-vip=20, add-ons=30+ |
+| fresh_install_priority | int | Execution order during fresh installs (lower = earlier). k3s_servers=5, kube-vip=10, k3s_agents=12, cert-manager=20, multus=21, traefik=22, rancher=23, rancher-monitoring=24, synology-csi=25 |
+| upgrade_priority | int | Execution order during upgrades (lower = earlier). rancher=10, k3s_servers=15, kube-vip=20, k3s_agents=25, add-ons=30+ |
 | play_file | string | Relative path to the play/include that handles this component |
 
 **Priority Strategy**:
-- **Fresh installs**: Follow the original cluster-core then cluster-addons sequence exactly: k3s, kube-vip, cert-manager, multus, traefik, rancher, rancher-monitoring, synology-csi.
-- **Upgrades**: Rancher first for compatibility with k3s versions, then k3s core, then kube-vip and remaining add-ons.
+- **Fresh installs**: Deploy servers first (k3s_servers), then control-plane VIP (kube-vip), then agents (k3s_agents), then add-ons. Order: k3s_servers (5) → kube-vip (10) → k3s_agents (12) → cert-manager (20) → multus (21) → traefik (22) → rancher (23) → rancher-monitoring (24) → synology-csi (25). This ensures all control-plane nodes are ready and discoverable via VIP before workers join.
+- **Upgrades**: Rancher first for compatibility with k3s versions (10), then k3s servers (15), then kube-vip (20), then k3s agents (25), then add-ons. k3s_servers must upgrade before agents to maintain control-plane quorum; kube-vip updates between them to reflect any server IP changes.
 
 ### Component Registry (variable structure)
+
+**Note on k3s Decomposition**: Both `k3s_servers` and `k3s_agents` reference the same `version_var: k3s_version` (single desired version). This ensures servers and agents are always upgraded to the same k3s version; the orchestration logic (via `detect_args.group`) determines which node group to apply it to. Both components share the same `play_file` but pass different `node_role` context (`server` vs `agent`) during execution, allowing the same rolling-upgrade logic to work for both.
 
 ```yaml
 # Defined in ansible/playbooks/includes/vars/component-registry.yml
@@ -51,13 +53,24 @@ upgrade_components:
     upgrade_priority: 20
     play_file: includes/upgrade-kube-vip.yml
 
-  - name: k3s
+  - name: k3s_servers
     version_var: k3s_version
     enabled_var: null  # always enabled
     detect_method: k3s_binary
-    detect_args: {}
+    detect_args:
+      group: k3s_servers
     fresh_install_priority: 5
     upgrade_priority: 15
+    play_file: includes/upgrade-k3s-rolling.yml
+
+  - name: k3s_agents
+    version_var: k3s_version
+    enabled_var: null  # always enabled
+    detect_method: k3s_binary
+    detect_args:
+      group: k3s_agents
+    fresh_install_priority: 12
+    upgrade_priority: 25
     play_file: includes/upgrade-k3s-rolling.yml
 
   - name: cert_manager
