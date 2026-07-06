@@ -1,0 +1,285 @@
+---
+# This file is included once per component in priority order
+# Variables available: component (dict with name, action, priority)
+
+- name: Set component execution context
+  ansible.builtin.set_fact:
+    _curr_component: "{{ component.name }}"
+    _curr_action: "{{ component_plan[component.name].action }}"
+    _curr_priority: "{{ component._context_priority }}"
+
+- name: "STEP: Execute {{ component.name }} (priority {{ component._context_priority }})"
+  block:
+
+    # k3s_servers - rolling execution
+    - name: "Execute k3s_servers (rolling)"
+      block:
+        - name: Display k3s_servers execution plan
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              ├─ Desired: {{ component_plan[_curr_component].desired_version }}
+              └─ Executing on {{ groups['k3s_servers'] | length }} nodes (serial: 1)
+
+        - name: Fresh install prerequisites on k3s_servers
+          ansible.builtin.include_role:
+            name: k3s-common
+            tasks_from: main.yml
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k3s_servers'] }}"
+          when: _curr_action == 'install' and is_fresh_install | default(false) | bool
+          loop_control:
+            label: "{{ item }} - prereqs"
+
+        - name: Deploy k3s servers (serial 1)
+          ansible.builtin.include_role:
+            name: k3s-server
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k3s_servers'] }}"
+          loop_control:
+            label: "{{ item }} - deploy"
+          when: _curr_action == 'install'
+
+        - name: Upgrade k3s servers (serial 1)
+          ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
+          vars:
+            node_role: server
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k3s_servers'] }}"
+          loop_control:
+            label: "{{ item }} - upgrade"
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'k3s_servers'
+        - _curr_action != 'none'
+
+    # k3s_agents - rolling execution
+    - name: "Execute k3s_agents (rolling)"
+      block:
+        - name: Display k3s_agents execution plan
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              ├─ Desired: {{ component_plan[_curr_component].desired_version }}
+              └─ Executing on {{ groups['k3s_agents'] | length }} nodes (serial: 1)
+
+        - name: Deploy k3s agents (serial 1)
+          ansible.builtin.include_role:
+            name: k3s-agent
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k3s_agents'] }}"
+          loop_control:
+            label: "{{ item }} - deploy"
+          when: _curr_action == 'install'
+
+        - name: Upgrade k3s agents (serial 1)
+          ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
+          vars:
+            node_role: agent
+          delegate_to: "{{ item }}"
+          loop: "{{ groups['k3s_agents'] }}"
+          loop_control:
+            label: "{{ item }} - upgrade"
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'k3s_agents'
+        - _curr_action != 'none'
+
+    # kube-vip
+    - name: "Execute kube-vip"
+      block:
+        - name: Display kube-vip context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install kube-vip
+          ansible.builtin.include_role:
+            name: kube-vip
+          when: _curr_action == 'install'
+
+        - name: Upgrade kube-vip
+          ansible.builtin.include_tasks: includes/upgrade-kube-vip.yml
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'kube_vip'
+        - _curr_action != 'none'
+
+    # Rancher
+    - name: "Execute rancher"
+      block:
+        - name: Display rancher context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install rancher
+          ansible.builtin.include_role:
+            name: rancher
+          when: _curr_action == 'install'
+
+        - name: Upgrade rancher
+          ansible.builtin.include_tasks: includes/upgrade-rancher.yml
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'rancher'
+        - _curr_action != 'none'
+
+    # cert-manager
+    - name: "Execute cert-manager"
+      block:
+        - name: Display cert-manager context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install cert-manager
+          ansible.builtin.include_role:
+            name: cert-manager
+          when: _curr_action == 'install'
+
+        - name: Upgrade cert-manager
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: cert-manager
+            addon_component: cert_manager
+            addon_namespace: cert-manager
+            addon_role: cert-manager
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'cert_manager'
+        - _curr_action != 'none'
+
+    # multus
+    - name: "Execute multus"
+      block:
+        - name: Display multus context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install multus
+          ansible.builtin.include_role:
+            name: multus
+          when: _curr_action == 'install'
+
+        - name: Upgrade multus
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: multus
+            addon_component: multus
+            addon_namespace: kube-system
+            addon_role: multus
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'multus'
+        - _curr_action != 'none'
+
+    # traefik
+    - name: "Execute traefik"
+      block:
+        - name: Display traefik context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install traefik
+          ansible.builtin.include_role:
+            name: traefik
+          when: _curr_action == 'install'
+
+        - name: Upgrade traefik
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: traefik
+            addon_component: traefik
+            addon_namespace: kube-system
+            addon_role: traefik
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'traefik'
+        - _curr_action != 'none'
+
+    # rancher-monitoring
+    - name: "Execute rancher-monitoring"
+      block:
+        - name: Display rancher-monitoring context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install rancher-monitoring
+          ansible.builtin.include_role:
+            name: rancher-monitoring
+          when: _curr_action == 'install'
+
+        - name: Upgrade rancher-monitoring
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: rancher-monitoring
+            addon_component: rancher_monitoring
+            addon_namespace: cattle-monitoring-system
+            addon_role: rancher-monitoring
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'rancher_monitoring'
+        - _curr_action != 'none'
+
+    # synology-csi
+    - name: "Execute synology-csi"
+      block:
+        - name: Display synology-csi context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install synology-csi
+          ansible.builtin.include_role:
+            name: synology-csi
+          when: _curr_action == 'install'
+
+        - name: Upgrade synology-csi
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: synology-csi
+            addon_component: synology_csi
+            addon_namespace: synology-csi
+            addon_role: synology-csi
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'synology_csi'
+        - _curr_action != 'none'

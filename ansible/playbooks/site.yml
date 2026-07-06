@@ -146,304 +146,57 @@
 # =============================================================================
 # Play 3: Dynamic Component Orchestration (T037-T039)
 #
-# Unified orchestration for both fresh install and upgrades, respecting
-# computed component priorities from components_to_upgrade fact.
-# Components execute in priority order (fresh_install_priority or upgrade_priority)
-# determined by component registry in includes/vars/component-registry.yml
+# Single unified orchestration loop that executes ALL components in priority order
+# determined by components_to_upgrade fact (sorted by fresh_install_priority or
+# upgrade_priority as appropriate). Components execute in the EXACT order defined
+# by the component registry priorities, NOT in source file order.
 # =============================================================================
 
-# --- Priority 5/23: k3s_servers (control-plane) ---
-- name: "Execute k3s_servers (fresh_install_priority: 5, upgrade_priority: 15)"
-  hosts: k3s_servers
+- name: "Dynamic orchestration - execute components in computed priority order"
+  hosts: k3s_servers[0]
   become: true
-  gather_facts: "{{ hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool }}"
-  serial: 1
-  any_errors_fatal: true
+  gather_facts: false
   tasks:
-    - name: Skip if k3s_servers not in execution plan
-      ansible.builtin.meta: end_play
-      when: >-
-        (hostvars[groups['k3s_servers'][0]].components_to_upgrade | default([]) | map(attribute='name') | list) is not containing 'k3s_servers'
 
-    - name: Skip if k3s_servers action is 'none'
-      ansible.builtin.meta: end_play
-      when: >-
-        hostvars[groups['k3s_servers'][0]].component_plan.k3s_servers.action == 'none'
-
-    - name: Display k3s_servers execution context
+    - name: Display orchestration context
       ansible.builtin.debug:
         msg: |
-          → k3s_servers: {{ hostvars[groups['k3s_servers'][0]].component_plan.k3s_servers.action }}
-          ├─ Current: {{ hostvars[groups['k3s_servers'][0]].component_plan.k3s_servers.live_version }}
-          └─ Desired: {{ hostvars[groups['k3s_servers'][0]].component_plan.k3s_servers.desired_version }}
+          ══════════════════════════════════════════════════════════════════
+          DYNAMIC COMPONENT ORCHESTRATION (FR-003)
+          Context: {{ 'Fresh Install' if (is_fresh_install | default(false) | bool) else 'Upgrade' }}
 
-    - name: Fresh install - Validate host prerequisites
+          Components to execute (in priority order):
+          {% for comp in components_to_upgrade %}
+          {{ loop.index }}. {{ comp.name }} (priority: {{ comp._context_priority }})
+             action: {{ component_plan[comp.name].action }}
+             {{ component_plan[comp.name].live_version }} → {{ component_plan[comp.name].desired_version }}
+          {% endfor %}
+          ══════════════════════════════════════════════════════════════════
+
+    - name: Validate k3s_servers prereqs (fresh install only)
       ansible.builtin.include_role:
         name: k3s-common
         tasks_from: main.yml
-      tags: ['prerequisites', 'validation']
-      when: hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool
+      when:
+        - is_fresh_install | default(false) | bool
+        - (components_to_upgrade | map(attribute='name') | list) is containing 'k3s_servers'
 
-    - name: Deploy or upgrade k3s server
-      block:
-        - name: "Fresh install k3s control-plane"
-          ansible.builtin.include_role:
-            name: k3s-server
-          tags: ['k3s-server', 'control-plane']
-          when: hostvars[groups['k3s_servers'][0]].component_plan.k3s_servers.action == 'install'
+    - name: Execute each component in priority order
+      ansible.builtin.include_tasks: includes/orchestrate-component.yml
+      loop: "{{ components_to_upgrade }}"
+      loop_control:
+        loop_var: component
+      when:
+        - components_to_upgrade is defined
+        - components_to_upgrade | length > 0
 
-        - name: "Upgrade k3s control-plane"
-          ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
-          vars:
-            node_role: server
-          when: hostvars[groups['k3s_servers'][0]].component_plan.k3s_servers.action in ['upgrade', 'downgrade']
-
-# --- Priority 10: kube-vip (control-plane VIP) ---
-- name: "Execute kube-vip (fresh_install_priority: 10, upgrade_priority: 20)"
-  hosts: k3s_servers[0]
-  become: true
-  gather_facts: false
-  vars:
-    _components_to_upgrade: "{{ components_to_upgrade | default([]) }}"
-    _component_plan: "{{ component_plan | default({}) }}"
-  tasks:
-    - name: Skip if kube_vip not in execution plan
-      ansible.builtin.meta: end_play
-      when: >-
-        (_components_to_upgrade | map(attribute='name') | list) is not containing 'kube_vip'
-
-    - name: Skip if kube_vip action is 'none'
-      ansible.builtin.meta: end_play
-      when: >-
-        _component_plan.kube_vip.action == 'none'
-
-    - name: Display kube-vip execution context
+    - name: Orchestration complete
       ansible.builtin.debug:
         msg: |
-          → kube-vip: {{ _component_plan.kube_vip.action }}
-          ├─ Current: {{ _component_plan.kube_vip.live_version }}
-          └─ Desired: {{ _component_plan.kube_vip.desired_version }}
-
-    - name: Deploy or upgrade kube-vip
-      block:
-        - name: "Fresh install kube-vip"
-          ansible.builtin.include_role:
-            name: kube-vip
-          tags: ['kube-vip']
-          when: _component_plan.kube_vip.action == 'install'
-
-        - name: "Upgrade kube-vip"
-          ansible.builtin.include_tasks: includes/upgrade-kube-vip.yml
-          when: _component_plan.kube_vip.action in ['upgrade', 'downgrade']
-
-# --- Priority 12: k3s_agents (worker nodes) ---
-- name: "Execute k3s_agents (fresh_install_priority: 12, upgrade_priority: 25)"
-  hosts: k3s_agents
-  become: true
-  gather_facts: false
-  serial: 1
-  tasks:
-    - name: Skip if k3s_agents not in execution plan
-      ansible.builtin.meta: end_play
-      when: >-
-        (hostvars[groups['k3s_servers'][0]].components_to_upgrade | default([]) | map(attribute='name') | list) is not containing 'k3s_agents'
-
-    - name: Skip if k3s_agents action is 'none'
-      ansible.builtin.meta: end_play
-      when: >-
-        hostvars[groups['k3s_servers'][0]].component_plan.k3s_agents.action == 'none'
-
-    - name: Display k3s_agents execution context
-      ansible.builtin.debug:
-        msg: |
-          → k3s_agents: {{ hostvars[groups['k3s_servers'][0]].component_plan.k3s_agents.action }}
-          ├─ Current: {{ hostvars[groups['k3s_servers'][0]].component_plan.k3s_agents.live_version }}
-          └─ Desired: {{ hostvars[groups['k3s_servers'][0]].component_plan.k3s_agents.desired_version }}
-
-    - name: Deploy or upgrade k3s agent
-      block:
-        - name: "Fresh install k3s agent"
-          ansible.builtin.include_role:
-            name: k3s-agent
-          tags: ['k3s-agent', 'workers']
-          when: hostvars[groups['k3s_servers'][0]].component_plan.k3s_agents.action == 'install'
-
-        - name: "Upgrade k3s agent"
-          ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
-          vars:
-            node_role: agent
-          when: hostvars[groups['k3s_servers'][0]].component_plan.k3s_agents.action in ['upgrade', 'downgrade']
-
-# --- Priority 20/23-25: Rancher and add-ons (orchestrated from primary server) ---
-- name: "Execute add-ons (fresh_install_priority: 20-25, upgrade_priority: 10, 30-34)"
-  hosts: k3s_servers[0]
-  become: true
-  gather_facts: false
-  vars:
-    _components_to_upgrade: "{{ components_to_upgrade | default([]) }}"
-    _component_plan: "{{ component_plan | default({}) }}"
-  tasks:
-    - name: Skip if no add-ons to execute
-      ansible.builtin.meta: end_play
-      when: >-
-        (_components_to_upgrade | length) == 0
-
-    - name: Execute Rancher (priority 10 upgrade / 23 fresh install)
-      block:
-        - name: Display Rancher execution context
-          ansible.builtin.debug:
-            msg: |
-              → rancher: {{ _component_plan.rancher.action }}
-              ├─ Current: {{ _component_plan.rancher.live_version }}
-              └─ Desired: {{ _component_plan.rancher.desired_version }}
-
-        - name: Deploy or upgrade Rancher
-          block:
-            - name: "Fresh install Rancher"
-              ansible.builtin.include_role:
-                name: rancher
-              when: _component_plan.rancher.action == 'install'
-
-            - name: "Upgrade Rancher"
-              ansible.builtin.include_tasks: includes/upgrade-rancher.yml
-              when: _component_plan.rancher.action in ['upgrade', 'downgrade']
-
-      when: _component_plan.rancher.action != 'none'
-
-    - name: Execute cert-manager (priority 20 fresh install / 30 upgrade)
-      block:
-        - name: Display cert-manager execution context
-          ansible.builtin.debug:
-            msg: |
-              → cert-manager: {{ _component_plan.cert_manager.action }}
-              ├─ Current: {{ _component_plan.cert_manager.live_version }}
-              └─ Desired: {{ _component_plan.cert_manager.desired_version }}
-
-        - name: Deploy or upgrade cert-manager
-          block:
-            - name: "Fresh install cert-manager"
-              ansible.builtin.include_role:
-                name: cert-manager
-              when: _component_plan.cert_manager.action == 'install'
-
-            - name: "Upgrade cert-manager"
-              ansible.builtin.include_tasks: includes/upgrade-addon.yml
-              vars:
-                addon_name: cert-manager
-                addon_component: cert_manager
-                addon_namespace: cert-manager
-                addon_role: cert-manager
-              when: _component_plan.cert_manager.action in ['upgrade', 'downgrade']
-
-      when: _component_plan.cert_manager.action != 'none'
-
-    - name: Execute multus (priority 21 fresh install / 33 upgrade)
-      block:
-        - name: Display multus execution context
-          ansible.builtin.debug:
-            msg: |
-              → multus: {{ _component_plan.multus.action }}
-              ├─ Current: {{ _component_plan.multus.live_version }}
-              └─ Desired: {{ _component_plan.multus.desired_version }}
-
-        - name: Deploy or upgrade multus
-          block:
-            - name: "Fresh install multus"
-              ansible.builtin.include_role:
-                name: multus
-              when: _component_plan.multus.action == 'install'
-
-            - name: "Upgrade multus"
-              ansible.builtin.include_tasks: includes/upgrade-addon.yml
-              vars:
-                addon_name: multus
-                addon_component: multus
-                addon_namespace: kube-system
-                addon_role: multus
-              when: _component_plan.multus.action in ['upgrade', 'downgrade']
-
-      when: _component_plan.multus.action != 'none'
-
-    - name: Execute traefik (priority 22 fresh install / 31 upgrade)
-      block:
-        - name: Display traefik execution context
-          ansible.builtin.debug:
-            msg: |
-              → traefik: {{ _component_plan.traefik.action }}
-              ├─ Current: {{ _component_plan.traefik.live_version }}
-              └─ Desired: {{ _component_plan.traefik.desired_version }}
-
-        - name: Deploy or upgrade traefik
-          block:
-            - name: "Fresh install traefik"
-              ansible.builtin.include_role:
-                name: traefik
-              when: _component_plan.traefik.action == 'install'
-
-            - name: "Upgrade traefik"
-              ansible.builtin.include_tasks: includes/upgrade-addon.yml
-              vars:
-                addon_name: traefik
-                addon_component: traefik
-                addon_namespace: kube-system
-                addon_role: traefik
-              when: _component_plan.traefik.action in ['upgrade', 'downgrade']
-
-      when: _component_plan.traefik.action != 'none'
-
-    - name: Execute rancher-monitoring (priority 24 fresh install / 32 upgrade)
-      block:
-        - name: Display rancher-monitoring execution context
-          ansible.builtin.debug:
-            msg: |
-              → rancher-monitoring: {{ _component_plan.rancher_monitoring.action }}
-              ├─ Current: {{ _component_plan.rancher_monitoring.live_version }}
-              └─ Desired: {{ _component_plan.rancher_monitoring.desired_version }}
-
-        - name: Deploy or upgrade rancher-monitoring
-          block:
-            - name: "Fresh install rancher-monitoring"
-              ansible.builtin.include_role:
-                name: rancher-monitoring
-              when: _component_plan.rancher_monitoring.action == 'install'
-
-            - name: "Upgrade rancher-monitoring"
-              ansible.builtin.include_tasks: includes/upgrade-addon.yml
-              vars:
-                addon_name: rancher-monitoring
-                addon_component: rancher_monitoring
-                addon_namespace: cattle-monitoring-system
-                addon_role: rancher-monitoring
-              when: _component_plan.rancher_monitoring.action in ['upgrade', 'downgrade']
-
-      when: _component_plan.rancher_monitoring.action != 'none'
-
-    - name: Execute synology-csi (priority 25 fresh install / 34 upgrade)
-      block:
-        - name: Display synology-csi execution context
-          ansible.builtin.debug:
-            msg: |
-              → synology-csi: {{ _component_plan.synology_csi.action }}
-              ├─ Current: {{ _component_plan.synology_csi.live_version }}
-              └─ Desired: {{ _component_plan.synology_csi.desired_version }}
-
-        - name: Deploy or upgrade synology-csi
-          block:
-            - name: "Fresh install synology-csi"
-              ansible.builtin.include_role:
-                name: synology-csi
-              when: _component_plan.synology_csi.action == 'install'
-
-            - name: "Upgrade synology-csi"
-              ansible.builtin.include_tasks: includes/upgrade-addon.yml
-              vars:
-                addon_name: synology-csi
-                addon_component: synology_csi
-                addon_namespace: synology-csi
-                addon_role: synology-csi
-              when: _component_plan.synology_csi.action in ['upgrade', 'downgrade']
-
-      when: _component_plan.synology_csi.action != 'none'
+          ══════════════════════════════════════════════════════════════════
+          ORCHESTRATION COMPLETE
+          All {{ components_to_upgrade | length }} components executed in priority order
+          ══════════════════════════════════════════════════════════════════
 
 
 - name: Post-upgrade summary
