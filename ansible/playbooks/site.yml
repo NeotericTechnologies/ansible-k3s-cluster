@@ -43,9 +43,9 @@
 #    3. kube-vip (20) - Refresh virtual IP after server changes
 #    4. k3s_agents (25) - Worker upgrade (after servers stable)
 #    5. cert-manager (30) - Update cert infrastructure
-#    6. traefik (31) - Update ingress
-#    7. rancher-monitoring (32) - Update monitoring
-#    8. multus (33) - Update CNI
+#    6. multus (31) - Update CNI
+#    7. traefik (32) - Update ingress
+#    8. rancher-monitoring (33) - Update monitoring
 #    9. synology-csi (34) - Update storage
 #
 # 4. K3S DECOMPOSITION:

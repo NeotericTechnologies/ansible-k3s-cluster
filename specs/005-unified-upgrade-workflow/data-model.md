@@ -92,7 +92,7 @@ upgrade_components:
       release_name: traefik
       namespace: kube-system
     fresh_install_priority: 22
-    upgrade_priority: 31
+    upgrade_priority: 32
     play_file: includes/upgrade-addon.yml
 
   - name: rancher_monitoring
@@ -103,7 +103,7 @@ upgrade_components:
       release_name: rancher-monitoring
       namespace: cattle-monitoring-system
     fresh_install_priority: 24
-    upgrade_priority: 32
+    upgrade_priority: 33
     play_file: includes/upgrade-addon.yml
 
   - name: multus
@@ -114,7 +114,7 @@ upgrade_components:
       label_selector: "app=multus"
       namespace: kube-system
     fresh_install_priority: 21
-    upgrade_priority: 33
+    upgrade_priority: 31
     play_file: includes/upgrade-addon.yml
 
   - name: synology_csi
