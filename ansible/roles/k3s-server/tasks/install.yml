@@ -29,7 +29,7 @@
 
 - name: Determine if this is the first control-plane node
   ansible.builtin.set_fact:
-    is_first_server: "{{ groups['k3s_servers'].index(inventory_hostname) == 0 }}"
+    is_first_server: "{{ groups['k3s_servers'].index(k3s_target_host | default(inventory_hostname)) == 0 }}"
 
 - name: Download k3s install script
   ansible.builtin.get_url:

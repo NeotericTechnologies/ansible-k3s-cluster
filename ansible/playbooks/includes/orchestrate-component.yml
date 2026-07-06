@@ -27,29 +27,41 @@
           ansible.builtin.include_role:
             name: k3s-common
             tasks_from: main.yml
-          delegate_to: "{{ item }}"
+            apply:
+              delegate_to: "{{ server_node }}"
+          vars:
+            k3s_target_host: "{{ server_node }}"
           loop: "{{ groups['k3s_servers'] }}"
-          when: _curr_action == 'install' and is_fresh_install | default(false) | bool
           loop_control:
-            label: "{{ item }} - prereqs"
+            loop_var: server_node
+            label: "{{ server_node }} - prereqs"
+          when: _curr_action == 'install' and is_fresh_install | default(false) | bool
 
         - name: Deploy k3s servers (serial 1)
           ansible.builtin.include_role:
             name: k3s-server
-          delegate_to: "{{ item }}"
+            apply:
+              delegate_to: "{{ server_node }}"
+          vars:
+            k3s_target_host: "{{ server_node }}"
           loop: "{{ groups['k3s_servers'] }}"
           loop_control:
-            label: "{{ item }} - deploy"
+            loop_var: server_node
+            label: "{{ server_node }} - deploy"
           when: _curr_action == 'install'
 
         - name: Upgrade k3s servers (serial 1)
-          ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
+          ansible.builtin.include_tasks:
+            file: includes/upgrade-k3s-rolling.yml
+            apply:
+              delegate_to: "{{ server_node }}"
           vars:
             node_role: server
-          delegate_to: "{{ item }}"
+            k3s_target_host: "{{ server_node }}"
           loop: "{{ groups['k3s_servers'] }}"
           loop_control:
-            label: "{{ item }} - upgrade"
+            loop_var: server_node
+            label: "{{ server_node }} - upgrade"
           when: _curr_action in ['upgrade', 'downgrade']
 
       when:
@@ -71,20 +83,28 @@
         - name: Deploy k3s agents (serial 1)
           ansible.builtin.include_role:
             name: k3s-agent
-          delegate_to: "{{ item }}"
+            apply:
+              delegate_to: "{{ agent_node }}"
+          vars:
+            k3s_target_host: "{{ agent_node }}"
           loop: "{{ groups['k3s_agents'] }}"
           loop_control:
-            label: "{{ item }} - deploy"
+            loop_var: agent_node
+            label: "{{ agent_node }} - deploy"
           when: _curr_action == 'install'
 
         - name: Upgrade k3s agents (serial 1)
-          ansible.builtin.include_tasks: includes/upgrade-k3s-rolling.yml
+          ansible.builtin.include_tasks:
+            file: includes/upgrade-k3s-rolling.yml
+            apply:
+              delegate_to: "{{ agent_node }}"
           vars:
             node_role: agent
-          delegate_to: "{{ item }}"
+            k3s_target_host: "{{ agent_node }}"
           loop: "{{ groups['k3s_agents'] }}"
           loop_control:
-            label: "{{ item }} - upgrade"
+            loop_var: agent_node
+            label: "{{ agent_node }} - upgrade"
           when: _curr_action in ['upgrade', 'downgrade']
 
       when:

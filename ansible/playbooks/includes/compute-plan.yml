@@ -119,7 +119,10 @@
              '_context_priority': (priority_map[item.name] | default(item.upgrade_priority))
            })
          ] }}
+  changed_when: false
   loop: "{{ upgrade_components | selectattr('name', 'in', _actionable_names) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
   vars:
     _actionable_names: >-
       {{ component_plan | dict2items

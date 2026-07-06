@@ -173,14 +173,6 @@
           {% endfor %}
           ══════════════════════════════════════════════════════════════════
 
-    - name: Validate k3s_servers prereqs (fresh install only)
-      ansible.builtin.include_role:
-        name: k3s-common
-        tasks_from: main.yml
-      when:
-        - is_fresh_install | default(false) | bool
-        - (components_to_upgrade | map(attribute='name') | list) is containing 'k3s_servers'
-
     - name: Execute each component in priority order
       ansible.builtin.include_tasks: includes/orchestrate-component.yml
       loop: "{{ components_to_upgrade }}"

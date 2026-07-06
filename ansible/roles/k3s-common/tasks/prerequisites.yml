@@ -7,6 +7,10 @@
   ansible.builtin.setup:
   when: ansible_facts.keys() | length == 0
 
+- name: Resolve effective target host for delegated execution
+  ansible.builtin.set_fact:
+    k3s_effective_host: "{{ k3s_target_host | default(inventory_hostname) }}"
+
 - name: Check if initial host setup has already completed
   ansible.builtin.stat:
     path: "{{ k3s_initial_setup_marker_path }}"
@@ -19,8 +23,8 @@
   block:
     - name: Set hostname from inventory
       ansible.builtin.hostname:
-        name: "{{ inventory_hostname }}"
-      when: ansible_facts.hostname != inventory_hostname
+        name: "{{ k3s_effective_host }}"
+      when: ansible_facts.hostname != k3s_effective_host
 
     - name: Reboot host after initial bootstrap changes
       ansible.builtin.reboot:
@@ -102,18 +106,20 @@
     msg: "Python 3 check passed: {{ python3_version.stdout }}"
 
 - name: Check if iptables or nftables is available
-  ansible.builtin.command: "{{ item }}"
+  ansible.builtin.command: "{{ firewall_cmd }}"
   register: firewall_check
   changed_when: false
   failed_when: false
   loop:
     - iptables --version
     - nft --version
+  loop_control:
+    loop_var: firewall_cmd
 
 - name: Determine which firewall backend is available
   ansible.builtin.set_fact:
     firewall_backend_available: "{{ (firewall_check.results | selectattr('rc', 'equalto', 0) | list | length) > 0 }}"
-    firewall_backend_type: "{% set iptables_result = firewall_check.results | selectattr('item', 'equalto', 'iptables --version') | map(attribute='rc') | first | default(1) %}{{ 'iptables' if iptables_result == 0 else 'nftables' }}"
+    firewall_backend_type: "{% set iptables_result = firewall_check.results | selectattr('firewall_cmd', 'equalto', 'iptables --version') | map(attribute='rc') | first | default(1) %}{{ 'iptables' if iptables_result == 0 else 'nftables' }}"
 
 - name: Install nftables when no firewall backend is present
   ansible.builtin.apt:
@@ -160,4 +166,4 @@
 
 - name: Prerequisite validation summary
   ansible.builtin.debug:
-    msg: "All host prerequisite checks passed for {{ inventory_hostname }}"
+    msg: "All host prerequisite checks passed for {{ k3s_effective_host }}"
