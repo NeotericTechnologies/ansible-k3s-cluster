@@ -130,7 +130,8 @@
 - name: Build detected versions dictionary
   ansible.builtin.set_fact:
     detected_versions:
-      k3s: "{{ k3s_live_version }}"
+      k3s_servers: "{{ k3s_live_version }}"
+      k3s_agents: "{{ k3s_live_version }}"
       rancher: "{{ helm_version_map['rancher'] | default('not_installed') }}"
       kube_vip: "{{ kube_vip_live_version | regex_replace('^:', '') }}"
       cert_manager: "{{ cert_manager_live_version | regex_replace('^:', '') }}"
@@ -141,7 +142,7 @@
 
 - name: Set fresh install flag
   ansible.builtin.set_fact:
-    is_fresh_install: "{{ detected_versions.k3s == 'not_installed' }}"
+    is_fresh_install: "{{ detected_versions.k3s_servers == 'not_installed' }}"
 
 # --- T007/T023: Compute per-component action ---
 - name: Compute component plan

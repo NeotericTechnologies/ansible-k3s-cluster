@@ -43,32 +43,32 @@
   ansible.builtin.set_fact:
     constraint_violations: "{{ constraint_violations + [_msg] }}"
   vars:
-    _desired_k3s: "{{ component_plan.k3s.desired_version }}"
+    _desired_k3s: "{{ (component_plan.k3s_servers | default(component_plan.k3s)).desired_version }}"
     _rancher_max: "{{ component_compatibility.rancher.k3s_max_version }}"
     _msg: "CONSTRAINT_VIOLATION: k3s {{ _desired_k3s }} exceeds max supported by rancher: {{ _rancher_max }}"
   when:
     - component_compatibility.rancher.k3s_max_version is defined
-    - component_plan.k3s.action in ['install', 'upgrade']
-    - component_plan.k3s.desired_version is version(component_compatibility.rancher.k3s_max_version, '>')
+    - (component_plan.k3s_servers | default(component_plan.k3s)).action in ['install', 'upgrade']
+    - (component_plan.k3s_servers | default(component_plan.k3s)).desired_version is version(component_compatibility.rancher.k3s_max_version, '>')
 
 - name: Validate k3s version against Rancher k3s_min_version
   ansible.builtin.set_fact:
     constraint_violations: "{{ constraint_violations + [_msg] }}"
   vars:
-    _desired_k3s: "{{ component_plan.k3s.desired_version }}"
+    _desired_k3s: "{{ (component_plan.k3s_servers | default(component_plan.k3s)).desired_version }}"
     _rancher_min: "{{ component_compatibility.rancher.k3s_min_version }}"
     _msg: "CONSTRAINT_VIOLATION: k3s {{ _desired_k3s }} is below minimum required by rancher: {{ _rancher_min }}"
   when:
     - component_compatibility.rancher.k3s_min_version is defined
-    - component_plan.k3s.action in ['install', 'upgrade']
-    - component_plan.k3s.desired_version is version(component_compatibility.rancher.k3s_min_version, '<')
+    - (component_plan.k3s_servers | default(component_plan.k3s)).action in ['install', 'upgrade']
+    - (component_plan.k3s_servers | default(component_plan.k3s)).desired_version is version(component_compatibility.rancher.k3s_min_version, '<')
 
 # --- T021: Validate k3s version vs currently deployed Rancher's max (when only k3s is upgrading) ---
 - name: Validate k3s upgrade against current Rancher compatibility (when Rancher not being upgraded)
   ansible.builtin.set_fact:
     constraint_violations: "{{ constraint_violations + [_msg] }}"
   vars:
-    _desired_k3s: "{{ component_plan.k3s.desired_version }}"
+    _desired_k3s: "{{ (component_plan.k3s_servers | default(component_plan.k3s)).desired_version }}"
     _rancher_max: "{{ component_compatibility.rancher.k3s_max_version }}"
     _msg: >-
       CONSTRAINT_VIOLATION: k3s {{ _desired_k3s }} exceeds max supported by currently deployed rancher
@@ -76,7 +76,7 @@
       Max allowed: {{ _rancher_max }}
   when:
     - component_compatibility.rancher.k3s_max_version is defined
-    - component_plan.k3s.action in ['upgrade']
+    - (component_plan.k3s_servers | default(component_plan.k3s)).action in ['upgrade']
     - component_plan.rancher.action == 'none'
     - component_plan.k3s.desired_version is version(component_compatibility.rancher.k3s_max_version, '>')
 

@@ -170,33 +170,33 @@ Phase 3-6 complete → Phase 7 (Polish)
 
 ### Critical Implementation Gap
 
-- [ ] T037 Refactor site.yml Play 5 (upgrade path orchestration) from hardcoded component plays to dynamic loop through `hostvars[groups['k3s_servers'][0]].components_to_upgrade` per FR-003 in ansible/playbooks/site.yml
-- [ ] T038 In the components_to_upgrade dynamic loop, execute each component's registered `play_file` via dynamic `include_tasks` statement, respecting Data-Model priority ordering; each component (including `k3s_servers` and `k3s_agents` once decomposed) handles its own execution details in ansible/playbooks/site.yml
-- [ ] T039 Remove hardcoded plays 5-7 (rancher, kube_vip, k3s upgrade plays, Helm add-ons) from site.yml and replace with single dynamic orchestration loop that respects `components_to_upgrade` ordering per FR-003 in ansible/playbooks/site.yml
+- [X] T037 Refactor site.yml Play 5 (upgrade path orchestration) from hardcoded component plays to dynamic loop through `hostvars[groups['k3s_servers'][0]].components_to_upgrade` per FR-003 in ansible/playbooks/site.yml
+- [X] T038 In the components_to_upgrade dynamic loop, execute each component's registered `play_file` via dynamic `include_tasks` statement, respecting Data-Model priority ordering; each component (including `k3s_servers` and `k3s_agents` once decomposed) handles its own execution details in ansible/playbooks/site.yml
+- [X] T039 Remove hardcoded plays 5-7 (rancher, kube_vip, k3s upgrade plays, Helm add-ons) from site.yml and replace with single dynamic orchestration loop that respects `components_to_upgrade` ordering per FR-003 in ansible/playbooks/site.yml
 
 ### k3s Decomposition — Separate Control Plane and Agent Phases
 
 **Rationale**: Decompose k3s into `k3s_servers` and `k3s_agents` as first-class registry components with independent priorities, enabling fine-grained orchestration: servers install/upgrade before kube-vip, agents after. This makes k3s management consistent with the dynamic component system and allows more flexible deployment patterns.
 
-- [ ] T044 Refactor component registry to replace single `k3s` entry with `k3s_servers` and `k3s_agents` entries in ansible/playbooks/includes/vars/component-registry.yml:
+- [X] T044 Refactor component registry to replace single `k3s` entry with `k3s_servers` and `k3s_agents` entries in ansible/playbooks/includes/vars/component-registry.yml:
   - `k3s_servers`: fresh_install_priority=5, upgrade_priority=15, play_file=includes/upgrade-k3s-rolling.yml (with node_role: server)
   - `k3s_agents`: fresh_install_priority=12, upgrade_priority=25, play_file=includes/upgrade-k3s-rolling.yml (with node_role: agent)
   - Adjust subsequent component priorities accordingly: kube-vip fresh=10, cert-manager fresh=20, etc. (no change); upgrade priorities: kube-vip=20, add-ons=30+
 
-- [ ] T045 Update detect-versions.yml to detect and report k3s versions separately for servers (from k3s_servers[0]) and agents (sample from k3s_agents[0]) as distinct entries in component_plan dict in ansible/playbooks/includes/detect-versions.yml
+- [X] T045 Update detect-versions.yml to detect and report k3s versions separately for servers (from k3s_servers[0]) and agents (sample from k3s_agents[0]) as distinct entries in component_plan dict in ansible/playbooks/includes/detect-versions.yml
 
-- [ ] T046 Update compute-plan.yml to build constraint validation and version comparison for `k3s_servers` and `k3s_agents` separately (both checked against same compatibility constraints, but tracked independently) in ansible/playbooks/includes/compute-plan.yml
+- [X] T046 Update compute-plan.yml to build constraint validation and version comparison for `k3s_servers` and `k3s_agents` separately (both checked against same compatibility constraints, but tracked independently) in ansible/playbooks/includes/compute-plan.yml
 
-- [ ] T047 Update fresh install orchestration (T040) to treat k3s_servers and k3s_agents as independent components in the dynamic loop, respecting their separate fresh_install_priorities (5 vs 12) in ansible/playbooks/site.yml
+- [X] T047 Update fresh install orchestration (T040) to treat k3s_servers and k3s_agents as independent components in the dynamic loop, respecting their separate fresh_install_priorities (5 vs 12) in ansible/playbooks/site.yml
 
-- [ ] T048 Update upgrade orchestration (T037-T038) to treat k3s_servers and k3s_agents as independent components in the dynamic loop, respecting their separate upgrade_priorities (15 vs 25) and removing special-case k3s handling from T039 in ansible/playbooks/site.yml
+- [X] T048 Update upgrade orchestration (T037-T038) to treat k3s_servers and k3s_agents as independent components in the dynamic loop, respecting their separate upgrade_priorities (15 vs 25) and removing special-case k3s handling from T039 in ansible/playbooks/site.yml
 
 ### Fresh Install Path Alignment
 
-- [ ] T040 Refactor fresh install plays (Play 3-4) from hardcoded role invocations to dynamic orchestration: use computed `components_to_upgrade` (built with fresh_install_priority context) to execute components in order via their registered play_file in ansible/playbooks/site.yml
-- [ ] T041 Ensure fresh install priority sequence is respected: k3s_servers (5) → kube-vip (10) → k3s_agents (12) → cert-manager (20) → multus (21) → traefik (22) → rancher (23) → rancher-monitoring (24) → synology-csi (25) per refactored component registry in ansible/playbooks/site.yml
+- [X] T040 Refactor fresh install plays (Play 3-4) from hardcoded role invocations to dynamic orchestration: use computed `components_to_upgrade` (built with fresh_install_priority context) to execute components in order via their registered play_file in ansible/playbooks/site.yml
+- [X] T041 Ensure fresh install priority sequence is respected: k3s_servers (5) → kube-vip (10) → k3s_agents (12) → cert-manager (20) → multus (21) → traefik (22) → rancher (23) → rancher-monitoring (24) → synology-csi (25) per refactored component registry in ansible/playbooks/site.yml
 
 ### Validation & Documentation
 
-- [ ] T042 Add integration smoke test to verify upgrade-priority ordering: set Rancher version only and run site.yml, then verify via Ansible task output that only rancher executes and all other components (including k3s_servers/k3s_agents) are skipped per SC-003 in tests/ansible/smoke/
-- [ ] T043 Document dynamic orchestration design in site.yml header comments: explain how `components_to_upgrade` loop replaces hardcoded plays, how priorities are determined (fresh_install_priority vs upgrade_priority), k3s decomposition into k3s_servers and k3s_agents with independent priorities, and how kube-vip positioning works (after servers, before agents) per FR-003
+- [X] T042 Add integration smoke test to verify upgrade-priority ordering: set Rancher version only and run site.yml, then verify via Ansible task output that only rancher executes and all other components (including k3s_servers/k3s_agents) are skipped per SC-003 in tests/ansible/smoke/
+- [X] T043 Document dynamic orchestration design in site.yml header comments: explain how `components_to_upgrade` loop replaces hardcoded plays, how priorities are determined (fresh_install_priority vs upgrade_priority), k3s decomposition into k3s_servers and k3s_agents with independent priorities, and how kube-vip positioning works (after servers, before agents) per FR-003

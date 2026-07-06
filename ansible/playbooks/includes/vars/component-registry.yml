@@ -51,14 +51,27 @@ upgrade_components:
     upgrade_priority: 20
     play_file: includes/upgrade-kube-vip.yml
 
-  - name: k3s
+  - name: k3s_servers
     version_var: k3s_version
     enabled_var: null
     detect_method: k3s_binary
-    detect_args: {}
+    detect_args:
+      group: k3s_servers
     fresh_install_priority: 5
     upgrade_priority: 15
     play_file: includes/upgrade-k3s-rolling.yml
+    node_role: server
+
+  - name: k3s_agents
+    version_var: k3s_version
+    enabled_var: null
+    detect_method: k3s_binary
+    detect_args:
+      group: k3s_agents
+    fresh_install_priority: 12
+    upgrade_priority: 25
+    play_file: includes/upgrade-k3s-rolling.yml
+    node_role: agent
 
   - name: cert_manager
     version_var: cert_manager_version
