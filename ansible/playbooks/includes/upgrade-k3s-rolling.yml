@@ -11,30 +11,52 @@
 # Reference: FR-004, FR-005, FR-010, US4
 
 # --- T025/T026: Cordon, drain, upgrade, wait-for-ready, uncordon ---
-- name: "Display upgrade status for {{ inventory_hostname }}"
+- name: Set k3s upgrade target node
+  ansible.builtin.set_fact:
+    _target_node: "{{ k3s_target_host | default(inventory_hostname) }}"
+
+- name: "Check current k3s version on {{ _target_node }}"
+  ansible.builtin.command:
+    cmd: k3s --version
+  register: current_k3s_version
+  changed_when: false
+  failed_when: false
+
+- name: Determine whether {{ _target_node }} needs k3s upgrade
+  ansible.builtin.set_fact:
+    _node_needs_upgrade: "{{ (current_k3s_version.rc != 0) or (k3s_version not in current_k3s_version.stdout) }}"
+
+- name: "Display upgrade status for {{ _target_node }}"
   ansible.builtin.debug:
     msg: >-
-      Upgrading k3s on {{ inventory_hostname }} ({{ node_role }})
+      Upgrading k3s on {{ _target_node }} ({{ node_role }})
       → {{ k3s_version }}
 
-- name: "Cordon node {{ inventory_hostname }}"
+- name: "Skip upgrade for {{ _target_node }} when already at target version"
+  ansible.builtin.debug:
+    msg: "Node {{ _target_node }} already running {{ k3s_version }}; skipping cordon/drain/upgrade."
+  when: not (_node_needs_upgrade | bool)
+
+- name: "Cordon node {{ _target_node }}"
   ansible.builtin.command:
-    cmd: "kubectl cordon {{ inventory_hostname }}"
+    cmd: "kubectl cordon {{ _target_node }}"
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: true
+  when: _node_needs_upgrade | bool
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
-- name: "Drain node {{ inventory_hostname }}"
+- name: "Drain node {{ _target_node }}"
   ansible.builtin.command:
     cmd: >-
-      kubectl drain {{ inventory_hostname }}
+      kubectl drain {{ _target_node }}
       --ignore-daemonsets
       --delete-emptydir-data
       --timeout={{ upgrade_drain_timeout | default(300) }}s
       --force
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: true
+  when: _node_needs_upgrade | bool
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -44,6 +66,7 @@
     dest: /tmp/get_k3s.sh
     mode: '0755'
     force: false
+  when: _node_needs_upgrade | bool
 
 - name: Install target k3s version (server)
   ansible.builtin.command: /tmp/get_k3s.sh
@@ -51,18 +74,22 @@
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
     INSTALL_K3S_EXEC: >-
       server
-      {% if groups['k3s_servers'].index(inventory_hostname) == 0 %}--cluster-init{% else %}--server https://{{ control_plane_vip }}:{{ api_port }}{% endif %}
+      {% if groups['k3s_servers'].index(_target_node) == 0 %}--cluster-init{% else %}--server https://{{ control_plane_vip }}:{{ api_port }}{% endif %}
       {{ k3s_server_extra_args | default('') }}
   register: k3s_upgrade_result
   changed_when: "'No change detected' not in k3s_upgrade_result.stderr"
-  when: node_role == 'server'
+  when:
+    - _node_needs_upgrade | bool
+    - node_role == 'server'
 
 - name: Get node token from first control-plane (for agent)
   ansible.builtin.slurp:
     src: /var/lib/rancher/k3s/server/node-token
   register: node_token
   delegate_to: "{{ groups['k3s_servers'][0] }}"
-  when: node_role == 'agent'
+  when:
+    - _node_needs_upgrade | bool
+    - node_role == 'agent'
 
 - name: Install target k3s version (agent)
   ansible.builtin.command: /tmp/get_k3s.sh
@@ -73,9 +100,11 @@
     INSTALL_K3S_EXEC: "agent {{ k3s_agent_extra_args | default('') }}"
   register: k3s_upgrade_result
   changed_when: "'No change detected' not in k3s_upgrade_result.stderr"
-  when: node_role == 'agent'
+  when:
+    - _node_needs_upgrade | bool
+    - node_role == 'agent'
 
-- name: "Wait for k3s service to be stable on {{ inventory_hostname }}"
+- name: "Wait for k3s service to be stable on {{ _target_node }}"
   ansible.builtin.systemd:
     name: "{{ (node_role == 'server') | ternary('k3s', 'k3s-agent') }}"
     state: started
@@ -83,37 +112,44 @@
   until: k3s_service_status.status.ActiveState == "active"
   retries: 12
   delay: 5
+  when: _node_needs_upgrade | bool
 
-- name: "Wait for node {{ inventory_hostname }} to be Ready"
+- name: "Wait for node {{ _target_node }} to be Ready"
   ansible.builtin.command:
-    cmd: "kubectl wait --for=condition=Ready node/{{ inventory_hostname }} --timeout={{ upgrade_node_ready_timeout | default(300) }}s"
+    cmd: "kubectl wait --for=condition=Ready node/{{ _target_node }} --timeout={{ upgrade_node_ready_timeout | default(300) }}s"
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: false
+  when: _node_needs_upgrade | bool
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
-- name: "Verify upgraded version on {{ inventory_hostname }}"
+- name: "Verify upgraded version on {{ _target_node }}"
   ansible.builtin.command:
     cmd: k3s --version
   register: upgraded_version
   changed_when: false
   failed_when: k3s_version not in upgraded_version.stdout
+  when: _node_needs_upgrade | bool
 
-- name: "Uncordon node {{ inventory_hostname }}"
+- name: "Uncordon node {{ _target_node }}"
   ansible.builtin.command:
-    cmd: "kubectl uncordon {{ inventory_hostname }}"
+    cmd: "kubectl uncordon {{ _target_node }}"
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: true
+  when: _node_needs_upgrade | bool
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 # --- T027: Health check — validate all nodes Ready before next node ---
 - name: Validate cluster health after node upgrade
   ansible.builtin.command:
-    cmd: kubectl get nodes -o json
+    cmd: >-
+      kubectl get nodes
+      -o jsonpath='{range .items[*]}{.metadata.name}={range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}'
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   register: post_node_health
   changed_when: false
+  when: _node_needs_upgrade | bool
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -121,19 +157,18 @@
   ansible.builtin.assert:
     that:
       - _not_ready | length == 0
-    fail_msg: "HEALTH_CHECK_FAILED: Node {{ inventory_hostname }} upgraded but cluster has unhealthy nodes: {{ _not_ready }}"
-    success_msg: "✓ {{ inventory_hostname }} upgraded successfully. All nodes Ready."
+    fail_msg: "HEALTH_CHECK_FAILED: Node {{ _target_node }} upgraded but cluster has unhealthy nodes: {{ _not_ready }}"
+    success_msg: "✓ {{ _target_node }} upgraded successfully. All nodes Ready."
   vars:
-    _nodes: "{{ post_node_health.stdout | from_json }}"
     _not_ready: >-
-      {{ _nodes.items
-         | map(attribute='status.conditions')
-         | map('selectattr', 'type', 'equalto', 'Ready')
-         | map('first')
-         | selectattr('status', 'ne', 'True')
+      {{ post_node_health.stdout_lines
+         | reject('search', '=True$')
+         | map('regex_replace', '=.*$', '')
          | list }}
+  when: _node_needs_upgrade | bool
 
 # --- T029: Pause between nodes ---
 - name: "Pause {{ upgrade_pause_between_nodes | default(10) }}s before next node"
   ansible.builtin.pause:
     seconds: "{{ upgrade_pause_between_nodes | default(10) }}"
+  when: _node_needs_upgrade | bool

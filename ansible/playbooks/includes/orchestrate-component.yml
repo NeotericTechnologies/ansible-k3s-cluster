@@ -64,6 +64,42 @@
             label: "{{ server_node }} - upgrade"
           when: _curr_action in ['upgrade', 'downgrade']
 
+        - name: Reconcile multus after k3s server upgrade
+          ansible.builtin.include_role:
+            name: multus
+            tasks_from: install.yml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Check multus-shim exists on each k3s node
+          ansible.builtin.command:
+            cmd: test -x /var/lib/rancher/k3s/data/cni/multus-shim
+          delegate_to: "{{ node }}"
+          loop: "{{ (groups.get('k3s_servers', []) + groups.get('k3s_agents', [])) | unique }}"
+          loop_control:
+            loop_var: node
+          register: multus_shim_checks
+          changed_when: false
+          failed_when: false
+          when: multus_enabled | default(false) | bool
+
+        - name: Fail when multus-shim is missing after k3s server upgrade
+          ansible.builtin.assert:
+            that:
+              - _missing_multus_shim | length == 0
+            fail_msg: >-
+              MULTUS_SHIM_MISSING: missing multus-shim on {{ _missing_multus_shim }}.
+              Reconcile multus before continuing to avoid pod sandbox failures.
+            success_msg: "Multus shim validated on all k3s nodes."
+          vars:
+            _missing_multus_shim: >-
+              {{ multus_shim_checks.results | default([])
+                 | rejectattr('rc', 'equalto', 0)
+                 | map(attribute='node')
+                 | list }}
+          when: multus_enabled | default(false) | bool
+
       when:
         - _curr_component == 'k3s_servers'
         - _curr_action != 'none'

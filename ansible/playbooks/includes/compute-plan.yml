@@ -78,7 +78,7 @@
     - component_compatibility.rancher.k3s_max_version is defined
     - (component_plan.k3s_servers | default(component_plan.k3s)).action in ['upgrade']
     - component_plan.rancher.action == 'none'
-    - component_plan.k3s.desired_version is version(component_compatibility.rancher.k3s_max_version, '>')
+    - (component_plan.k3s_servers | default(component_plan.k3s)).desired_version is version(component_compatibility.rancher.k3s_max_version, '>')
 
 # --- T020: Fail-fast assertion on constraint violations ---
 - name: Fail if any constraint violations detected (FR-006)

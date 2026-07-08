@@ -37,3 +37,16 @@
   retries: 12
   delay: 10
   until: rancher_health.status == 200
+
+- name: Wait for all Rancher pods to be Ready before continuing
+  ansible.builtin.command:
+    cmd: >-
+      kubectl wait
+      --for=condition=Ready
+      pod
+      -l app=rancher
+      -n cattle-system
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml

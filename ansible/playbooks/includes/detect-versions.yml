@@ -10,21 +10,50 @@
 #
 # Reference: FR-002, specs/005-unified-upgrade-workflow/data-model.md
 
-# --- T005: Detect k3s binary version on all nodes ---
-- name: Check if k3s is installed
+# --- T005/T045: Detect k3s binary version on all server and agent nodes ---
+- name: Build k3s probe node list
+  ansible.builtin.set_fact:
+    k3s_probe_nodes: "{{ (groups['k3s_servers'] | default([])) + (groups['k3s_agents'] | default([])) | unique }}"
+
+- name: Check if k3s is installed on each node
   ansible.builtin.command:
     cmd: k3s --version
-  register: k3s_version_check
+  register: k3s_version_checks
   changed_when: false
   failed_when: false
+  delegate_to: "{{ item }}"
+  loop: "{{ k3s_probe_nodes }}"
 
-- name: Set k3s detected version
+- name: Build k3s version map by node
   ansible.builtin.set_fact:
-    k3s_live_version: >-
-      {{ (k3s_version_check.rc == 0) | ternary(
-        k3s_version_check.stdout | regex_search('v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+') | default('not_installed'),
-        'not_installed'
-      ) }}
+    k3s_versions_by_node: >-
+      {{ k3s_versions_by_node | default({}) | combine({
+        item.item: ((item.rc == 0) | ternary(
+          item.stdout | regex_search('v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+') | default('not_installed'),
+          'not_installed'
+        ))
+      }) }}
+  loop: "{{ k3s_version_checks.results | default([]) }}"
+
+- name: Build k3s version lists by role
+  ansible.builtin.set_fact:
+    k3s_server_version_list: "{{ groups['k3s_servers'] | default([]) | map('extract', k3s_versions_by_node) | list }}"
+    k3s_agent_version_list: "{{ groups['k3s_agents'] | default([]) | map('extract', k3s_versions_by_node) | list }}"
+
+- name: Set k3s detected version for servers and agents
+  ansible.builtin.set_fact:
+    k3s_servers_live_version: >-
+      {{ (
+        (k3s_server_version_list | default([]) | reject('equalto', (k3s_version | default('') | string | trim)) | list | first)
+        | default((k3s_server_version_list | default([]) | first), true)
+        | default('not_installed', true)
+      ) | string | trim }}
+    k3s_agents_live_version: >-
+      {{ (
+        (k3s_agent_version_list | default([]) | reject('equalto', (k3s_version | default('') | string | trim)) | list | first)
+        | default((k3s_agent_version_list | default([]) | first), true)
+        | default('not_installed', true)
+      ) | string | trim }}
 
 # --- T006: Detect Helm-deployed component versions ---
 - name: Get Helm releases across all namespaces
@@ -130,8 +159,8 @@
 - name: Build detected versions dictionary
   ansible.builtin.set_fact:
     detected_versions:
-      k3s_servers: "{{ k3s_live_version }}"
-      k3s_agents: "{{ k3s_live_version }}"
+      k3s_servers: "{{ k3s_servers_live_version }}"
+      k3s_agents: "{{ k3s_agents_live_version }}"
       rancher: "{{ helm_version_map['rancher'] | default('not_installed') }}"
       kube_vip: "{{ kube_vip_live_version | regex_replace('^:', '') }}"
       cert_manager: "{{ cert_manager_live_version | regex_replace('^:', '') }}"
@@ -149,10 +178,17 @@
   ansible.builtin.set_fact:
     component_plan: "{{ component_plan | default({}) | combine({item.name: _entry}) }}"
   vars:
-    _live: "{{ detected_versions[item.name] | default('not_installed') }}"
-    _desired: "{{ lookup('vars', item.version_var, default='') }}"
+    _live: "{{ (detected_versions[item.name] | default('not_installed')) | string | trim }}"
+    _desired: "{{ (lookup('vars', item.version_var, default='')) | string | trim }}"
     _desired_is_set: "{{ _desired | string | length > 0 }}"
-    _enabled: "{{ (item.enabled_var is none) or (lookup('vars', item.enabled_var, default=false) | bool) }}"
+    _enabled_base: "{{ (item.enabled_var is none) or (lookup('vars', item.enabled_var, default=false) | bool) }}"
+    _group_name: "{{ (item.detect_args | default({})).get('group', '') }}"
+    _group_enabled: >-
+      {{
+        (_group_name | length > 0)
+        | ternary((groups.get(_group_name, []) | length) > 0, true)
+      }}
+    _enabled: "{{ (_enabled_base | bool) and (_group_enabled | bool) }}"
     _live_norm: "{{ _live | string | regex_replace('^v', '') }}"
     _desired_norm: "{{ _desired | string | regex_replace('^v', '') }}"
     _can_compare: >-
