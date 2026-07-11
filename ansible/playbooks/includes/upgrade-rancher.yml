@@ -81,3 +81,28 @@
   changed_when: false
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Wait for Kubernetes API readiness after Rancher upgrade
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --request-timeout=10s --server https://127.0.0.1:6443
+      --insecure-skip-tls-verify=true
+      get --raw=/readyz
+  register: rancher_post_upgrade_readyz
+  retries: 18
+  delay: 10
+  until: rancher_post_upgrade_readyz.rc == 0
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Wait for all nodes to report Ready after Rancher upgrade
+  ansible.builtin.command:
+    cmd: >-
+      kubectl --server https://127.0.0.1:6443
+      --insecure-skip-tls-verify=true
+      wait --for=condition=Ready node --all
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml

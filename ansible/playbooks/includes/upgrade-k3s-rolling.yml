@@ -26,6 +26,75 @@
   ansible.builtin.set_fact:
     _node_needs_upgrade: "{{ (current_k3s_version.rc != 0) or (k3s_version not in current_k3s_version.stdout) }}"
 
+- name: Pre-upgrade guard - wait for Kubernetes API readiness before server upgrade
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    get --raw=/readyz --request-timeout=10s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    get --raw=/readyz --request-timeout=10s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  register: pre_k3s_api_ready
+  retries: 18
+  delay: 10
+  until: pre_k3s_api_ready.rc == 0
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - _node_needs_upgrade | bool
+    - node_role == 'server'
+    - not (k3s_upgrade_skip_preflight_health_check | default(false) | bool)
+
+- name: Pre-upgrade guard - wait for all nodes Ready before server upgrade
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    wait --for=condition=Ready node --all
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    wait --for=condition=Ready node --all
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - _node_needs_upgrade | bool
+    - node_role == 'server'
+    - not (k3s_upgrade_skip_preflight_health_check | default(false) | bool)
+
+- name: Pre-upgrade guard - wait for core control-plane services to be healthy
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    rollout status {{ item.kind }}/{{ item.name }}
+    -n {{ item.namespace }}
+    --timeout={{ k3s_upgrade_preflight_rollout_timeout | default(600) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    rollout status {{ item.kind }}/{{ item.name }}
+    -n {{ item.namespace }}
+    --timeout={{ k3s_upgrade_preflight_rollout_timeout | default(600) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  loop:
+    - { kind: deployment, name: coredns, namespace: kube-system }
+    - { kind: deployment, name: metrics-server, namespace: kube-system }
+    - { kind: deployment, name: local-path-provisioner, namespace: kube-system }
+    - { kind: daemonset, name: kube-vip, namespace: kube-system }
+  when:
+    - _node_needs_upgrade | bool
+    - node_role == 'server'
+    - not (k3s_upgrade_skip_preflight_health_check | default(false) | bool)
+
 - name: "Display upgrade status for {{ _target_node }}"
   ansible.builtin.debug:
     msg: >-
@@ -37,26 +106,51 @@
     msg: "Node {{ _target_node }} already running {{ k3s_version }}; skipping cordon/drain/upgrade."
   when: not (_node_needs_upgrade | bool)
 
+- name: Determine whether to skip cordon/drain for this node upgrade
+  ansible.builtin.set_fact:
+    _skip_cordon_drain: >-
+      {{
+        (node_role == 'server') and
+        not (k3s_server_upgrade_drain_enabled | default(false) | bool)
+      }}
+  when: _node_needs_upgrade | bool
+
+- name: Explain cordon/drain behavior for this node
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Skipping cordon/drain for control-plane node upgrade (k3s_server_upgrade_drain_enabled=false).' if (_skip_cordon_drain | default(false))
+         else 'Using standard cordon/drain workflow for this node upgrade.' }}
+  when: _node_needs_upgrade | bool
+
 - name: "Cordon node {{ _target_node }}"
   ansible.builtin.command:
-    cmd: "kubectl cordon {{ _target_node }}"
+    cmd: >-
+      kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+      --insecure-skip-tls-verify=true
+      cordon {{ _target_node }}
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: true
-  when: _node_needs_upgrade | bool
+  when:
+    - _node_needs_upgrade | bool
+    - not (_skip_cordon_drain | default(false))
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: "Drain node {{ _target_node }}"
   ansible.builtin.command:
     cmd: >-
-      kubectl drain {{ _target_node }}
+      kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+      --insecure-skip-tls-verify=true
+      drain {{ _target_node }}
       --ignore-daemonsets
       --delete-emptydir-data
       --timeout={{ upgrade_drain_timeout | default(300) }}s
       --force
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: true
-  when: _node_needs_upgrade | bool
+  when:
+    - _node_needs_upgrade | bool
+    - not (_skip_cordon_drain | default(false))
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -114,9 +208,92 @@
   delay: 5
   when: _node_needs_upgrade | bool
 
-- name: "Wait for node {{ _target_node }} to be Ready"
+- name: Check multus-shim binary on upgraded node (pre-reconcile)
   ansible.builtin.command:
-    cmd: "kubectl wait --for=condition=Ready node/{{ _target_node }} --timeout={{ upgrade_node_ready_timeout | default(300) }}s"
+    cmd: test -x /var/lib/rancher/k3s/data/current/bin/multus-shim
+  register: _multus_shim_binary_initial
+  changed_when: false
+  failed_when: false
+  when:
+    - _node_needs_upgrade | bool
+    - multus_enabled | default(false) | bool
+
+- name: Reconcile multus DaemonSet when shim is missing on upgraded node
+  block:
+    - name: Restart multus DaemonSet to rerun initContainer on nodes
+      ansible.builtin.shell: >-
+        kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+        --insecure-skip-tls-verify=true
+        rollout restart daemonset/kube-multus-ds -n kube-system
+        ||
+        kubectl --server https://127.0.0.1:6443
+        --insecure-skip-tls-verify=true
+        rollout restart daemonset/kube-multus-ds -n kube-system
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+
+    - name: Wait for multus DaemonSet rollout after restart
+      ansible.builtin.shell: >-
+        kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+        --insecure-skip-tls-verify=true
+        rollout status daemonset/kube-multus-ds -n kube-system --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+        ||
+        kubectl --server https://127.0.0.1:6443
+        --insecure-skip-tls-verify=true
+        rollout status daemonset/kube-multus-ds -n kube-system --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+  when:
+    - _node_needs_upgrade | bool
+    - multus_enabled | default(false) | bool
+    - _multus_shim_binary_initial is defined
+    - _multus_shim_binary_initial.rc != 0
+
+- name: Wait for multus-shim binary to exist on upgraded node
+  ansible.builtin.command:
+    cmd: test -x /var/lib/rancher/k3s/data/current/bin/multus-shim
+  register: _multus_shim_binary_ready
+  retries: 18
+  delay: 10
+  until: _multus_shim_binary_ready.rc == 0
+  changed_when: false
+  when:
+    - _node_needs_upgrade | bool
+    - multus_enabled | default(false) | bool
+
+- name: Ensure multus-shim symlink exists on upgraded node
+  ansible.builtin.file:
+    src: /var/lib/rancher/k3s/data/current/bin/multus-shim
+    dest: /var/lib/rancher/k3s/data/cni/multus-shim
+    state: link
+    force: true
+  when:
+    - _node_needs_upgrade | bool
+    - multus_enabled | default(false) | bool
+
+- name: Verify multus-shim link exists on upgraded node
+  ansible.builtin.command:
+    cmd: test -L /var/lib/rancher/k3s/data/cni/multus-shim
+  changed_when: false
+  when:
+    - _node_needs_upgrade | bool
+    - multus_enabled | default(false) | bool
+
+- name: "Wait for node {{ _target_node }} to be Ready"
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    wait --for=condition=Ready node/{{ _target_node }}
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    wait --for=condition=Ready node/{{ _target_node }}
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: false
   when: _node_needs_upgrade | bool
@@ -133,19 +310,30 @@
 
 - name: "Uncordon node {{ _target_node }}"
   ansible.builtin.command:
-    cmd: "kubectl uncordon {{ _target_node }}"
+    cmd: >-
+      kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+      --insecure-skip-tls-verify=true
+      uncordon {{ _target_node }}
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: true
-  when: _node_needs_upgrade | bool
+  when:
+    - _node_needs_upgrade | bool
+    - not (_skip_cordon_drain | default(false))
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 # --- T027: Health check — validate all nodes Ready before next node ---
 - name: Validate cluster health after node upgrade
-  ansible.builtin.command:
-    cmd: >-
-      kubectl get nodes
-      -o jsonpath='{range .items[*]}{.metadata.name}={range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}'
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    get nodes
+    -o jsonpath='{range .items[*]}{.metadata.name}={range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}'
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    get nodes
+    -o jsonpath='{range .items[*]}{.metadata.name}={range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}'
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   register: post_node_health
   changed_when: false
@@ -168,11 +356,18 @@
   when: _node_needs_upgrade | bool
 
 - name: Wait for core platform deployments to stabilize
-  ansible.builtin.command:
-    cmd: >-
-      kubectl rollout status deployment/{{ item.name }}
-      -n {{ item.namespace }}
-      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    rollout status deployment/{{ item.name }}
+    -n {{ item.namespace }}
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    rollout status deployment/{{ item.name }}
+    -n {{ item.namespace }}
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: false
   environment:
@@ -187,11 +382,18 @@
     - item.name != 'traefik' or (traefik_enabled | default(true) | bool)
 
 - name: Wait for kube-vip DaemonSet to stabilize
-  ansible.builtin.command:
-    cmd: >-
-      kubectl rollout status daemonset/kube-vip
-      -n kube-system
-      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    rollout status daemonset/kube-vip
+    -n kube-system
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    rollout status daemonset/kube-vip
+    -n kube-system
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: false
   environment:
@@ -201,11 +403,18 @@
     - kube_vip_enabled | default(false) | bool
 
 - name: Wait for kube-vip cloud controller to stabilize
-  ansible.builtin.command:
-    cmd: >-
-      kubectl rollout status deployment/kube-vip-cloud-controller
-      -n kube-system
-      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    rollout status deployment/kube-vip-cloud-controller
+    -n kube-system
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    rollout status deployment/kube-vip-cloud-controller
+    -n kube-system
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: false
   environment:
@@ -216,11 +425,18 @@
     - kube_vip_lb_enable | default(false) | bool
 
 - name: Wait for cert-manager deployments to stabilize
-  ansible.builtin.command:
-    cmd: >-
-      kubectl rollout status deployment/{{ item }}
-      -n cert-manager
-      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    rollout status deployment/{{ item }}
+    -n cert-manager
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    rollout status deployment/{{ item }}
+    -n cert-manager
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: false
   environment:
@@ -233,22 +449,61 @@
     - _node_needs_upgrade | bool
     - cert_manager_enabled | default(false) | bool
 
-- name: Wait for Rancher deployments to stabilize
-  ansible.builtin.command:
-    cmd: >-
-      kubectl rollout status deployment/{{ item.name }}
-      -n {{ item.namespace }}
-      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+- name: Wait for Rancher deployment to stabilize
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    rollout status deployment/rancher
+    -n cattle-system
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    rollout status deployment/rancher
+    -n cattle-system
+    --timeout={{ upgrade_node_ready_timeout | default(300) }}s
   delegate_to: "{{ groups['k3s_servers'][0] }}"
   changed_when: false
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  loop:
-    - { name: rancher, namespace: cattle-system }
-    - { name: rancher-webhook, namespace: cattle-system }
   when:
     - _node_needs_upgrade | bool
     - rancher_enabled | default(false) | bool
+
+- name: Check Rancher webhook deployment rollout (best effort)
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    rollout status deployment/rancher-webhook
+    -n cattle-system
+    --timeout={{ rancher_webhook_stabilization_timeout | default(300) }}s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    rollout status deployment/rancher-webhook
+    -n cattle-system
+    --timeout={{ rancher_webhook_stabilization_timeout | default(300) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  register: rancher_webhook_rollout
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - _node_needs_upgrade | bool
+    - rancher_enabled | default(false) | bool
+
+- name: Warn when Rancher webhook rollout is not yet complete
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: rancher-webhook rollout did not complete within timeout during
+      post-node stabilization (rc={{ rancher_webhook_rollout.rc | default('n/a') }}).
+      Continuing because webhook is treated as non-blocking for k3s node upgrades.
+  when:
+    - _node_needs_upgrade | bool
+    - rancher_enabled | default(false) | bool
+    - rancher_webhook_rollout is defined
+    - rancher_webhook_rollout.rc | default(0) != 0
 
 # --- T029: Pause between nodes ---
 - name: "Pause {{ upgrade_pause_between_nodes | default(10) }}s before next node"

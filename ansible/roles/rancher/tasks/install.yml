@@ -24,7 +24,10 @@
     helm upgrade --install rancher rancher-stable/rancher \
       --namespace cattle-system \
       --values /tmp/rancher-values.yaml \
-      --version {{ rancher_version }}
+      --version {{ rancher_version }} \
+      --wait \
+      --timeout {{ rancher_upgrade_timeout | default('15m') }} \
+      --atomic
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: rancher_install
