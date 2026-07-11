@@ -120,21 +120,6 @@
   changed_when: false
   when: inventory_hostname == groups['k3s_servers'][0]
 
-- name: Apply kube-vip cloud controller via API
-  kubernetes.core.k8s:
-    definition: "{{ item }}"
-    state: present
-    kubeconfig: /etc/rancher/k3s/k3s.yaml
-    host: https://127.0.0.1:6443
-    validate_certs: false
-  loop: "{{ lookup('template', 'kube-vip-cloud-controller.yaml.j2') | from_yaml_all | list }}"
-  loop_control:
-    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
-  when:
-    - inventory_hostname == groups['k3s_servers'][0]
-    - kube_vip_lb_enable | default(false)
-    - item is not none
-
 - name: Apply kube-vip ConfigMap via API
   kubernetes.core.k8s:
     definition: "{{ item }}"
@@ -143,6 +128,21 @@
     host: https://127.0.0.1:6443
     validate_certs: false
   loop: "{{ lookup('template', 'kube-vip-configmap.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - item is not none
+
+- name: Apply kube-vip cloud controller via API
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-cloud-controller.yaml.j2') | from_yaml_all | list }}"
   loop_control:
     label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
   when:
