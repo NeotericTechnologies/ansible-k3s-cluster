@@ -96,7 +96,8 @@ rancher_monitoring_ha_min_replicas: 2
 rancher_monitoring_non_ha_default_replicas: 1
 rancher_monitoring_retention: "7d"
 
-# Traefik ingress configuration
+# Traefik ingress configuration (Traefik app/image version, not Helm chart version)
+traefik_version: "v3.5.1"
 traefik_service_type: "LoadBalancer"  # Uses kube-vip for LoadBalancer services
 traefik_ha_min_replicas: 2
 traefik_non_ha_default_replicas: 1

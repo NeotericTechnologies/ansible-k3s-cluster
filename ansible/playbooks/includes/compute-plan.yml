@@ -89,6 +89,26 @@
 # --- Compute final upgrade plan with context-aware ordering ---
 # For fresh installs: use fresh_install_priority from component registry
 # For upgrades: use upgrade_priority from component registry
+- name: Determine install context (fresh or partial-fresh)
+  ansible.builtin.set_fact:
+    execution_is_fresh_install: >-
+      {{
+        (is_fresh_install | default(false) | bool)
+        or
+        (
+          (component_plan.k3s_servers is defined)
+          and (component_plan.k3s_servers.live_version != 'not_installed')
+          and (_enabled_non_k3s_installed | length == 0)
+        )
+      }}
+  vars:
+    _enabled_non_k3s_installed: >-
+      {{ component_plan | dict2items
+         | selectattr('value.enabled', 'equalto', true)
+         | rejectattr('key', 'in', ['k3s_servers', 'k3s_agents'])
+         | rejectattr('value.live_version', 'equalto', 'not_installed')
+         | list }}
+
 - name: Build priority map from component registry for fresh installs
   ansible.builtin.set_fact:
     priority_map: >-
@@ -96,7 +116,7 @@
            (upgrade_components | map(attribute='name') | list)
            | zip(upgrade_components | map(attribute='fresh_install_priority') | list)
          ) }}
-  when: is_fresh_install | default(false) | bool
+  when: execution_is_fresh_install | default(false) | bool
 
 - name: Build priority map from component registry for upgrades
   ansible.builtin.set_fact:
@@ -105,7 +125,7 @@
            (upgrade_components | map(attribute='name') | list)
            | zip(upgrade_components | map(attribute='upgrade_priority') | list)
          ) }}
-  when: not (is_fresh_install | default(false) | bool)
+  when: not (execution_is_fresh_install | default(false) | bool)
 
 - name: Initialize components_to_upgrade list
   ansible.builtin.set_fact:
@@ -160,7 +180,7 @@
       components_unchanged: "{{ components_unchanged }}"
       components_not_enabled: "{{ components_not_enabled }}"
       constraint_violations: "{{ constraint_violations }}"
-      is_fresh_install: "{{ is_fresh_install }}"
+      is_fresh_install: "{{ execution_is_fresh_install }}"
       has_changes: "{{ has_changes }}"
 
 # --- T010: Print upgrade plan summary (FR-014) ---
@@ -168,11 +188,11 @@
   ansible.builtin.debug:
     msg: |
       ══════════════════════════════════════════════════
-      Upgrade Plan:
+      Deployment Plan:
       {% if not has_changes %}
         No changes needed. All components at desired versions.
       {% else %}
-        Components to upgrade:
+        Components:
       {% for comp in components_to_upgrade %}
           - {{ comp.name }}: {{ component_plan[comp.name].live_version }} → {{ component_plan[comp.name].desired_version }} ({{ component_plan[comp.name].action }})
       {% endfor %}
@@ -180,8 +200,22 @@
       {% for comp in components_to_upgrade %}
           {{ loop.index }}. {{ comp.name }} (priority {{ comp._context_priority }})
       {% endfor %}
-        Components unchanged: {{ components_unchanged | join(', ') if (components_unchanged | length > 0) else 'none' }}
-        Components not enabled (skipped): {{ components_not_enabled | join(', ') if (components_not_enabled | length > 0) else 'none' }}
+        Components unchanged:
+      {% if components_unchanged | length > 0 %}
+      {% for name in components_unchanged %}
+          - {{ name }}: live={{ component_plan[name].live_version }}
+      {% endfor %}
+      {% else %}
+          - none
       {% endif %}
-        Fresh install: {{ is_fresh_install }}
+        Components not enabled (skipped):
+      {% if components_not_enabled | length > 0 %}
+      {% for name in components_not_enabled %}
+          - {{ name }}: desired={{ component_plan[name].desired_version }}
+      {% endfor %}
+      {% else %}
+          - none
+      {% endif %}
+      {% endif %}
+        Fresh install: {{ execution_is_fresh_install }}
       ══════════════════════════════════════════════════

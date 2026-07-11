@@ -137,7 +137,7 @@
     - name: Confirm plan before applying changes
       ansible.builtin.pause:
         prompt: |-
-          Review the upgrade/install plan above.
+          Review the deployment plan above.
           Press ENTER to continue, or press Ctrl+C then A to abort.
       when:
         - (is_fresh_install | default(false) | bool) or (has_changes | default(false) | bool)
@@ -163,7 +163,7 @@
         msg: |
           ══════════════════════════════════════════════════════════════════
           DYNAMIC COMPONENT ORCHESTRATION (FR-003)
-          Context: {{ 'Fresh Install' if (is_fresh_install | default(false) | bool) else 'Upgrade' }}
+          Context: {{ 'Fresh Install' if (execution_is_fresh_install | default(false) | bool) else 'Upgrade' }}
 
           Components to execute (in priority order):
           {% for comp in components_to_upgrade %}
@@ -201,7 +201,7 @@
         msg: |
           ══════════════════════════════════════════════════
           Unified Workflow Complete
-          {% if hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool %}
+          {% if hostvars[groups['k3s_servers'][0]].execution_is_fresh_install | default(false) | bool %}
             Action: Fresh cluster deployment
           {% elif hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool %}
             Action: Component upgrades applied

@@ -18,6 +18,8 @@
     state: present
     kubeconfig: "{{ multus_kubeconfig }}"
   loop: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ (item.kind | default('Resource')) ~ '/' ~ (item.metadata.name | default('unnamed')) }}"
   when: item is not none
   register: multus_deploy_result
 

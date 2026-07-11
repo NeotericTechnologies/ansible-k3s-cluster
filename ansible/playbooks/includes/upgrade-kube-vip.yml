@@ -36,8 +36,11 @@
   ansible.builtin.uri:
     url: "https://{{ control_plane_vip }}:{{ api_port }}/healthz"
     validate_certs: false
-    status_code: 200
+    status_code:
+      - 200
+      - 401
+      - 403
   register: vip_health
   retries: 6
   delay: 5
-  until: vip_health.status == 200
+  until: vip_health.status in [200, 401, 403]

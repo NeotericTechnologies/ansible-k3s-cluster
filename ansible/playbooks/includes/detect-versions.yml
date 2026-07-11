@@ -130,6 +130,24 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
+- name: Detect Traefik version from deployment image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get deployment traefik -n kube-system
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: traefik_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse Traefik version from image tag
+  ansible.builtin.set_fact:
+    traefik_live_version: >-
+      {{ (traefik_image_raw.rc == 0 and traefik_image_raw.stdout | length > 0)
+         | ternary(traefik_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
 - name: Parse cert-manager version from image tag
   ansible.builtin.set_fact:
     cert_manager_live_version: >-
@@ -164,7 +182,7 @@
       rancher: "{{ helm_version_map['rancher'] | default('not_installed') }}"
       kube_vip: "{{ kube_vip_live_version | regex_replace('^:', '') }}"
       cert_manager: "{{ cert_manager_live_version | regex_replace('^:', '') }}"
-      traefik: "{{ helm_version_map['traefik'] | default('not_installed') }}"
+      traefik: "{{ traefik_live_version | regex_replace('^:', '') }}"
       rancher_monitoring: "{{ helm_version_map['rancher-monitoring'] | default('not_installed') }}"
       multus: "{{ multus_live_version | regex_replace('^:', '') }}"
       synology_csi: "{{ synology_csi_live_version | regex_replace('^:', '') }}"

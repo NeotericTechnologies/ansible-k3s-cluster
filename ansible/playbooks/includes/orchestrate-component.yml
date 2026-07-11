@@ -50,6 +50,75 @@
             label: "{{ server_node }} - deploy"
           when: _curr_action == 'install'
 
+        - name: Ensure Rancher is stable before k3s server upgrade
+          ansible.builtin.command:
+            cmd: >-
+              kubectl rollout status deployment/rancher
+              -n cattle-system
+              --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+          delegate_to: "{{ groups['k3s_servers'][0] }}"
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
+        - name: Ensure Rancher health endpoint is ready before k3s server upgrade
+          ansible.builtin.uri:
+            url: "https://{{ rancher_hostname }}/healthz"
+            validate_certs: false
+            status_code: 200
+          register: _rancher_pre_k3s_health
+          retries: 12
+          delay: 10
+          until: _rancher_pre_k3s_health.status == 200
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
+        - name: Read deployed Rancher image before k3s server upgrade
+          ansible.builtin.command:
+            cmd: >-
+              kubectl get deployment rancher
+              -n cattle-system
+              -o jsonpath='{.spec.template.spec.containers[?(@.name=="rancher")].image}'
+          delegate_to: "{{ groups['k3s_servers'][0] }}"
+          register: _rancher_pre_k3s_image
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
+        - name: Assert Rancher target version is deployed before k3s server upgrade
+          ansible.builtin.assert:
+            that:
+              - _rancher_pre_k3s_version_norm | length > 0
+              - _rancher_pre_k3s_version_norm == _rancher_target_version_norm
+            fail_msg: >-
+              RANCHER_VERSION_MISMATCH_PRE_K3S: expected Rancher {{ rancher_version }},
+              but deployment image is {{ _rancher_pre_k3s_image.stdout | default('unknown') }}.
+              Aborting k3s upgrade to avoid compatibility issues.
+            success_msg: >-
+              Rancher target version {{ rancher_version }} confirmed before k3s upgrade.
+          vars:
+            _rancher_pre_k3s_version_norm: >-
+              {{ (_rancher_pre_k3s_image.stdout | default('')
+                  | regex_replace('^.*:', '')
+                  | regex_replace('^v', '')
+                  | trim) }}
+            _rancher_target_version_norm: >-
+              {{ (rancher_version | string | regex_replace('^v', '') | trim) }}
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
         - name: Upgrade k3s servers (serial 1)
           ansible.builtin.include_tasks:
             file: includes/upgrade-k3s-rolling.yml
@@ -72,17 +141,67 @@
             - _curr_action in ['upgrade', 'downgrade']
             - multus_enabled | default(false) | bool
 
-        - name: Check multus-shim exists on each k3s node
+        - name: Restart multus daemonset after k3s server upgrade
           ansible.builtin.command:
-            cmd: test -x /var/lib/rancher/k3s/data/cni/multus-shim
+            cmd: kubectl rollout restart daemonset/kube-multus-ds -n kube-system
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Wait for multus daemonset rollout after restart
+          ansible.builtin.command:
+            cmd: kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=300s
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Ensure multus-shim symlink exists on each k3s node
+          ansible.builtin.file:
+            src: /var/lib/rancher/k3s/data/current/bin/multus-shim
+            dest: /var/lib/rancher/k3s/data/cni/multus-shim
+            state: link
+            force: true
           delegate_to: "{{ node }}"
           loop: "{{ (groups.get('k3s_servers', []) + groups.get('k3s_agents', [])) | unique }}"
           loop_control:
             loop_var: node
-          register: multus_shim_checks
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Check multus-shim binary exists on each k3s node
+          ansible.builtin.command:
+            cmd: test -x /var/lib/rancher/k3s/data/current/bin/multus-shim
+          delegate_to: "{{ node }}"
+          loop: "{{ (groups.get('k3s_servers', []) + groups.get('k3s_agents', [])) | unique }}"
+          loop_control:
+            loop_var: node
+          register: multus_shim_binary_checks
           changed_when: false
           failed_when: false
-          when: multus_enabled | default(false) | bool
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Check multus-shim link exists on each k3s node
+          ansible.builtin.command:
+            cmd: test -L /var/lib/rancher/k3s/data/cni/multus-shim
+          delegate_to: "{{ node }}"
+          loop: "{{ (groups.get('k3s_servers', []) + groups.get('k3s_agents', [])) | unique }}"
+          loop_control:
+            loop_var: node
+          register: multus_shim_link_checks
+          changed_when: false
+          failed_when: false
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
 
         - name: Fail when multus-shim is missing after k3s server upgrade
           ansible.builtin.assert:
@@ -94,11 +213,20 @@
             success_msg: "Multus shim validated on all k3s nodes."
           vars:
             _missing_multus_shim: >-
-              {{ multus_shim_checks.results | default([])
-                 | rejectattr('rc', 'equalto', 0)
-                 | map(attribute='node')
-                 | list }}
-          when: multus_enabled | default(false) | bool
+              {{
+                (multus_shim_binary_checks.results | default([])
+                  | rejectattr('rc', 'equalto', 0)
+                  | map(attribute='node')
+                  | list)
+                +
+                (multus_shim_link_checks.results | default([])
+                  | rejectattr('rc', 'equalto', 0)
+                  | map(attribute='node')
+                  | list)
+              | unique }}
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
 
       when:
         - _curr_component == 'k3s_servers'

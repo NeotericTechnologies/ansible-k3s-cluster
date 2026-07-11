@@ -28,6 +28,37 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
+- name: Read deployed Rancher image after rollout
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get deployment rancher
+      -n cattle-system
+      -o jsonpath='{.spec.template.spec.containers[?(@.name=="rancher")].image}'
+  register: rancher_deployed_image
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Assert deployed Rancher image matches target version
+  ansible.builtin.assert:
+    that:
+      - _deployed_rancher_version_norm | length > 0
+      - _deployed_rancher_version_norm == _target_rancher_version_norm
+    fail_msg: >-
+      RANCHER_VERSION_MISMATCH: expected Rancher {{ rancher_version }},
+      but deployment image is {{ rancher_deployed_image.stdout | default('unknown') }}.
+      Aborting to avoid incompatible k3s upgrade sequencing.
+    success_msg: >-
+      Rancher deployment confirmed at target version {{ rancher_version }}.
+  vars:
+    _deployed_rancher_version_norm: >-
+      {{ (rancher_deployed_image.stdout | default('')
+          | regex_replace('^.*:', '')
+          | regex_replace('^v', '')
+          | trim) }}
+    _target_rancher_version_norm: >-
+      {{ (rancher_version | string | regex_replace('^v', '') | trim) }}
+
 - name: Verify Rancher is accessible
   ansible.builtin.uri:
     url: "https://{{ rancher_hostname }}/healthz"

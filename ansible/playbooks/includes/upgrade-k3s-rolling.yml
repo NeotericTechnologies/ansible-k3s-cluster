@@ -167,6 +167,89 @@
          | list }}
   when: _node_needs_upgrade | bool
 
+- name: Wait for core platform deployments to stabilize
+  ansible.builtin.command:
+    cmd: >-
+      kubectl rollout status deployment/{{ item.name }}
+      -n {{ item.namespace }}
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  loop:
+    - { name: coredns, namespace: kube-system }
+    - { name: metrics-server, namespace: kube-system }
+    - { name: local-path-provisioner, namespace: kube-system }
+    - { name: traefik, namespace: kube-system }
+  when:
+    - _node_needs_upgrade | bool
+    - item.name != 'traefik' or (traefik_enabled | default(true) | bool)
+
+- name: Wait for kube-vip DaemonSet to stabilize
+  ansible.builtin.command:
+    cmd: >-
+      kubectl rollout status daemonset/kube-vip
+      -n kube-system
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - _node_needs_upgrade | bool
+    - kube_vip_enabled | default(false) | bool
+
+- name: Wait for kube-vip cloud controller to stabilize
+  ansible.builtin.command:
+    cmd: >-
+      kubectl rollout status deployment/kube-vip-cloud-controller
+      -n kube-system
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - _node_needs_upgrade | bool
+    - kube_vip_enabled | default(false) | bool
+    - kube_vip_lb_enable | default(false) | bool
+
+- name: Wait for cert-manager deployments to stabilize
+  ansible.builtin.command:
+    cmd: >-
+      kubectl rollout status deployment/{{ item }}
+      -n cert-manager
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  loop:
+    - cert-manager
+    - cert-manager-cainjector
+    - cert-manager-webhook
+  when:
+    - _node_needs_upgrade | bool
+    - cert_manager_enabled | default(false) | bool
+
+- name: Wait for Rancher deployments to stabilize
+  ansible.builtin.command:
+    cmd: >-
+      kubectl rollout status deployment/{{ item.name }}
+      -n {{ item.namespace }}
+      --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+  delegate_to: "{{ groups['k3s_servers'][0] }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  loop:
+    - { name: rancher, namespace: cattle-system }
+    - { name: rancher-webhook, namespace: cattle-system }
+  when:
+    - _node_needs_upgrade | bool
+    - rancher_enabled | default(false) | bool
+
 # --- T029: Pause between nodes ---
 - name: "Pause {{ upgrade_pause_between_nodes | default(10) }}s before next node"
   ansible.builtin.pause:
