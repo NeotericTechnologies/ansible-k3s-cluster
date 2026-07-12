@@ -17,6 +17,7 @@
 - Q: How should invalid/conflicting opt-out configuration be handled? -> A: Ignore invalid opt-out, keep managed egress active, and emit clear warning diagnostics.
 - Q: How should service election behave when quorum is lost? -> A: Hold current healthy leader assignments, block new leadership changes, and report degraded state until quorum is restored.
 - Q: What RBAC strategy should be enforced? -> A: Use a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider, enforced on every deploy and upgrade.
+- Q: What should be the default state for `kube_vip_egress_enabled` and `kube_vip_dhcp_enabled`? -> A: Both are enabled by default.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -107,6 +108,7 @@ As a cluster operator, I want validated and complete access permissions for Kube
 - **FR-014**: System MUST ignore invalid or conflicting managed-egress opt-out configuration, keep managed egress active for the affected workload, and emit clear warning diagnostics.
 - **FR-015**: System MUST hold current healthy service leadership assignments, block new leadership changes, and emit degraded-state status signals when election quorum is unavailable.
 - **FR-016**: System MUST enforce and reconcile the RBAC baseline on every deployment and upgrade run to prevent permission drift.
+- **FR-017**: System MUST default `kube_vip_egress_enabled` and `kube_vip_dhcp_enabled` to enabled unless operators explicitly override them.
 
 ### Key Entities *(include if feature involves data)*
 
