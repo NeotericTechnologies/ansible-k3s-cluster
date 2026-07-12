@@ -7,10 +7,17 @@
 
 ### Entry Points
 
+Preferred execution path:
+
+```bash
+ansible-playbook -i <inventory> ansible/playbooks/site.yml
+```
+
+Targeted alternatives (retained):
+
 ```bash
 ansible-playbook -i <inventory> ansible/playbooks/cluster-core.yml
 ansible-playbook -i <inventory> ansible/playbooks/cluster-addons.yml
-ansible-playbook -i <inventory> ansible/playbooks/site.yml
 ```
 
 ### Behavior Contract
@@ -75,3 +82,18 @@ Kube-VIP Status:
 | Re-run with no desired changes | No unintended task changes; status remains stable |
 | Re-run after transient DHCP outage | Pending leases progress to allocated when DHCP recovers |
 | Re-run after RBAC drift | Baseline reconciles to desired least-privilege state |
+
+## Automated Validation Contract
+
+The feature MUST include feasible automated validation coverage for:
+
+- managed egress behavior
+- service election behavior
+- DHCP lease acquisition and renewal lifecycle
+- RBAC binding correctness
+
+Coverage rules:
+
+- At least one automated validation scenario MUST run on a fresh-deploy path.
+- At least one automated validation scenario MUST run on an upgrade-path.
+- Any capability that cannot be fully automated MUST include documented manual fallback validation in quickstart guidance with explicit feasibility rationale.

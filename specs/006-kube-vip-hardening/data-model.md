@@ -90,12 +90,29 @@ Operator-visible high-level state for the feature set.
 - Validation Rules:
   - Any degraded/error sub-state must be surfaced in playbook output.
 
+### 7. AutomatedValidationCase
+
+Represents one feasible automated validation scenario tied to feature requirements.
+
+- Fields:
+  - case_id: string
+  - capability: enum (`egress`, `service_election`, `dhcp_lease`, `rbac_binding`)
+  - lifecycle_path: enum (`fresh_deploy`, `upgrade_path`)
+  - execution_mode: enum (`automated`, `manual_fallback`)
+  - status: enum (`pass`, `fail`, `skipped`)
+  - evidence_ref: string
+- Validation Rules:
+  - At least one automated case per capability must exist where feasible.
+  - At least one `fresh_deploy` and one `upgrade_path` automated case must be present across the full set.
+  - `manual_fallback` is only valid when feasibility constraints are documented.
+
 ## Relationships
 
 - ManagedEgressPolicy 1->N WorkloadEgressDecision
 - ServiceLeadershipState 1->1 KubeVipOperationalStatus.election_status (aggregated)
 - LoadBalancerAddressLease 1->1 ServiceLeadershipState by service_ref
 - RBACBaseline 1->1 KubeVipOperationalStatus.rbac_status (aggregated)
+- AutomatedValidationCase N->1 KubeVipOperationalStatus (aggregated verification evidence)
 
 ## State Transitions
 
@@ -121,3 +138,9 @@ Operator-visible high-level state for the feature set.
 
 - in_sync -> drift_detected -> reconciled
 - drift_detected -> error (if reconcile fails)
+
+### Automated validation lifecycle
+
+- planned -> executed -> pass
+- planned -> executed -> fail
+- planned -> skipped (manual_fallback with documented feasibility constraints)

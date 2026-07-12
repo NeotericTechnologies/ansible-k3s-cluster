@@ -50,3 +50,11 @@
 - Alternatives considered:
   - Log-only without structured states: rejected as too ambiguous for operations.
   - External monitoring dependency for basic state visibility: rejected as unnecessary coupling for baseline feature behavior.
+
+## R-007: Automated validation strategy (feasible coverage)
+
+- Decision: Add feasible automated validation scenarios for managed egress behavior, service election behavior, DHCP lease acquisition/renewal lifecycle, and RBAC binding correctness, executed through repository-native Ansible validation paths.
+- Rationale: The updated spec requires automated validation where feasible and success criteria now include automated coverage across fresh-deploy and upgrade-path scenarios.
+- Alternatives considered:
+  - Manual validation only: rejected because it does not satisfy FR-018 and SC-007.
+  - Full end-to-end simulation for every network failure mode: rejected as disproportionate and brittle for baseline automation; keep complex fault injection in documented manual validation paths.

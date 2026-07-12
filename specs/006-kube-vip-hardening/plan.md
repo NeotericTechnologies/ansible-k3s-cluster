@@ -8,7 +8,7 @@
 
 ## Summary
 
-Enhance kube-vip operations for production-grade HA networking by implementing default-on managed egress with explicit opt-out, enabling resilient service leader election behavior under quorum loss, adding DHCP-driven LoadBalancer address lifecycle handling, and enforcing a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider. The implementation approach extends the existing `kube-vip` role and related lifecycle playbooks while preserving idempotent behavior and compatibility with both fresh deployments and upgrades.
+Enhance kube-vip operations for production-grade HA networking by implementing default-on managed egress with explicit opt-out, enabling resilient service leader election behavior under quorum loss, adding DHCP-driven LoadBalancer address lifecycle handling, and enforcing a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider. The implementation approach extends the existing `kube-vip` role and related lifecycle playbooks while preserving idempotent behavior and compatibility with both fresh deployments and upgrades, and adds feasible automated validation coverage for egress, service election, DHCP lease lifecycle, and RBAC binding behavior.
 
 ## Technical Context
 
@@ -18,7 +18,7 @@ Enhance kube-vip operations for production-grade HA networking by implementing d
 
 **Storage**: N/A (configuration/state managed via Kubernetes API resources)
 
-**Testing**: `ansible-playbook --check`, repository smoke scenarios in `tests/ansible/smoke/`, runtime validation via `kubectl` status checks
+**Testing**: `ansible-playbook --check` via `ansible/playbooks/site.yml`, repository smoke/integration scenarios in `tests/ansible/smoke/`, automated validation where feasible for egress/election/DHCP/RBAC, plus runtime verification via `kubectl` status checks
 
 **Target Platform**: Debian/Ubuntu-like Linux nodes (systemd, x86_64/arm64) running k3s
 
@@ -26,7 +26,7 @@ Enhance kube-vip operations for production-grade HA networking by implementing d
 
 **Performance Goals**: Automatic leader failover within 30 seconds for >=95% events; DHCP assignment within 60 seconds for >=95% of new services; no-op re-run remains idempotent
 
-**Constraints**: Preserve existing lifecycle entrypoints; fail-safe behavior for invalid opt-out config (managed egress remains active); no default broad RBAC privileges; quorum-loss behavior must prevent unsafe leader churn
+**Constraints**: Preserve existing lifecycle entrypoints with `ansible/playbooks/site.yml` as preferred path; fail-safe behavior for invalid opt-out config (managed egress remains active); no default broad RBAC privileges; quorum-loss behavior must prevent unsafe leader churn; automated validation must cover both fresh-deploy and upgrade-path scenarios where feasible
 
 **Scale/Scope**: Single-node through small HA clusters (1-5 servers, 1-20 agents) with cluster-wide default managed egress and optional per-workload opt-out
 
@@ -37,12 +37,12 @@ Enhance kube-vip operations for production-grade HA networking by implementing d
 | Principle | Status | Notes |
 |-----------|--------|-------|
 | I. Minimal, Focused Playbooks | PASS | Changes are constrained to kube-vip-related role/playbook paths and documented contracts |
-| II. Idempotent Cluster Provisioning | PASS | Design requires re-runnable RBAC reconciliation and deterministic fallback behavior |
+| II. Idempotent Cluster Provisioning | PASS | Design requires re-runnable RBAC reconciliation, deterministic fallback behavior, and repeatable automated validation checks |
 | III. k3s-Specific Constraints | PASS | Feature is k3s-native and uses existing k3s cluster lifecycle semantics |
 | IV. Clear Inventory and Node Roles | PASS | Behavior remains inventory-driven; no hard-coded host decisions introduced |
-| V. Security, Networking, and Upgrades | PASS | Least-privilege RBAC baseline, explicit networking behavior, and upgrade-safe reconciliation are required |
+| V. Security, Networking, and Upgrades | PASS | Least-privilege RBAC baseline, explicit networking behavior, upgrade-safe reconciliation, and automated validation gates are required |
 
-**Post-Phase 1 Re-check**: PASS. Research and design artifacts preserve repository role boundaries, keep security defaults explicit, and avoid non-idempotent or destructive operations.
+**Post-Phase 1 Re-check**: PASS. Research and design artifacts preserve repository role boundaries, keep security defaults explicit, include feasible automated validation commitments, and avoid non-idempotent or destructive operations.
 
 ## Project Structure
 
@@ -80,7 +80,8 @@ ansible/
 
 tests/
 └── ansible/
-    └── smoke/                                # executable validation scenarios
+    ├── smoke/                                # executable validation scenarios
+    └── integration/                          # automated kube-vip hardening coverage (egress/election/DHCP/RBAC)
 
 docs/
 ├── ansible-k3s-baseline.md                   # operator-facing behavior docs

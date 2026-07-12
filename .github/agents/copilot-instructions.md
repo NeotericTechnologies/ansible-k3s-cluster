@@ -35,8 +35,8 @@ Ansible playbooks (YAML); minimum supported Ansible Core version 2.15+: Follow s
 
 ## Recent Changes
 - 006-kube-vip-hardening: Added Ansible 2.15+ (YAML playbooks, Jinja2 templates), Kubernetes manifests + k3s, kube-vip, kube-vip-cloud-provider, kubectl, Helm 3
+- 006-kube-vip-hardening: Added Ansible 2.15+ (YAML playbooks, Jinja2 templates), Kubernetes manifests + k3s, kube-vip, kube-vip-cloud-provider, kubectl, Helm 3
 - 004-k8s-module-refactor: Added Ansible (Python-based); `kubernetes.core` collection ≥2.4.0 (already in `ansible/requirements.yml`) + `kubernetes.core.k8s`, `kubernetes.core.k8s_info`, `ansible.builtin.uri` (for remote manifest fetch); all already present in the collection requirements
-- 003-ha-component-deployment: Added Ansible Core 2.15+ (YAML playbooks and Jinja2 templates) + Ansible roles/playbooks under `ansible/playbooks` and `ansible/roles`, `kubernetes.core` modules, Helm-managed addons where already used
 
 
 <!-- MANUAL ADDITIONS START -->

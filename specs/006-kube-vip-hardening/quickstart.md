@@ -103,7 +103,23 @@ Capture:
 - DHCP pending-to-allocated transition evidence
 - RBAC baseline reconciliation evidence
 
-## 8) Completion criteria
+## 8) Automated validation execution (where feasible)
+
+Execute repository-native automated validation scenarios once they are generated for this feature:
+
+```bash
+ansible-playbook --check -i <inventory> ansible/playbooks/site.yml
+ansible-playbook -i <inventory> ansible/playbooks/site.yml
+```
+
+Expected outcome:
+- Automated validation covers egress behavior.
+- Automated validation covers service election behavior.
+- Automated validation covers DHCP lease acquisition and renewal behavior.
+- Automated validation covers RBAC binding correctness.
+- Evidence includes at least one fresh-deploy path and one upgrade-path run.
+
+## 9) Completion criteria
 
 The feature is validated when all scenarios above pass and observed behavior matches contracts in:
 - `contracts/kube-vip-lifecycle-contracts.md`
