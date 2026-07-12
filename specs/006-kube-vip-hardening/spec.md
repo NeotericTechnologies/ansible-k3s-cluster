@@ -18,6 +18,7 @@
 - Q: How should service election behave when quorum is lost? -> A: Hold current healthy leader assignments, block new leadership changes, and report degraded state until quorum is restored.
 - Q: What RBAC strategy should be enforced? -> A: Use a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider, enforced on every deploy and upgrade.
 - Q: What should be the default state for `kube_vip_egress_enabled` and `kube_vip_dhcp_enabled`? -> A: Both are enabled by default.
+- Q: Should automated tests be generated for this feature? -> A: Yes, generate automated validation where feasible for egress behavior, service election, DHCP lease lifecycle (including renewal), and RBAC binding correctness.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -109,6 +110,7 @@ As a cluster operator, I want validated and complete access permissions for Kube
 - **FR-015**: System MUST hold current healthy service leadership assignments, block new leadership changes, and emit degraded-state status signals when election quorum is unavailable.
 - **FR-016**: System MUST enforce and reconcile the RBAC baseline on every deployment and upgrade run to prevent permission drift.
 - **FR-017**: System MUST default `kube_vip_egress_enabled` and `kube_vip_dhcp_enabled` to enabled unless operators explicitly override them.
+- **FR-018**: System MUST include automated validation, where feasible, for managed egress behavior, service-election behavior, DHCP lease acquisition and renewal, and RBAC binding correctness across deployment and upgrade paths.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -129,6 +131,7 @@ As a cluster operator, I want validated and complete access permissions for Kube
 - **SC-004**: Permission-related operational errors for Kube-VIP management actions are reduced to zero in post-deployment smoke tests for both fresh installs and upgrades.
 - **SC-005**: Network operations effort for firewall allow-list updates is reduced by at least 50% compared with the previous node-based process.
 - **SC-006**: Operators can complete feature configuration and verification using documented steps in under 15 minutes for a standard HA test environment.
+- **SC-007**: Automated validation coverage exists for egress, service election, DHCP lease lifecycle, and RBAC binding checks for at least one fresh-deploy and one upgrade-path scenario.
 
 ## Assumptions
 

@@ -17,3 +17,9 @@ Source Code:
  - https://github.com/kube-vip/kube-vip-cloud-provider
 
 The references provided for each feature are provided simply as a starting point for research and implementation details.  The source code would be the definitive source of information with respect to each feature.
+
+Automated tests should be generated, where feasable, to:
+- Validate egress controller configuration and operation.
+- Validate service election is functioning as expected.
+- Validate DHCP lease acquisition and renewal.
+- Validate RBAC bindings are correctly configured.

@@ -33,3 +33,4 @@
 
 - Validation iteration 1: All checklist items pass.
 - No specification clarifications required.
+- Validation iteration 2: Added explicit automated-validation requirement coverage; all checklist items remain passing.
