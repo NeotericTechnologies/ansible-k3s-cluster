@@ -1,0 +1,221 @@
+---
+# compute-plan.yml
+# Purpose: Validate version constraints, detect downgrades, compute
+#          the final upgrade execution plan, and print summary
+#
+# Expects facts set by detect-versions.yml:
+#   - component_plan: dict of component_name → {live_version, desired_version, action, enabled}
+#   - detected_versions: dict of component_name → live_version
+#   - is_fresh_install: bool
+#   - upgrade_components: registry of components with fresh_install_priority and upgrade_priority
+#
+# Sets facts:
+#   - upgrade_plan: dict with components_to_upgrade, components_unchanged, components_not_enabled, constraint_violations
+#   - has_changes: bool
+#
+# Reference: FR-006, FR-009, FR-012, FR-014
+
+# --- T009: Downgrade detection and blocking ---
+- name: Detect any downgrades
+  ansible.builtin.set_fact:
+    downgrade_components: >-
+      {{ component_plan | dict2items
+         | selectattr('value.action', 'equalto', 'downgrade')
+         | map(attribute='key') | list }}
+
+- name: Block downgrades unless explicitly allowed (FR-012)
+  ansible.builtin.fail:
+    msg: >-
+      DOWNGRADE_BLOCKED: Downgrade detected for {{ item }}:
+      {{ component_plan[item].live_version }} → {{ component_plan[item].desired_version }}.
+      Set allow_downgrade=true to proceed.
+  loop: "{{ downgrade_components }}"
+  when:
+    - downgrade_components | length > 0
+    - not (allow_downgrade | default(false) | bool)
+
+# --- T008: Constraint validation (k3s vs rancher max/min) ---
+- name: Initialize constraint violations list
+  ansible.builtin.set_fact:
+    constraint_violations: []
+
+- name: Validate k3s version against Rancher k3s_max_version (FR-009)
+  ansible.builtin.set_fact:
+    constraint_violations: "{{ constraint_violations + [_msg] }}"
+  vars:
+    _desired_k3s: "{{ (component_plan.k3s_servers | default(component_plan.k3s)).desired_version }}"
+    _rancher_max: "{{ component_compatibility.rancher.k3s_max_version }}"
+    _msg: "CONSTRAINT_VIOLATION: k3s {{ _desired_k3s }} exceeds max supported by rancher: {{ _rancher_max }}"
+  when:
+    - component_compatibility.rancher.k3s_max_version is defined
+    - (component_plan.k3s_servers | default(component_plan.k3s)).action in ['install', 'upgrade']
+    - (component_plan.k3s_servers | default(component_plan.k3s)).desired_version is version(component_compatibility.rancher.k3s_max_version, '>')
+
+- name: Validate k3s version against Rancher k3s_min_version
+  ansible.builtin.set_fact:
+    constraint_violations: "{{ constraint_violations + [_msg] }}"
+  vars:
+    _desired_k3s: "{{ (component_plan.k3s_servers | default(component_plan.k3s)).desired_version }}"
+    _rancher_min: "{{ component_compatibility.rancher.k3s_min_version }}"
+    _msg: "CONSTRAINT_VIOLATION: k3s {{ _desired_k3s }} is below minimum required by rancher: {{ _rancher_min }}"
+  when:
+    - component_compatibility.rancher.k3s_min_version is defined
+    - (component_plan.k3s_servers | default(component_plan.k3s)).action in ['install', 'upgrade']
+    - (component_plan.k3s_servers | default(component_plan.k3s)).desired_version is version(component_compatibility.rancher.k3s_min_version, '<')
+
+# --- T021: Validate k3s version vs currently deployed Rancher's max (when only k3s is upgrading) ---
+- name: Validate k3s upgrade against current Rancher compatibility (when Rancher not being upgraded)
+  ansible.builtin.set_fact:
+    constraint_violations: "{{ constraint_violations + [_msg] }}"
+  vars:
+    _desired_k3s: "{{ (component_plan.k3s_servers | default(component_plan.k3s)).desired_version }}"
+    _rancher_max: "{{ component_compatibility.rancher.k3s_max_version }}"
+    _msg: >-
+      CONSTRAINT_VIOLATION: k3s {{ _desired_k3s }} exceeds max supported by currently deployed rancher
+      ({{ component_plan.rancher.live_version }}). Upgrade rancher first or set a compatible k3s version.
+      Max allowed: {{ _rancher_max }}
+  when:
+    - component_compatibility.rancher.k3s_max_version is defined
+    - (component_plan.k3s_servers | default(component_plan.k3s)).action in ['upgrade']
+    - component_plan.rancher.action == 'none'
+    - (component_plan.k3s_servers | default(component_plan.k3s)).desired_version is version(component_compatibility.rancher.k3s_max_version, '>')
+
+# --- T020: Fail-fast assertion on constraint violations ---
+- name: Fail if any constraint violations detected (FR-006)
+  ansible.builtin.fail:
+    msg: "{{ constraint_violations | join('\n') }}"
+  when: constraint_violations | length > 0
+
+# --- Compute final upgrade plan with context-aware ordering ---
+# For fresh installs: use fresh_install_priority from component registry
+# For upgrades: use upgrade_priority from component registry
+- name: Determine install context (fresh or partial-fresh)
+  ansible.builtin.set_fact:
+    execution_is_fresh_install: >-
+      {{
+        (is_fresh_install | default(false) | bool)
+        or
+        (
+          (component_plan.k3s_servers is defined)
+          and (component_plan.k3s_servers.live_version != 'not_installed')
+          and (_enabled_non_k3s_installed | length == 0)
+        )
+      }}
+  vars:
+    _enabled_non_k3s_installed: >-
+      {{ component_plan | dict2items
+         | selectattr('value.enabled', 'equalto', true)
+         | rejectattr('key', 'in', ['k3s_servers', 'k3s_agents'])
+         | rejectattr('value.live_version', 'equalto', 'not_installed')
+         | list }}
+
+- name: Build priority map from component registry for fresh installs
+  ansible.builtin.set_fact:
+    priority_map: >-
+      {{ dict(
+           (upgrade_components | map(attribute='name') | list)
+           | zip(upgrade_components | map(attribute='fresh_install_priority') | list)
+         ) }}
+  when: execution_is_fresh_install | default(false) | bool
+
+- name: Build priority map from component registry for upgrades
+  ansible.builtin.set_fact:
+    priority_map: >-
+      {{ dict(
+           (upgrade_components | map(attribute='name') | list)
+           | zip(upgrade_components | map(attribute='upgrade_priority') | list)
+         ) }}
+  when: not (execution_is_fresh_install | default(false) | bool)
+
+- name: Initialize components_to_upgrade list
+  ansible.builtin.set_fact:
+    components_to_upgrade: []
+
+- name: Apply context-aware priorities
+  ansible.builtin.set_fact:
+    components_to_upgrade: >-
+      {{ components_to_upgrade + [
+           item | combine({
+             '_context_priority': (priority_map[item.name] | default(item.upgrade_priority))
+           })
+         ] }}
+  changed_when: false
+  loop: "{{ upgrade_components | selectattr('name', 'in', _actionable_names) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    _actionable_names: >-
+      {{ component_plan | dict2items
+         | selectattr('value.action', 'in', ['install', 'upgrade', 'downgrade'])
+         | map(attribute='key') | list }}
+
+- name: Sort components_to_upgrade by context-aware priority
+  ansible.builtin.set_fact:
+    components_to_upgrade: >-
+      {{ components_to_upgrade | sort(attribute='_context_priority') }}
+
+- name: Compute components unchanged
+  ansible.builtin.set_fact:
+    components_unchanged: >-
+      {{ component_plan | dict2items
+         | selectattr('value.enabled', 'equalto', true)
+         | selectattr('value.action', 'equalto', 'none')
+         | map(attribute='key') | list }}
+
+- name: Compute components not enabled
+  ansible.builtin.set_fact:
+    components_not_enabled: >-
+      {{ component_plan | dict2items
+         | selectattr('value.enabled', 'equalto', false)
+         | map(attribute='key') | list }}
+
+- name: Set has_changes flag
+  ansible.builtin.set_fact:
+    has_changes: "{{ components_to_upgrade | length > 0 }}"
+
+- name: Build upgrade plan summary
+  ansible.builtin.set_fact:
+    upgrade_plan:
+      components_to_upgrade: "{{ components_to_upgrade }}"
+      components_unchanged: "{{ components_unchanged }}"
+      components_not_enabled: "{{ components_not_enabled }}"
+      constraint_violations: "{{ constraint_violations }}"
+      is_fresh_install: "{{ execution_is_fresh_install }}"
+      has_changes: "{{ has_changes }}"
+
+# --- T010: Print upgrade plan summary (FR-014) ---
+- name: Display upgrade plan summary
+  ansible.builtin.debug:
+    msg: |
+      ══════════════════════════════════════════════════
+      Deployment Plan:
+      {% if not has_changes %}
+        No changes needed. All components at desired versions.
+      {% else %}
+        Components:
+      {% for comp in components_to_upgrade %}
+          - {{ comp.name }}: {{ component_plan[comp.name].live_version }} → {{ component_plan[comp.name].desired_version }} ({{ component_plan[comp.name].action }})
+      {% endfor %}
+        Execution order:
+      {% for comp in components_to_upgrade %}
+          {{ loop.index }}. {{ comp.name }} (priority {{ comp._context_priority }})
+      {% endfor %}
+        Components unchanged:
+      {% if components_unchanged | length > 0 %}
+      {% for name in components_unchanged %}
+          - {{ name }}: live={{ component_plan[name].live_version }}
+      {% endfor %}
+      {% else %}
+          - none
+      {% endif %}
+        Components not enabled (skipped):
+      {% if components_not_enabled | length > 0 %}
+      {% for name in components_not_enabled %}
+          - {{ name }}: desired={{ component_plan[name].desired_version }}
+      {% endfor %}
+      {% else %}
+          - none
+      {% endif %}
+      {% endif %}
+        Fresh install: {{ execution_is_fresh_install }}
+      ══════════════════════════════════════════════════

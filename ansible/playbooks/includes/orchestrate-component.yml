@@ -1,0 +1,469 @@
+---
+# This file is included once per component in priority order
+# Variables available: component (dict with name, action, priority)
+
+- name: Set component execution context
+  ansible.builtin.set_fact:
+    _curr_component: "{{ component.name }}"
+    _curr_action: "{{ component_plan[component.name].action }}"
+    _curr_priority: "{{ component._context_priority }}"
+
+- name: "STEP: Execute {{ component.name }} (priority {{ component._context_priority }})"
+  block:
+
+    # k3s_servers - rolling execution
+    - name: "Execute k3s_servers (rolling)"
+      block:
+        - name: Display k3s_servers execution plan
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              ├─ Desired: {{ component_plan[_curr_component].desired_version }}
+              └─ Executing on {{ groups['k3s_servers'] | length }} nodes (serial: 1)
+
+        - name: Fresh install prerequisites on k3s_servers
+          ansible.builtin.include_role:
+            name: k3s-common
+            tasks_from: main.yml
+            apply:
+              delegate_to: "{{ server_node }}"
+          vars:
+            k3s_target_host: "{{ server_node }}"
+          loop: "{{ groups['k3s_servers'] }}"
+          loop_control:
+            loop_var: server_node
+            label: "{{ server_node }} - prereqs"
+          when: _curr_action == 'install' and is_fresh_install | default(false) | bool
+
+        - name: Deploy k3s servers (serial 1)
+          ansible.builtin.include_role:
+            name: k3s-server
+            apply:
+              delegate_to: "{{ server_node }}"
+          vars:
+            k3s_target_host: "{{ server_node }}"
+          loop: "{{ groups['k3s_servers'] }}"
+          loop_control:
+            loop_var: server_node
+            label: "{{ server_node }} - deploy"
+          when: _curr_action == 'install'
+
+        - name: Ensure Rancher is stable before k3s server upgrade
+          ansible.builtin.command:
+            cmd: >-
+              kubectl rollout status deployment/rancher
+              -n cattle-system
+              --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+          delegate_to: "{{ groups['k3s_servers'][0] }}"
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
+        - name: Ensure Rancher health endpoint is ready before k3s server upgrade
+          ansible.builtin.uri:
+            url: "https://{{ rancher_hostname }}/healthz"
+            validate_certs: false
+            status_code: 200
+          register: _rancher_pre_k3s_health
+          retries: 12
+          delay: 10
+          until: _rancher_pre_k3s_health.status == 200
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
+        - name: Read deployed Rancher image before k3s server upgrade
+          ansible.builtin.command:
+            cmd: >-
+              kubectl get deployment rancher
+              -n cattle-system
+              -o jsonpath='{.spec.template.spec.containers[?(@.name=="rancher")].image}'
+          delegate_to: "{{ groups['k3s_servers'][0] }}"
+          register: _rancher_pre_k3s_image
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
+        - name: Assert Rancher target version is deployed before k3s server upgrade
+          ansible.builtin.assert:
+            that:
+              - _rancher_pre_k3s_version_norm | length > 0
+              - _rancher_pre_k3s_version_norm == _rancher_target_version_norm
+            fail_msg: >-
+              RANCHER_VERSION_MISMATCH_PRE_K3S: expected Rancher {{ rancher_version }},
+              but deployment image is {{ _rancher_pre_k3s_image.stdout | default('unknown') }}.
+              Aborting k3s upgrade to avoid compatibility issues.
+            success_msg: >-
+              Rancher target version {{ rancher_version }} confirmed before k3s upgrade.
+          vars:
+            _rancher_pre_k3s_version_norm: >-
+              {{ (_rancher_pre_k3s_image.stdout | default('')
+                  | regex_replace('^.*:', '')
+                  | regex_replace('^v', '')
+                  | trim) }}
+            _rancher_target_version_norm: >-
+              {{ (rancher_version | string | regex_replace('^v', '') | trim) }}
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - (component_plan.rancher.action | default('none')) in ['upgrade', 'downgrade']
+            - rancher_enabled | default(false) | bool
+
+        - name: Upgrade k3s servers (serial 1)
+          ansible.builtin.include_tasks:
+            file: includes/upgrade-k3s-rolling.yml
+            apply:
+              delegate_to: "{{ server_node }}"
+          vars:
+            node_role: server
+            k3s_target_host: "{{ server_node }}"
+          loop: "{{ groups['k3s_servers'] }}"
+          loop_control:
+            loop_var: server_node
+            label: "{{ server_node }} - upgrade"
+          when: _curr_action in ['upgrade', 'downgrade']
+
+        - name: Reconcile multus after k3s server upgrade
+          ansible.builtin.include_role:
+            name: multus
+            tasks_from: install.yml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Restart multus daemonset after k3s server upgrade
+          ansible.builtin.command:
+            cmd: kubectl rollout restart daemonset/kube-multus-ds -n kube-system
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Wait for multus daemonset rollout after restart
+          ansible.builtin.command:
+            cmd: kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=300s
+          changed_when: false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Ensure multus-shim symlink exists on each k3s node
+          ansible.builtin.file:
+            src: /var/lib/rancher/k3s/data/current/bin/multus-shim
+            dest: /var/lib/rancher/k3s/data/cni/multus-shim
+            state: link
+            force: true
+          delegate_to: "{{ node }}"
+          loop: "{{ (groups.get('k3s_servers', []) + groups.get('k3s_agents', [])) | unique }}"
+          loop_control:
+            loop_var: node
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Check multus-shim binary exists on each k3s node
+          ansible.builtin.command:
+            cmd: test -x /var/lib/rancher/k3s/data/current/bin/multus-shim
+          delegate_to: "{{ node }}"
+          loop: "{{ (groups.get('k3s_servers', []) + groups.get('k3s_agents', [])) | unique }}"
+          loop_control:
+            loop_var: node
+          register: multus_shim_binary_checks
+          changed_when: false
+          failed_when: false
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Check multus-shim link exists on each k3s node
+          ansible.builtin.command:
+            cmd: test -L /var/lib/rancher/k3s/data/cni/multus-shim
+          delegate_to: "{{ node }}"
+          loop: "{{ (groups.get('k3s_servers', []) + groups.get('k3s_agents', [])) | unique }}"
+          loop_control:
+            loop_var: node
+          register: multus_shim_link_checks
+          changed_when: false
+          failed_when: false
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+        - name: Fail when multus-shim is missing after k3s server upgrade
+          ansible.builtin.assert:
+            that:
+              - _missing_multus_shim | length == 0
+            fail_msg: >-
+              MULTUS_SHIM_MISSING: missing multus-shim on {{ _missing_multus_shim }}.
+              Reconcile multus before continuing to avoid pod sandbox failures.
+            success_msg: "Multus shim validated on all k3s nodes."
+          vars:
+            _missing_multus_shim: >-
+              {{
+                (multus_shim_binary_checks.results | default([])
+                  | rejectattr('rc', 'equalto', 0)
+                  | map(attribute='node')
+                  | list)
+                +
+                (multus_shim_link_checks.results | default([])
+                  | rejectattr('rc', 'equalto', 0)
+                  | map(attribute='node')
+                  | list)
+              | unique }}
+          when:
+            - _curr_action in ['upgrade', 'downgrade']
+            - multus_enabled | default(false) | bool
+
+      when:
+        - _curr_component == 'k3s_servers'
+        - _curr_action != 'none'
+
+    # k3s_agents - rolling execution
+    - name: "Execute k3s_agents (rolling)"
+      block:
+        - name: Display k3s_agents execution plan
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              ├─ Desired: {{ component_plan[_curr_component].desired_version }}
+              └─ Executing on {{ groups['k3s_agents'] | length }} nodes (serial: 1)
+
+        - name: Deploy k3s agents (serial 1)
+          ansible.builtin.include_role:
+            name: k3s-agent
+            apply:
+              delegate_to: "{{ agent_node }}"
+          vars:
+            k3s_target_host: "{{ agent_node }}"
+          loop: "{{ groups['k3s_agents'] }}"
+          loop_control:
+            loop_var: agent_node
+            label: "{{ agent_node }} - deploy"
+          when: _curr_action == 'install'
+
+        - name: Upgrade k3s agents (serial 1)
+          ansible.builtin.include_tasks:
+            file: includes/upgrade-k3s-rolling.yml
+            apply:
+              delegate_to: "{{ agent_node }}"
+          vars:
+            node_role: agent
+            k3s_target_host: "{{ agent_node }}"
+          loop: "{{ groups['k3s_agents'] }}"
+          loop_control:
+            loop_var: agent_node
+            label: "{{ agent_node }} - upgrade"
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'k3s_agents'
+        - _curr_action != 'none'
+
+    # kube-vip
+    - name: "Execute kube-vip"
+      block:
+        - name: Display kube-vip context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install kube-vip
+          ansible.builtin.include_role:
+            name: kube-vip
+          when: _curr_action == 'install'
+
+        - name: Upgrade kube-vip
+          ansible.builtin.include_tasks: includes/upgrade-kube-vip.yml
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'kube_vip'
+        - _curr_action != 'none'
+
+    # Rancher
+    - name: "Execute rancher"
+      block:
+        - name: Display rancher context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install rancher
+          ansible.builtin.include_role:
+            name: rancher
+          when: _curr_action == 'install'
+
+        - name: Upgrade rancher
+          ansible.builtin.include_tasks: includes/upgrade-rancher.yml
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'rancher'
+        - _curr_action != 'none'
+
+    # cert-manager
+    - name: "Execute cert-manager"
+      block:
+        - name: Display cert-manager context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install cert-manager
+          ansible.builtin.include_role:
+            name: cert-manager
+          when: _curr_action == 'install'
+
+        - name: Upgrade cert-manager
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: cert-manager
+            addon_component: cert_manager
+            addon_namespace: cert-manager
+            addon_role: cert-manager
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'cert_manager'
+        - _curr_action != 'none'
+
+    # multus
+    - name: "Execute multus"
+      block:
+        - name: Display multus context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install multus
+          ansible.builtin.include_role:
+            name: multus
+          when: _curr_action == 'install'
+
+        - name: Upgrade multus
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: multus
+            addon_component: multus
+            addon_namespace: kube-system
+            addon_role: multus
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'multus'
+        - _curr_action != 'none'
+
+    # traefik
+    - name: "Execute traefik"
+      block:
+        - name: Display traefik context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install traefik
+          ansible.builtin.include_role:
+            name: traefik
+          when: _curr_action == 'install'
+
+        - name: Upgrade traefik
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: traefik
+            addon_component: traefik
+            addon_namespace: kube-system
+            addon_role: traefik
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'traefik'
+        - _curr_action != 'none'
+
+    # rancher-monitoring
+    - name: "Execute rancher-monitoring"
+      block:
+        - name: Display rancher-monitoring context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install rancher-monitoring
+          ansible.builtin.include_role:
+            name: rancher-monitoring
+          when: _curr_action == 'install'
+
+        - name: Upgrade rancher-monitoring
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: rancher-monitoring
+            addon_component: rancher_monitoring
+            addon_namespace: cattle-monitoring-system
+            addon_role: rancher-monitoring
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'rancher_monitoring'
+        - _curr_action != 'none'
+
+    # synology-csi
+    - name: "Execute synology-csi"
+      block:
+        - name: Display synology-csi context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install synology-csi
+          ansible.builtin.include_role:
+            name: synology-csi
+          when: _curr_action == 'install'
+
+        - name: Upgrade synology-csi
+          ansible.builtin.include_tasks: includes/upgrade-addon.yml
+          vars:
+            addon_name: synology-csi
+            addon_component: synology_csi
+            addon_namespace: synology-csi
+            addon_role: synology-csi
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'synology_csi'
+        - _curr_action != 'none'

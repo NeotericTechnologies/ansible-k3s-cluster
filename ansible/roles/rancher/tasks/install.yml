@@ -17,6 +17,89 @@
     dest: /tmp/rancher-values.yaml
     mode: '0644'
 
+- name: Wait for Kubernetes API readiness before Rancher Helm upgrade
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    get --raw=/readyz --request-timeout=10s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    get --raw=/readyz --request-timeout=10s
+  register: rancher_pre_helm_readyz
+  retries: 18
+  delay: 10
+  until: rancher_pre_helm_readyz.rc == 0
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Read current Rancher Helm release status
+  ansible.builtin.command:
+    cmd: helm status rancher -n cattle-system -o json
+  register: rancher_helm_status_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse Rancher Helm release status
+  ansible.builtin.set_fact:
+    rancher_helm_status: >-
+      {{
+        ((rancher_helm_status_raw.stdout | default('') | length) > 0)
+        | ternary((rancher_helm_status_raw.stdout | from_json).info.status, 'not_installed')
+      }}
+
+- name: Read Rancher Helm release history when status is pending
+  ansible.builtin.command:
+    cmd: helm history rancher -n cattle-system -o json
+  register: rancher_helm_history_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: rancher_helm_status is match('^pending-')
+
+- name: Compute last deployed Rancher Helm revision for recovery
+  ansible.builtin.set_fact:
+    rancher_last_deployed_revision: >-
+      {{
+        (rancher_helm_history_raw.stdout | from_json
+          | selectattr('status', 'equalto', 'deployed')
+          | map(attribute='revision')
+          | list
+          | last)
+        | default('')
+      }}
+  when: rancher_helm_status is match('^pending-')
+
+- name: Recover pending Rancher Helm release by rollback to last deployed revision
+  ansible.builtin.command:
+    cmd: >-
+      helm rollback rancher {{ rancher_last_deployed_revision }}
+      -n cattle-system
+      --wait
+      --timeout {{ rancher_upgrade_timeout | default('15m') }}
+  register: rancher_helm_recovery
+  changed_when: rancher_helm_recovery.rc == 0
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - rancher_helm_status is match('^pending-')
+    - rancher_last_deployed_revision | string | length > 0
+
+- name: Fail when Rancher Helm release is pending and no deployed revision exists
+  ansible.builtin.fail:
+    msg: >-
+      Rancher Helm release is in pending state ({{ rancher_helm_status }}) and
+      no prior deployed revision was found for rollback recovery.
+      Resolve the Helm release manually before re-running the playbook.
+  when:
+    - rancher_helm_status is match('^pending-')
+    - rancher_last_deployed_revision | default('') | string | length == 0
+
 - name: Install Rancher via Helm
   ansible.builtin.shell: |
     helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
@@ -24,11 +107,44 @@
     helm upgrade --install rancher rancher-stable/rancher \
       --namespace cattle-system \
       --values /tmp/rancher-values.yaml \
-      --version {{ rancher_version }}
+      --version {{ rancher_version }} \
+      --wait \
+      --timeout {{ rancher_upgrade_timeout | default('15m') }} \
+      --atomic
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: rancher_install
-  changed_when: "'deployed' in rancher_install.stdout or 'upgraded' in rancher_install.stdout"
+  retries: 3
+  delay: 20
+  changed_when: >-
+    rancher_install.rc == 0 and
+    ('deployed' in rancher_install.stdout or 'upgraded' in rancher_install.stdout)
+  failed_when: false
+
+- name: Log transient Helm/API failure and continue to convergence checks
+  ansible.builtin.debug:
+    msg: >-
+      Rancher Helm command returned rc={{ rancher_install.rc }}.
+      Continuing to API/deployment readiness checks because transient apiserver
+      errors can occur while the release still converges.
+  when: rancher_install.rc != 0
+
+- name: Wait for Kubernetes API readiness after Rancher Helm command
+  ansible.builtin.shell: >-
+    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    --insecure-skip-tls-verify=true
+    get --raw=/readyz --request-timeout=10s
+    ||
+    kubectl --server https://127.0.0.1:6443
+    --insecure-skip-tls-verify=true
+    get --raw=/readyz --request-timeout=10s
+  register: rancher_post_helm_readyz
+  retries: 18
+  delay: 10
+  until: rancher_post_helm_readyz.rc == 0
+  changed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: Clean up temporary values file
   ansible.builtin.file:

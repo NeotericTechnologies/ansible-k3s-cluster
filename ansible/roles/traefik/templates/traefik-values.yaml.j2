@@ -5,6 +5,11 @@
 service:
   type: {{ traefik_service_type | default('LoadBalancer') }}
 
+{% if traefik_version | default('') | string | trim | length > 0 %}
+image:
+  tag: {{ traefik_version | trim }}
+{% endif %}
+
 ports:
   web:
     port: 8000

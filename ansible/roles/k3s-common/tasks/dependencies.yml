@@ -56,3 +56,12 @@
     path: /tmp/get-helm-3.sh
     state: absent
   when: helm_check.rc != 0
+
+- name: Check installed Helm plugins
+  ansible.builtin.command: helm plugin list
+  register: helm_plugin_list
+  changed_when: false
+
+- name: Install helm-diff plugin for reliable Helm idempotency checks
+  ansible.builtin.command: helm plugin install https://github.com/databus23/helm-diff --version v3.9.12
+  when: not (helm_plugin_list.stdout is search('(?m)^diff\s'))

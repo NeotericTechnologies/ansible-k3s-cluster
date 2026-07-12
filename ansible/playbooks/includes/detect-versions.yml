@@ -1,0 +1,280 @@
+---
+# detect-versions.yml
+# Purpose: Gather live component versions from the cluster and compute
+#          per-component action (install/upgrade/downgrade/none)
+#
+# Sets facts:
+#   - detected_versions: dict of component_name → live_version
+#   - component_plan: dict of component_name → {live_version, desired_version, action}
+#   - is_fresh_install: bool (true if k3s not installed on any node)
+#
+# Reference: FR-002, specs/005-unified-upgrade-workflow/data-model.md
+
+# --- T005/T045: Detect k3s binary version on all server and agent nodes ---
+- name: Build k3s probe node list
+  ansible.builtin.set_fact:
+    k3s_probe_nodes: "{{ (groups['k3s_servers'] | default([])) + (groups['k3s_agents'] | default([])) | unique }}"
+
+- name: Check if k3s is installed on each node
+  ansible.builtin.command:
+    cmd: k3s --version
+  register: k3s_version_checks
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ item }}"
+  loop: "{{ k3s_probe_nodes }}"
+
+- name: Build k3s version map by node
+  ansible.builtin.set_fact:
+    k3s_versions_by_node: >-
+      {{ k3s_versions_by_node | default({}) | combine({
+        item.item: ((item.rc == 0) | ternary(
+          item.stdout | regex_search('v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+') | default('not_installed'),
+          'not_installed'
+        ))
+      }) }}
+  loop: "{{ k3s_version_checks.results | default([]) }}"
+
+- name: Build k3s version lists by role
+  ansible.builtin.set_fact:
+    k3s_server_version_list: "{{ groups['k3s_servers'] | default([]) | map('extract', k3s_versions_by_node) | list }}"
+    k3s_agent_version_list: "{{ groups['k3s_agents'] | default([]) | map('extract', k3s_versions_by_node) | list }}"
+
+- name: Set k3s detected version for servers and agents
+  ansible.builtin.set_fact:
+    k3s_servers_live_version: >-
+      {{ (
+        (k3s_server_version_list | default([]) | reject('equalto', (k3s_version | default('') | string | trim)) | list | first)
+        | default((k3s_server_version_list | default([]) | first), true)
+        | default('not_installed', true)
+      ) | string | trim }}
+    k3s_agents_live_version: >-
+      {{ (
+        (k3s_agent_version_list | default([]) | reject('equalto', (k3s_version | default('') | string | trim)) | list | first)
+        | default((k3s_agent_version_list | default([]) | first), true)
+        | default('not_installed', true)
+      ) | string | trim }}
+
+# --- T006: Detect Helm-deployed component versions ---
+- name: Get Helm releases across all namespaces
+  ansible.builtin.command:
+    cmd: helm list -A --all -o json
+  register: helm_releases_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse Helm releases
+  ansible.builtin.set_fact:
+    helm_releases: "{{ (helm_releases_raw.rc == 0) | ternary(helm_releases_raw.stdout | from_json, []) }}"
+
+- name: Build Helm version map (release_name → chart_version)
+  ansible.builtin.set_fact:
+    helm_version_map: >-
+      {{ helm_releases | items2dict(key_name='name', value_name='app_version') }}
+  when: helm_releases | length > 0
+
+- name: Build Helm status map (release_name → status)
+  ansible.builtin.set_fact:
+    helm_status_map: >-
+      {{ helm_releases | items2dict(key_name='name', value_name='status') }}
+  when: helm_releases | length > 0
+
+- name: Set empty Helm version map if no releases
+  ansible.builtin.set_fact:
+    helm_version_map: {}
+    helm_status_map: {}
+  when: helm_releases | length == 0
+
+# --- T032: Detect manifest_label based component versions (kube-vip, multus) ---
+- name: Detect kube-vip version from pod labels
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get pods -n kube-system
+      -l "app.kubernetes.io/name=kube-vip"
+      -o jsonpath='{.items[0].spec.containers[0].image}'
+  register: kube_vip_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse kube-vip version from image tag
+  ansible.builtin.set_fact:
+    kube_vip_live_version: >-
+      {{ (kube_vip_image_raw.rc == 0 and kube_vip_image_raw.stdout | length > 0)
+         | ternary(kube_vip_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
+- name: Detect multus version from daemonset labels
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get daemonset -n kube-system
+      -l "app=multus"
+      -o jsonpath='{.items[0].spec.template.spec.containers[0].image}'
+  register: multus_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse multus version from image tag
+  ansible.builtin.set_fact:
+    multus_live_version: >-
+      {{ (multus_image_raw.rc == 0 and multus_image_raw.stdout | length > 0)
+         | ternary(multus_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
+- name: Detect cert-manager version from deployment image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get deployment cert-manager -n cert-manager
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: cert_manager_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Detect Traefik version from deployment image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get deployment traefik -n kube-system
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: traefik_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse Traefik version from image tag
+  ansible.builtin.set_fact:
+    traefik_live_version: >-
+      {{ (traefik_image_raw.rc == 0 and traefik_image_raw.stdout | length > 0)
+         | ternary(traefik_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
+- name: Parse cert-manager version from image tag
+  ansible.builtin.set_fact:
+    cert_manager_live_version: >-
+      {{ (cert_manager_image_raw.rc == 0 and cert_manager_image_raw.stdout | length > 0)
+         | ternary(cert_manager_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
+- name: Detect Rancher version from deployment image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get deployment rancher -n cattle-system
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: rancher_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse Rancher version from image tag
+  ansible.builtin.set_fact:
+    rancher_live_version_fallback: >-
+      {{ (rancher_image_raw.rc == 0 and rancher_image_raw.stdout | length > 0)
+         | ternary(rancher_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') | regex_replace('^:', '') }}
+
+- name: Resolve Rancher live state from Helm status/version with fallback
+  ansible.builtin.set_fact:
+    rancher_live_state: >-
+      {% set _status = (helm_status_map['rancher'] | default('not_installed') | string | lower | trim) %}
+      {% if _status is match('^pending-') %}
+      {{ _status }}
+      {% elif (helm_version_map['rancher'] | default('') | string | trim | length) > 0 %}
+      {{ helm_version_map['rancher'] | string | trim }}
+      {% else %}
+      {{ rancher_live_version_fallback | default('not_installed') | string | trim }}
+      {% endif %}
+
+- name: Detect synology-csi version from controller StatefulSet image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get statefulset synology-csi-controller -n synology-csi
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: synology_csi_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse synology-csi version from image tag
+  ansible.builtin.set_fact:
+    synology_csi_live_version: >-
+      {{ (synology_csi_image_raw.rc == 0 and synology_csi_image_raw.stdout | length > 0)
+         | ternary(synology_csi_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') }}
+
+# --- Build detected_versions dict ---
+- name: Build detected versions dictionary
+  ansible.builtin.set_fact:
+    detected_versions:
+      k3s_servers: "{{ k3s_servers_live_version }}"
+      k3s_agents: "{{ k3s_agents_live_version }}"
+      rancher: "{{ rancher_live_state }}"
+      kube_vip: "{{ kube_vip_live_version | regex_replace('^:', '') }}"
+      cert_manager: "{{ cert_manager_live_version | regex_replace('^:', '') }}"
+      traefik: "{{ traefik_live_version | regex_replace('^:', '') }}"
+      rancher_monitoring: "{{ helm_version_map['rancher-monitoring'] | default('not_installed') }}"
+      multus: "{{ multus_live_version | regex_replace('^:', '') }}"
+      synology_csi: "{{ synology_csi_live_version | regex_replace('^:', '') }}"
+
+- name: Set fresh install flag
+  ansible.builtin.set_fact:
+    is_fresh_install: "{{ detected_versions.k3s_servers == 'not_installed' }}"
+
+# --- T007/T023: Compute per-component action ---
+- name: Compute component plan
+  ansible.builtin.set_fact:
+    component_plan: "{{ component_plan | default({}) | combine({item.name: _entry}) }}"
+  vars:
+    _live: "{{ (detected_versions[item.name] | default('not_installed')) | string | trim }}"
+    _desired: "{{ (lookup('vars', item.version_var, default='')) | string | trim }}"
+    _desired_is_set: "{{ _desired | string | length > 0 }}"
+    _enabled_base: "{{ (item.enabled_var is none) or (lookup('vars', item.enabled_var, default=false) | bool) }}"
+    _group_name: "{{ (item.detect_args | default({})).get('group', '') }}"
+    _group_enabled: >-
+      {{
+        (_group_name | length > 0)
+        | ternary((groups.get(_group_name, []) | length) > 0, true)
+      }}
+    _enabled: "{{ (_enabled_base | bool) and (_group_enabled | bool) }}"
+    _live_norm: "{{ _live | string | regex_replace('^v', '') }}"
+    _desired_norm: "{{ _desired | string | regex_replace('^v', '') }}"
+    _can_compare: >-
+      {{
+        (_live not in ['not_installed', '']) and
+        (_desired_is_set | bool) and
+        (_live_norm is match('^[0-9]+\.[0-9]+\.[0-9]+([\-+].*)?$')) and
+        (_desired_norm is match('^[0-9]+\.[0-9]+\.[0-9]+([\-+].*)?$'))
+      }}
+    _action: >-
+      {% if not _enabled %}none
+      {% elif _live == 'not_installed' and ((is_fresh_install | default(false) | bool) or (_desired_is_set | bool)) %}install
+      {% elif _live is match('^pending-') and (_desired_is_set | bool) %}upgrade
+      {% elif not _desired_is_set %}none
+      {% elif _live == _desired %}none
+      {% elif _can_compare and (_desired_norm is version(_live_norm, '>')) %}upgrade
+      {% elif _can_compare and (_desired_norm is version(_live_norm, '<')) %}downgrade
+      {% else %}none
+      {% endif %}
+    _entry:
+      live_version: "{{ _live }}"
+      desired_version: >-
+        {{ _desired_is_set | bool
+           | ternary(
+             _desired,
+             ((_enabled and _live == 'not_installed' and (is_fresh_install | default(false) | bool))
+              | ternary('role-default', _live))
+           ) }}
+      action: "{{ _action | trim }}"
+      enabled: "{{ _enabled }}"
+  loop: "{{ upgrade_components }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: true

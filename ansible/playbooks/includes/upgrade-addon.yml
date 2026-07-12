@@ -1,0 +1,21 @@
+---
+# upgrade-addon.yml
+# Purpose: Generic Helm-based add-on upgrade via existing Ansible role
+#
+# Expected variables (set by caller):
+#   addon_name:       Human-readable name (e.g., "cert-manager")
+#   addon_component:  Component key in component_plan (e.g., "cert_manager")
+#   addon_namespace:  Kubernetes namespace
+#   addon_role:       Ansible role name to include
+#
+# Reference: FR-002, FR-007, specs/005-unified-upgrade-workflow
+
+- name: "Upgrading {{ addon_name }} via role"
+  ansible.builtin.debug:
+    msg: >-
+      {{ addon_name }}: {{ hostvars[groups['k3s_servers'][0]].component_plan[addon_component].live_version }}
+      → {{ hostvars[groups['k3s_servers'][0]].component_plan[addon_component].desired_version }}
+
+- name: "Include {{ addon_role }} role for upgrade"
+  ansible.builtin.include_role:
+    name: "{{ addon_role }}"

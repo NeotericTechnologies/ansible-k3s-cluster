@@ -1,0 +1,211 @@
+---
+# site.yml
+# Purpose: Unified orchestrator for k3s cluster deployment and upgrades
+#
+# This single playbook handles both initial cluster deployment and component
+# upgrades. It detects live component versions, computes an upgrade plan based
+# on version drift and dependency constraints, and executes changes in the
+# correct order.
+#
+# ARCHITECTURE: Dynamic Component Orchestration (FR-003)
+# =====================================================
+# Rather than hardcoding sequential plays for each component, this orchestrator:
+#
+# 1. DETECTION (Play 2):
+#    - Gathers live versions from k3s binary, Helm releases, and pod images
+#    - Detects k3s_servers and k3s_agents separately (both tracked independently)
+#    - Sets is_fresh_install flag if k3s not yet installed
+#
+# 2. PLANNING (Play 2):
+#    - Computes desired versions from group_vars
+#    - Validates constraints (k3s vs Rancher compatibility)
+#    - Determines per-component action: install/upgrade/downgrade/none
+#    - Builds components_to_upgrade list
+#
+# 3. PRIORITY ORDERING:
+#    Components execute in order determined by their priority values in
+#    ansible/playbooks/includes/vars/component-registry.yml:
+#
+#    FRESH INSTALL SEQUENCE (fresh_install_priority):
+#    1. k3s_servers (5) - Control plane nodes
+#    2. kube-vip (10) - Virtual IP for HA (positioned AFTER servers)
+#    3. k3s_agents (12) - Worker nodes (positioned AFTER kube-vip)
+#    4. cert-manager (20) - Certificate management
+#    5. multus (21) - Multi-interface CNI
+#    6. traefik (22) - Ingress controller
+#    7. rancher (23) - Cluster management UI
+#    8. rancher-monitoring (24) - Prometheus/Grafana monitoring
+#    9. synology-csi (25) - Storage integration
+#
+#    UPGRADE SEQUENCE (upgrade_priority):
+#    1. rancher (10) - Upgrade control plane first (before k3s)
+#    2. k3s_servers (15) - Server upgrade (after Rancher compatibility check)
+#    3. kube-vip (20) - Refresh virtual IP after server changes
+#    4. k3s_agents (25) - Worker upgrade (after servers stable)
+#    5. cert-manager (30) - Update cert infrastructure
+#    6. multus (31) - Update CNI
+#    7. traefik (32) - Update ingress
+#    8. rancher-monitoring (33) - Update monitoring
+#    9. synology-csi (34) - Update storage
+#
+# 4. K3S DECOMPOSITION:
+#    k3s is split into two first-class components:
+#    - k3s_servers: Control plane nodes (servers only)
+#      * fresh_install_priority: 5, upgrade_priority: 15
+#      * Detected from k3s_servers[0], applies to all k3s_servers group
+#      * Executes in serial: 1 (rolling server upgrade)
+#    - k3s_agents: Worker nodes (agents only)
+#      * fresh_install_priority: 12, upgrade_priority: 25
+#      * Detected from k3s_agents[0], applies to all k3s_agents group
+#      * Executes in serial: 1 (rolling agent upgrade)
+#
+#    Both share the same version_var (k3s_version) but distinguish execution
+#    via node_role context. This enables fine-grained orchestration while
+#    maintaining a single desired k3s version across the cluster.
+#
+#    KEY POSITIONING:
+#    - kube-vip between k3s_servers and k3s_agents allows its upgrade at the
+#      right point in the sequence (after servers, before agents)
+#    - Rancher positioned before k3s in upgrades allows dependency validation
+#    - Add-ons positioned after k3s ensures cluster stability before optional components
+#
+# 5. EXECUTION (Plays 3-10):
+#    For each component in components_to_upgrade (sorted by priority):
+#    - Display execution context (action, version change)
+#    - Skip if action is 'none' (no version change)
+#    - Execute component's role/task file
+#    - Pass node_role variable for k3s components (server vs agent)
+#
+# Usage:
+#   # Fresh install or upgrade (same command)
+#   ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
+#
+#   # Allow version downgrades (safety override)
+#   ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml \
+#     -e "allow_downgrade=true"
+#
+# Behavior:
+#   - Fresh hosts: Full install (k3s_servers → kube-vip → k3s_agents → add-ons)
+#   - No version changes: No-op with summary
+#   - Version changes: Upgrade only changed components in dependency order
+#   - Constraint violation: Fail fast with clear error before any changes
+#   - Node unreachable: Fail immediately identifying unreachable node(s)
+#
+# Reference: FR-001, FR-003, FR-013, FR-014, specs/005-unified-upgrade-workflow
+
+# =============================================================================
+# Play 1: Pre-flight reachability check (FR-013)
+# =============================================================================
+- name: Pre-flight reachability and state gathering
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  tasks:
+    - name: Verify all nodes are reachable
+      ansible.builtin.ping:
+
+# =============================================================================
+# Play 2: Detect versions and compute upgrade plan
+# =============================================================================
+- name: Detect versions and compute upgrade plan
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  vars_files:
+    - includes/vars/component-registry.yml
+  tasks:
+    - name: Resolve topology-aware HA policy
+      ansible.builtin.include_tasks: ../roles/k3s-common/tasks/resolve-ha-policy.yml
+
+    - name: Propagate resolved HA targets
+      ansible.builtin.set_fact:
+        kube_vip_cloud_controller_replicas: "{{ ha_component_policies['kube-vip'].expected_target | int }}"
+        traefik_replicas: "{{ ha_component_policies['traefik'].expected_target | int }}"
+        rancher_replicas: "{{ ha_component_policies['rancher'].expected_target | int }}"
+        cert_manager_replicas: "{{ ha_component_policies['cert-manager'].expected_target | int }}"
+        rancher_monitoring_replicas: "{{ ha_component_policies['rancher-monitoring'].expected_target | int }}"
+        synology_csi_replicas: "{{ ha_component_policies['synology-csi'].expected_target | int }}"
+        csi_nfs_replicas: "{{ ha_component_policies['csi-nfs'].expected_target | int }}"
+
+    - name: Detect live component versions
+      ansible.builtin.include_tasks: includes/detect-versions.yml
+
+    - name: Compute upgrade plan and validate constraints
+      ansible.builtin.include_tasks: includes/compute-plan.yml
+
+    - name: Confirm plan before applying changes
+      ansible.builtin.pause:
+        prompt: |-
+          Review the deployment plan above.
+          Press ENTER to continue, or press Ctrl+C then A to abort.
+      when:
+        - (is_fresh_install | default(false) | bool) or (has_changes | default(false) | bool)
+        - not (auto_approve_plan | default(false) | bool)
+
+# =============================================================================
+# Play 3: Dynamic Component Orchestration (T037-T039)
+#
+# Single unified orchestration loop that executes ALL components in priority order
+# determined by components_to_upgrade fact (sorted by fresh_install_priority or
+# upgrade_priority as appropriate). Components execute in the EXACT order defined
+# by the component registry priorities, NOT in source file order.
+# =============================================================================
+
+- name: "Dynamic orchestration - execute components in computed priority order"
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  tasks:
+
+    - name: Display orchestration context
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════════════════════
+          DYNAMIC COMPONENT ORCHESTRATION (FR-003)
+          Context: {{ 'Fresh Install' if (execution_is_fresh_install | default(false) | bool) else 'Upgrade' }}
+
+          Components to execute (in priority order):
+          {% for comp in components_to_upgrade %}
+          {{ loop.index }}. {{ comp.name }} (priority: {{ comp._context_priority }})
+             action: {{ component_plan[comp.name].action }}
+             {{ component_plan[comp.name].live_version }} → {{ component_plan[comp.name].desired_version }}
+          {% endfor %}
+          ══════════════════════════════════════════════════════════════════
+
+    - name: Execute each component in priority order
+      ansible.builtin.include_tasks: includes/orchestrate-component.yml
+      loop: "{{ components_to_upgrade }}"
+      loop_control:
+        loop_var: component
+      when:
+        - components_to_upgrade is defined
+        - components_to_upgrade | length > 0
+
+    - name: Orchestration complete
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════════════════════
+          ORCHESTRATION COMPLETE
+          All {{ components_to_upgrade | length }} components executed in priority order
+          ══════════════════════════════════════════════════════════════════
+
+
+- name: Post-upgrade summary
+  hosts: k3s_servers[0]
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Display completion summary
+      ansible.builtin.debug:
+        msg: |
+          ══════════════════════════════════════════════════
+          Unified Workflow Complete
+          {% if hostvars[groups['k3s_servers'][0]].execution_is_fresh_install | default(false) | bool %}
+            Action: Fresh cluster deployment
+          {% elif hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool %}
+            Action: Component upgrades applied
+          {% else %}
+            Action: No changes needed (all components at desired versions)
+          {% endif %}
+          ══════════════════════════════════════════════════
