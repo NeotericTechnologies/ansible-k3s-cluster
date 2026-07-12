@@ -8,6 +8,16 @@
 
 **Input**: User description: "Enhance and harden the Kube-VIP configuration and deployment by adding egress controller support, HA service leader election, DHCP-based load balancer assignment, and validated RBAC permissions."
 
+## Clarifications
+
+### Session 2026-07-12
+
+- Q: How should the system behave when DHCP is unavailable during service address assignment? -> A: Keep service in pending allocation state and retry automatically until DHCP becomes available.
+- Q: Should managed egress be opt-in or default-on? -> A: Managed egress applies cluster-wide by default; workloads can explicitly opt out.
+- Q: How should invalid/conflicting opt-out configuration be handled? -> A: Ignore invalid opt-out, keep managed egress active, and emit clear warning diagnostics.
+- Q: How should service election behave when quorum is lost? -> A: Hold current healthy leader assignments, block new leadership changes, and report degraded state until quorum is restored.
+- Q: What RBAC strategy should be enforced? -> A: Use a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider, enforced on every deploy and upgrade.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Stable Cluster Egress Identity (Priority: P1)
@@ -20,9 +30,9 @@ As a cluster operator, I want outbound cluster traffic to use managed, predictab
 
 **Acceptance Scenarios**:
 
-1. **Given** a running cluster with egress control enabled, **When** a selected workload initiates outbound traffic, **Then** the traffic is observed using the configured cluster egress identity.
+1. **Given** a running cluster with egress control enabled, **When** a workload initiates outbound traffic, **Then** the traffic is observed using the configured cluster egress identity by default.
 2. **Given** firewall policies based on the configured egress identity, **When** workloads access approved external services, **Then** connectivity succeeds without requiring per-node firewall changes.
-3. **Given** egress control is scoped to selected workloads, **When** non-scoped workloads send outbound traffic, **Then** their behavior remains unchanged.
+3. **Given** a workload is explicitly configured to opt out of managed egress, **When** it sends outbound traffic, **Then** it bypasses managed egress and follows standard cluster networking behavior.
 
 ---
 
@@ -71,9 +81,9 @@ As a cluster operator, I want validated and complete access permissions for Kube
 
 ### Edge Cases
 
-- What happens when DHCP allocation is unavailable at service creation time?
-- How does the system behave when leader election cannot establish quorum due to transient control-plane instability?
-- What happens when egress identity configuration is enabled for workloads that do not match any selection criteria?
+- When DHCP allocation is unavailable at service creation time, the service remains pending allocation and retries automatically until DHCP is available.
+- When leader election quorum is unavailable, the system holds current healthy leader assignments, blocks new leadership changes, and reports degraded state until quorum is restored.
+- When a workload has conflicting or invalid opt-out configuration, managed egress remains active and the system emits clear warning diagnostics.
 - How does the system behave when an existing cluster has legacy permissions that conflict with the hardened permission model?
 - What happens when multiple services request new load balancer addresses simultaneously under constrained network capacity?
 
@@ -81,18 +91,22 @@ As a cluster operator, I want validated and complete access permissions for Kube
 
 ### Functional Requirements
 
-- **FR-001**: System MUST support managed egress control so that selected cluster workloads use defined outbound traffic identities.
+- **FR-001**: System MUST support managed egress control so that all cluster workloads use defined outbound traffic identities by default.
 - **FR-002**: System MUST allow operators to enable or disable egress control at cluster configuration time.
-- **FR-003**: System MUST preserve existing outbound behavior for workloads not explicitly included in egress control scope.
+- **FR-003**: System MUST allow workloads to explicitly opt out of managed egress and preserve standard outbound behavior for those opted-out workloads.
 - **FR-004**: System MUST support service leader election in high-availability mode for service address ownership.
 - **FR-005**: System MUST automatically transfer service address ownership to a new leader when the current leader becomes unavailable.
 - **FR-006**: System MUST support DHCP-based address allocation for cluster load-balanced services.
 - **FR-007**: System MUST reconcile DHCP-assigned address lifecycle changes without requiring manual operator correction for normal lease events.
-- **FR-008**: System MUST define and apply a validated permission set that covers all operational actions required for Kube-VIP egress, service election, and load balancer management.
+- **FR-008**: System MUST define and apply a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider that covers all operational actions required for egress, service election, and load balancer management.
 - **FR-009**: System MUST fail with clear actionable diagnostics when required permissions are missing or denied.
 - **FR-010**: System MUST support both fresh deployments and upgrades without introducing regressions to existing Kube-VIP-managed services.
 - **FR-011**: System MUST provide operator-visible status signals indicating egress control state, service leadership state, and service address allocation outcomes.
 - **FR-012**: System MUST document required configuration inputs and behavioral expectations for egress control, service election, DHCP allocation, and permission validation.
+- **FR-013**: System MUST keep a service in pending allocation state and retry address assignment automatically when DHCP is temporarily unavailable.
+- **FR-014**: System MUST ignore invalid or conflicting managed-egress opt-out configuration, keep managed egress active for the affected workload, and emit clear warning diagnostics.
+- **FR-015**: System MUST hold current healthy service leadership assignments, block new leadership changes, and emit degraded-state status signals when election quorum is unavailable.
+- **FR-016**: System MUST enforce and reconcile the RBAC baseline on every deployment and upgrade run to prevent permission drift.
 
 ### Key Entities *(include if feature involves data)*
 
