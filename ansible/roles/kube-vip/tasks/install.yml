@@ -12,6 +12,9 @@
     state: started
   when: inventory_hostname == groups['k3s_servers'][0]
 
+- name: Validate kube-vip hardening configuration
+  ansible.builtin.include_tasks: validate-config.yml
+
 - name: Wait for local Kubernetes API port
   ansible.builtin.wait_for:
     host: 127.0.0.1
@@ -150,6 +153,9 @@
     - kube_vip_lb_enable | default(false)
     - item is not none
 
+- name: Reconcile kube-vip RBAC hardening baseline
+  ansible.builtin.include_tasks: reconcile-rbac.yml
+
 - name: Verify control-plane VIP is reachable
   ansible.builtin.wait_for:
     host: "{{ control_plane_vip }}"
@@ -158,3 +164,6 @@
   delegate_to: localhost
   become: false
   when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Report kube-vip hardening status
+  ansible.builtin.include_tasks: report-status.yml

@@ -30,52 +30,56 @@ ansible-playbook --check -i <inventory> ansible/playbooks/cluster-addons.yml
 Expected outcome:
 - No syntax/lint-level failures tied to kube-vip hardening variables.
 
-## 2) Validate default managed egress behavior
+## 2) Validate kube-vip egress prerequisites
 
-1. Enable managed egress configuration in inventory/group vars.
+1. Enable kube-vip egress configuration in inventory/group vars.
 2. Apply the preferred unified lifecycle playbook:
 
 ```bash
 ansible-playbook -i <inventory> ansible/playbooks/site.yml
 ```
 
-3. Launch a validation workload without opt-out configuration and verify outbound source behavior.
+3. Create or update a LoadBalancer Service that is not annotated with `kube-vip.io/ignore: "true"` and includes:
+
+```yaml
+metadata:
+  annotations: {}
+spec:
+  externalTrafficPolicy: Local
+```
+
+4. Verify the kube-vip daemonset contains `svc_election`, `egress_podcidr`, and `egress_servicecidr` env settings.
 
 Expected outcome:
-- Workload uses managed egress identity by default.
+- kube-vip runtime prerequisites for egress are present.
+- Eligible non-opted-out Services use kube-vip egress handling by default when shaped with `externalTrafficPolicy: Local`.
 
-## 3) Validate explicit opt-out and invalid opt-out fail-safe
+## 3) Validate explicit kube-vip Service ignore behavior
 
-1. Configure one workload with valid explicit opt-out.
-2. Configure another workload with intentionally invalid/conflicting opt-out.
-3. Re-apply the unified lifecycle playbook.
+1. Configure one Service with `kube-vip.io/ignore: "true"`.
+2. Re-apply the unified lifecycle playbook.
 
 Expected outcome:
-- Valid opt-out workload uses standard egress.
-- Invalid opt-out workload remains on managed egress.
-- Warning diagnostics are emitted for invalid opt-out.
+- Explicit kube-vip service opt-out is preserved through the ignore annotation.
 
-## 4) Validate service election quorum-loss behavior
+## 4) Validate service election runtime configuration
 
 1. Ensure HA topology and service election are enabled.
 2. Create a representative LoadBalancer service.
-3. Introduce a controlled quorum-loss condition in a test window.
 
 Expected outcome:
-- Existing healthy service leadership remains active.
-- New leadership changes are blocked while quorum is unavailable.
-- Operational status reports degraded election state.
-- Normal election behavior resumes when quorum is restored.
+- `svc_election=true` is configured in the kube-vip daemonset.
+- A LoadBalancer Service with `externalTrafficPolicy: Local` can be used for live service failover validation.
 
-## 5) Validate DHCP allocation and retry path
+## 5) Validate DHCP allocation request path
 
 1. Enable DHCP allocation mode.
 2. Create a new LoadBalancer service and observe assignment lifecycle.
-3. During a test window, make DHCP temporarily unavailable and observe status.
 
 Expected outcome:
-- Service remains in pending allocation during outage with automatic retries.
-- Service transitions to allocated once DHCP becomes available.
+- Service requests DHCP using `loadBalancerIP: 0.0.0.0` or `kube-vip.io/loadbalancerIPs`.
+- kube-vip daemonset exposes the configured `dhcp_mode`.
+- Observed address assignment outcomes are captured in live validation evidence when DHCP infrastructure is available.
 
 ## 6) Validate RBAC baseline enforcement and reconciliation
 
@@ -99,27 +103,56 @@ kubectl auth can-i --as=system:serviceaccount:kube-system:kube-vip list services
 
 Capture:
 - egress behavior verification evidence
-- election degraded/healthy transition evidence
+- service-election readiness or failover evidence
 - DHCP pending-to-allocated transition evidence
 - RBAC baseline reconciliation evidence
 
 ## 8) Automated validation execution (where feasible)
 
-Execute repository-native automated validation scenarios once they are generated for this feature:
+Run both lifecycle paths through the preferred entrypoint and feature-specific scenario runners.
 
 ```bash
 ansible-playbook --check -i <inventory> ansible/playbooks/site.yml
 ansible-playbook -i <inventory> ansible/playbooks/site.yml
+
+ansible-playbook -i <inventory> tests/ansible/integration/kube_vip_hardening/run_fresh_deploy.yml
+ansible-playbook -i <inventory> tests/ansible/integration/kube_vip_hardening/run_upgrade_path.yml
 ```
 
 Expected outcome:
 - Automated validation covers egress behavior.
 - Automated validation covers service election behavior.
-- Automated validation covers DHCP lease acquisition and renewal behavior.
+- Automated validation covers DHCP request behavior.
 - Automated validation covers RBAC binding correctness.
 - Evidence includes at least one fresh-deploy path and one upgrade-path run.
 
-## 9) Completion criteria
+## 9) Feasibility exceptions and manual fallback execution
+
+Use fallback only when the environment cannot safely automate disruptive live failover or DHCP infrastructure conditions.
+
+Manual fallback rules:
+
+1. Record the reason automation is infeasible.
+2. Execute the equivalent scenario manually.
+3. Capture the same evidence fields expected from automated runs.
+
+Recommended fallback evidence set:
+
+- `kubectl -n kube-system get daemonset kube-vip -o yaml`
+- `kubectl -n default get service <test-service> -o yaml`
+- `kubectl auth can-i --as=system:serviceaccount:kube-system:kube-vip list services`
+- Playbook output containing warning/degraded/permission-diagnostics messages
+
+## 10) Fresh-deploy and upgrade walkthrough checklist
+
+Use this checklist to document an end-to-end validation pass.
+
+| Path | Command | Expected Evidence |
+|------|---------|-------------------|
+| Fresh deploy | `ansible-playbook -i <inventory> tests/ansible/integration/kube_vip_hardening/run_fresh_deploy.yml` | Daemonset env wiring, Service annotation/request patterns, RBAC baseline checks |
+| Upgrade path | `ansible-playbook -i <inventory> tests/ansible/integration/kube_vip_hardening/run_upgrade_path.yml` | Same evidence-based capability set validated post-upgrade reconciliation |
+
+## 11) Completion criteria
 
 The feature is validated when all scenarios above pass and observed behavior matches contracts in:
 - `contracts/kube-vip-lifecycle-contracts.md`

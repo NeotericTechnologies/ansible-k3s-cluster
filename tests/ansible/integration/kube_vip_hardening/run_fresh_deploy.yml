@@ -1,0 +1,13 @@
+---
+- import_playbook: helpers.yml
+- import_playbook: test_egress_default.yml
+- import_playbook: test_egress_service_ignore.yml
+- import_playbook: test_egress_service_annotations.yml
+- import_playbook: test_election_healthy.yml
+- import_playbook: test_election_service_requirements.yml
+- import_playbook: test_dhcp_acquisition.yml
+- import_playbook: test_dhcp_mode.yml
+- import_playbook: test_dhcp_hostname.yml
+- import_playbook: test_rbac_baseline.yml
+- import_playbook: test_rbac_reconcile.yml
+- import_playbook: test_rbac_permission_denied_diagnostics.yml

@@ -18,6 +18,11 @@
   ansible.builtin.include_role:
     name: kube-vip
 
+- name: Reconcile kube-vip RBAC baseline during upgrade
+  ansible.builtin.include_role:
+    name: kube-vip
+    tasks_from: reconcile-rbac.yml
+
 - name: Wait for kube-vip pods to be running with new version
   ansible.builtin.command:
     cmd: >-

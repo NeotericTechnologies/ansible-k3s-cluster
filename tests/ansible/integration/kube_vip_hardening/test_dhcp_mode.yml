@@ -1,0 +1,18 @@
+---
+- name: Validate DHCP runtime mode configuration
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Read kube-vip DHCP mode env
+      ansible.builtin.command: >-
+        kubectl -n kube-system get daemonset kube-vip
+        -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="dhcp_mode")].value}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: dhcp_mode
+      changed_when: false
+
+    - name: Assert DHCP mode is configured for kube-vip runtime
+      ansible.builtin.assert:
+        that:
+          - dhcp_mode.stdout in ['ipv4', 'ipv6', 'dual']

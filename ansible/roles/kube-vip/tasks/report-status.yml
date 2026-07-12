@@ -1,0 +1,42 @@
+---
+# Report operator-visible hardening status
+
+- name: Gather kube-vip DaemonSet status
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: kube-vip
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  register: kube_vip_status_ds
+  changed_when: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Derive kube-vip hardening status values
+  ansible.builtin.set_fact:
+    kube_vip_election_status: >-
+      {{ 'enabled (svc_election=true)' if (kube_vip_service_election_enabled | default(false)) else 'disabled' }}
+    kube_vip_dhcp_status: >-
+      {{ 'enabled (' ~ kube_vip_dhcp_mode ~ ')' if (kube_vip_dhcp_enabled | default(false)) else 'disabled' }}
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Print kube-vip hardening status summary
+  ansible.builtin.debug:
+    msg: |
+      Kube-VIP Status:
+        Egress: {{ 'enabled (service annotations + Local externalTrafficPolicy required)' if (kube_vip_egress_enabled | default(false)) else 'disabled' }}
+        Election: {{ kube_vip_election_status }}
+        DHCP: {{ kube_vip_dhcp_status }}
+        DHCP Request: Service must request 0.0.0.0 or kube-vip.io/loadbalancerIPs annotation
+        RBAC: {{ 'enforced' if (kube_vip_rbac_baseline_enforced | default(true)) else 'disabled' }}
+        DaemonSet Ready: {{ (kube_vip_status_ds.resources[0].status.numberReady | default(0)) if (kube_vip_status_ds.resources | default([]) | length > 0) else 0 }}
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Print actionable permission-denied diagnostics when present
+  ansible.builtin.debug:
+    msg: "{{ kube_vip_permission_denied_diagnostics }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_permission_denied_diagnostics is defined

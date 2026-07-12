@@ -1,0 +1,16 @@
+---
+- name: Validate RBAC reconcile artifact presence
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Check baseline ClusterRole exists
+      ansible.builtin.command: kubectl get clusterrole kube-vip-baseline -o name
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: baseline_clusterrole
+      changed_when: false
+
+    - name: Assert baseline ClusterRole is present
+      ansible.builtin.assert:
+        that:
+          - baseline_clusterrole.stdout == 'clusterrole.rbac.authorization.k8s.io/kube-vip-baseline'

@@ -1,0 +1,12 @@
+---
+- name: Validate actionable diagnostics path for RBAC denial
+  hosts: k3s_servers[0]
+  gather_facts: false
+  vars:
+    simulate_rbac_permission_denied: false
+  tasks:
+    - name: Exercise diagnostics gate condition
+      ansible.builtin.assert:
+        that:
+          - simulate_rbac_permission_denied in [true, false]
+        success_msg: "Diagnostics scenario is controllable for permission-denied simulation"

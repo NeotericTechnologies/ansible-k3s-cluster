@@ -1,0 +1,20 @@
+---
+- name: Validate kube-vip egress runtime prerequisites
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Read kube-vip egress-related daemonset env
+      ansible.builtin.command: >-
+        kubectl -n kube-system get daemonset kube-vip
+        -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="svc_election")].value}:{.spec.template.spec.containers[0].env[?(@.name=="egress_podcidr")].value}:{.spec.template.spec.containers[0].env[?(@.name=="egress_servicecidr")].value}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_default
+      changed_when: false
+
+    - name: Assert kube-vip egress prerequisites are configured
+      ansible.builtin.assert:
+        that:
+          - egress_default.stdout.split(':')[0] == 'true'
+          - (egress_default.stdout.split(':')[1] | length) > 0
+          - (egress_default.stdout.split(':')[2] | length) > 0

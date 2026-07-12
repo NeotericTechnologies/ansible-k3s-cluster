@@ -1,0 +1,38 @@
+---
+- name: Validate DHCP acquisition configuration
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Create DHCP-requesting LoadBalancer service
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: kube-vip-dhcp-test
+            namespace: default
+          spec:
+            type: LoadBalancer
+            loadBalancerIP: 0.0.0.0
+            selector:
+              app: kube-vip-dhcp-test
+            ports:
+              - name: http
+                port: 80
+                targetPort: 8080
+
+    - name: Read DHCP-requesting LoadBalancer service address request
+      ansible.builtin.command: kubectl -n default get service kube-vip-dhcp-test -o jsonpath='{.spec.loadBalancerIP}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: dhcp_enabled
+      changed_when: false
+
+    - name: Assert DHCP request pattern is present
+      ansible.builtin.assert:
+        that:
+          - dhcp_enabled.stdout == '0.0.0.0'

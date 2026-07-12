@@ -1,0 +1,43 @@
+---
+- name: Validate kube-vip egress service annotation requirements
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Create service with kube-vip egress annotations
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: kube-vip-egress-service
+            namespace: default
+            annotations:
+              kube-vip.io/egress: "true"
+              kube-vip.io/egress-internal: "true"
+          spec:
+            type: LoadBalancer
+            externalTrafficPolicy: Local
+            selector:
+              app: kube-vip-egress-service
+            ports:
+              - name: http
+                port: 80
+                targetPort: 8080
+
+    - name: Read service annotations and traffic policy
+      ansible.builtin.command: >-
+        kubectl -n default get service kube-vip-egress-service
+        -o jsonpath='{.metadata.annotations.kube-vip\.io/egress}:{.metadata.annotations.kube-vip\.io/egress-internal}:{.spec.externalTrafficPolicy}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_annotations
+      changed_when: false
+
+    - name: Assert egress service requirements are present
+      ansible.builtin.assert:
+        that:
+          - egress_annotations.stdout == 'true:true:Local'

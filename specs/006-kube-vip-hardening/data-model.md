@@ -5,33 +5,33 @@
 
 ## Entities
 
-### 1. ManagedEgressPolicy
+### 1. EgressServiceProfile
 
-Defines global egress behavior and workload exception rules.
+Defines the documented kube-vip egress prerequisites and Service-level request shape.
 
 - Fields:
   - enabled: boolean
-  - default_mode: enum (`managed`, fixed to managed when enabled)
-  - opt_out_selector_type: enum (`label`, `annotation`)
-  - opt_out_selector_value: string
-  - invalid_opt_out_behavior: enum (`ignore_and_warn`)
+  - internal_mode: boolean
+  - pod_cidr: string
+  - service_cidr: string
+  - service_annotations: list
+  - external_traffic_policy: enum (`Local`)
 - Validation Rules:
-  - When enabled is true, default_mode must be `managed`.
-  - invalid_opt_out_behavior must keep managed egress active.
+  - When enabled is true, service election must also be enabled.
+  - Services opting into kube-vip egress must set `externalTrafficPolicy: Local`.
 
-### 2. WorkloadEgressDecision
+### 2. ServiceEgressRequest
 
-Runtime outcome per workload for outbound path selection.
+Represents one Service that opts into or out of kube-vip processing using documented annotations.
 
 - Fields:
-  - workload_ref: string (`namespace/name`)
-  - matched_opt_out: boolean
-  - opt_out_valid: boolean
-  - effective_mode: enum (`managed`, `standard`)
-  - warning_emitted: boolean
+  - service_ref: string (`namespace/name`)
+  - egress_enabled: boolean
+  - ignored_by_kube_vip: boolean
+  - external_traffic_policy: string
 - Validation Rules:
-  - If matched_opt_out is true and opt_out_valid is false, effective_mode must remain `managed` and warning_emitted must be true.
-  - If matched_opt_out is true and opt_out_valid is true, effective_mode may be `standard`.
+  - `egress_enabled=true` requires the documented kube-vip egress annotations.
+  - `ignored_by_kube_vip=true` is represented through `kube-vip.io/ignore=true`.
 
 ### 3. ServiceLeadershipState
 
@@ -40,12 +40,11 @@ Tracks ownership and election health for kube-vip-managed services.
 - Fields:
   - service_ref: string (`namespace/name`)
   - leader_node: string
-  - election_state: enum (`healthy`, `degraded`)
-  - quorum_available: boolean
-  - leadership_changes_blocked: boolean
+  - election_enabled: boolean
+  - external_traffic_policy: string
 - Validation Rules:
-  - When quorum_available is false, election_state must be `degraded`.
-  - When quorum_available is false, leadership_changes_blocked must be true.
+  - `election_enabled` is derived from kube-vip runtime configuration.
+  - LoadBalancer Services used for election validation should set `externalTrafficPolicy: Local`.
 
 ### 4. LoadBalancerAddressLease
 
@@ -54,13 +53,12 @@ Represents DHCP-backed service address lifecycle.
 - Fields:
   - service_ref: string (`namespace/name`)
   - allocation_mode: enum (`dhcp`)
-  - lease_state: enum (`pending`, `allocated`, `released`, `failed`)
+  - request_surface: enum (`loadBalancerIP_zero`, `annotation_zero`, `hostname_annotation`)
+  - requested_hostname: string (nullable)
   - address: string (nullable)
-  - last_error: string (nullable)
-  - retry_count: integer
 - Validation Rules:
-  - During DHCP unavailability, lease_state must remain `pending` with retries.
-  - `allocated` requires a non-null address.
+  - DHCP-backed Services must use one documented request surface.
+  - Hostname requests require the hostname annotation to be present.
 
 ### 5. RBACBaseline
 
@@ -82,13 +80,13 @@ Versioned least-privilege permission contract for kube-vip components.
 Operator-visible high-level state for the feature set.
 
 - Fields:
-  - egress_status: enum (`enabled`, `disabled`, `degraded`)
-  - election_status: enum (`healthy`, `degraded`)
-  - dhcp_status: enum (`healthy`, `degraded`, `unavailable`)
+  - egress_status: enum (`enabled`, `disabled`)
+  - election_status: enum (`enabled`, `disabled`)
+  - dhcp_status: enum (`enabled`, `disabled`)
   - rbac_status: enum (`in_sync`, `reconciled`, `error`)
   - timestamp: datetime
 - Validation Rules:
-  - Any degraded/error sub-state must be surfaced in playbook output.
+  - Any error sub-state must be surfaced in playbook output.
 
 ### 7. AutomatedValidationCase
 
@@ -116,23 +114,20 @@ Represents one feasible automated validation scenario tied to feature requiremen
 
 ## State Transitions
 
-### Egress decision
+### Egress service request
 
-- default-managed -> explicit-opt-out-valid -> standard-egress
-- default-managed -> explicit-opt-out-invalid -> managed-egress-with-warning
+- enabled -> service annotations present -> eligible for kube-vip egress
+- ignored -> `kube-vip.io/ignore=true` -> ignored by kube-vip
 
-### Leadership under quorum events
+### Service election readiness
 
-- healthy + quorum=true -> healthy
-- healthy + quorum=false -> degraded + leadership_changes_blocked=true
-- degraded + quorum=true -> healthy + leadership_changes_blocked=false
+- disabled -> daemonset rendered with `svc_election=false`
+- enabled -> daemonset rendered with `svc_election=true`
 
 ### DHCP lease lifecycle
 
-- pending -> allocated
-- pending -> pending (retry on DHCP unavailable)
-- allocated -> released
-- pending/allocated -> failed (terminal error after policy limit)
+- request created -> address allocation observed
+- request created -> hostname annotation observed
 
 ### RBAC drift lifecycle
 

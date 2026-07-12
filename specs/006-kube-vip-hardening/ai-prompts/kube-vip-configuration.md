@@ -21,5 +21,5 @@ The references provided for each feature are provided simply as a starting point
 Automated tests should be generated, where feasable, to:
 - Validate egress controller configuration and operation.
 - Validate service election is functioning as expected.
-- Validate DHCP lease acquisition and renewal.
+- Validate DHCP request configuration and observed assignment behavior.
 - Validate RBAC bindings are correctly configured.

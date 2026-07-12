@@ -1,0 +1,33 @@
+---
+# Validate hardening configuration before applying resources
+
+- name: Assert kube-vip hardening toggles are boolean
+  ansible.builtin.assert:
+    that:
+      - kube_vip_egress_enabled is boolean
+      - kube_vip_dhcp_enabled is boolean
+      - kube_vip_service_election_enabled is boolean
+      - kube_vip_rbac_baseline_enforced is boolean
+    fail_msg: "kube-vip hardening toggles must be boolean values"
+
+- name: Assert egress CIDR inputs are defined when egress is enabled
+  ansible.builtin.assert:
+    that:
+      - (kube_vip_egress_pod_cidr | default('') | length) > 0
+      - (kube_vip_egress_service_cidr | default('') | length) > 0
+    fail_msg: "kube-vip egress requires pod and service CIDRs when enabled"
+  when: kube_vip_egress_enabled | default(false)
+
+- name: Assert service election is enabled when kube-vip egress is enabled
+  ansible.builtin.assert:
+    that:
+      - kube_vip_service_election_enabled | bool
+    fail_msg: "kube-vip egress requires service election support to be enabled"
+  when: kube_vip_egress_enabled | default(false)
+
+- name: Assert DHCP mode value is supported
+  ansible.builtin.assert:
+    that:
+      - kube_vip_dhcp_mode in ['ipv4', 'ipv6', 'dual']
+    fail_msg: "kube_vip_dhcp_mode must be one of: ipv4, ipv6, dual"
+  when: kube_vip_dhcp_enabled | default(false)

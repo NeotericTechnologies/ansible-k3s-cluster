@@ -1,0 +1,39 @@
+---
+- name: Validate explicit kube-vip service ignore annotation
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Create service with kube-vip ignore annotation
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: kube-vip-egress-ignore
+            namespace: default
+            annotations:
+              kube-vip.io/ignore: "true"
+          spec:
+            type: LoadBalancer
+            selector:
+              app: kube-vip-egress-ignore
+            ports:
+              - name: http
+                port: 80
+                targetPort: 8080
+
+    - name: Read kube-vip ignore annotation value
+      ansible.builtin.command: kubectl -n default get service kube-vip-egress-ignore -o jsonpath='{.metadata.annotations.kube-vip\.io/ignore}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_ignore
+      changed_when: false
+
+    - name: Assert explicit ignore annotation is present
+      ansible.builtin.assert:
+        that:
+          - egress_ignore.stdout == 'true'

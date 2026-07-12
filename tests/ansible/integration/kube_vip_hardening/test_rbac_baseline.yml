@@ -1,0 +1,16 @@
+---
+- name: Validate RBAC baseline conformance
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Validate kube-vip service account can list services
+      ansible.builtin.command: kubectl auth can-i --as=system:serviceaccount:kube-system:kube-vip list services
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: can_i_services
+      changed_when: false
+
+    - name: Assert RBAC baseline is functional
+      ansible.builtin.assert:
+        that:
+          - can_i_services.stdout | trim == 'yes'

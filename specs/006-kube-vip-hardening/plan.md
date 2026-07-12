@@ -8,7 +8,7 @@
 
 ## Summary
 
-Enhance kube-vip operations for production-grade HA networking by implementing default-on managed egress with explicit opt-out, enabling resilient service leader election behavior under quorum loss, adding DHCP-driven LoadBalancer address lifecycle handling, and enforcing a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider. The implementation approach extends the existing `kube-vip` role and related lifecycle playbooks while preserving idempotent behavior and compatibility with both fresh deployments and upgrades, and adds feasible automated validation coverage for egress, service election, DHCP lease lifecycle, and RBAC binding behavior.
+Enhance kube-vip operations for production-grade HA networking by wiring documented kube-vip runtime controls into the existing DaemonSet and validation flows. The evidence-based implementation uses daemonset environment variables for service election, egress CIDR support, and DHCP mode, uses Kubernetes Service annotations and request fields for egress and DHCP behavior, and enforces a consolidated least-privilege RBAC baseline for kube-vip and kube-vip-cloud-provider. Automated validation focuses on documented runtime knobs and Service API patterns.
 
 ## Technical Context
 
@@ -26,9 +26,17 @@ Enhance kube-vip operations for production-grade HA networking by implementing d
 
 **Performance Goals**: Automatic leader failover within 30 seconds for >=95% events; DHCP assignment within 60 seconds for >=95% of new services; no-op re-run remains idempotent
 
-**Constraints**: Preserve existing lifecycle entrypoints with `ansible/playbooks/site.yml` as preferred path; fail-safe behavior for invalid opt-out config (managed egress remains active); no default broad RBAC privileges; quorum-loss behavior must prevent unsafe leader churn; automated validation must cover both fresh-deploy and upgrade-path scenarios where feasible
+**Constraints**: Preserve existing lifecycle entrypoints with `ansible/playbooks/site.yml` as preferred path; configure only documented kube-vip runtime surfaces (daemonset env, Service annotations, Service request fields, cloud-provider pool ConfigMap); no default broad RBAC privileges; automated validation must cover both fresh-deploy and upgrade-path scenarios where feasible
 
-**Scale/Scope**: Single-node through small HA clusters (1-5 servers, 1-20 agents) with cluster-wide default managed egress and optional per-workload opt-out
+**Scale/Scope**: Single-node through small HA clusters (1-5 servers, 1-20 agents) with kube-vip service election enabled, service-driven egress support, DHCP-capable LoadBalancer services, and enforced RBAC reconciliation
+
+## Evidence-Based Adjustment
+
+The implementation was audited against upstream kube-vip documentation during implementation. That audit changed the design in these ways:
+
+- Service election is configured through documented daemonset env (`svc_election`) rather than a standalone ConfigMap.
+- Egress support is configured through documented daemonset env plus per-Service annotations and `externalTrafficPolicy: Local`, not through a role-owned ConfigMap.
+- DHCP support is requested through documented Service fields and annotations such as `loadBalancerIP: 0.0.0.0`, with daemonset `dhcp_mode` controlling address family behavior.
 
 ## Constitution Check
 

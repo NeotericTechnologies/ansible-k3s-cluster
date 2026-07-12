@@ -1,0 +1,38 @@
+---
+- name: Validate service-election service prerequisites
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Create LoadBalancer service eligible for service election
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: kube-vip-election-test
+            namespace: default
+          spec:
+            type: LoadBalancer
+            externalTrafficPolicy: Local
+            selector:
+              app: kube-vip-election-test
+            ports:
+              - name: http
+                port: 80
+                targetPort: 8080
+
+    - name: Read election test service traffic policy
+      ansible.builtin.command: kubectl -n default get service kube-vip-election-test -o jsonpath='{.spec.externalTrafficPolicy}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: election_service
+      changed_when: false
+
+    - name: Assert service-election validation has required service shape
+      ansible.builtin.assert:
+        that:
+          - election_service.stdout == 'Local'

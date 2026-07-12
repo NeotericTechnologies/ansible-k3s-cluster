@@ -669,6 +669,40 @@ For issues and questions:
 
 ## Version History
 
+## Kube-VIP Hardening Overview
+
+The kube-vip role includes hardening controls that are applied during both fresh deploy and upgrade paths driven by `ansible/playbooks/site.yml`.
+
+Hardening capabilities:
+- Managed egress prerequisites and Service-level kube-vip annotations
+- Documented kube-vip service-election runtime configuration
+- DHCP-backed LoadBalancer request configuration and address-family selection
+- Consolidated least-privilege RBAC baseline reconciliation and diagnostics
+
+Automated validation entrypoints:
+- `tests/ansible/integration/kube_vip_hardening/run_fresh_deploy.yml`
+- `tests/ansible/integration/kube_vip_hardening/run_upgrade_path.yml`
+
+## Kube-VIP Hardening Configuration Matrix
+
+| Variable | Required | Default | Override Scope | Notes |
+|----------|----------|---------|----------------|-------|
+| `kube_vip_egress_enabled` | No | `true` | inventory/group/host vars | Enables kube-vip egress prerequisite wiring |
+| `kube_vip_egress_internal` | No | `true` | inventory/group/host vars | Uses kube-vip internal egress path for eligible Services |
+| `kube_vip_egress_pod_cidr` | No | `{{ cluster_cidr }}` | inventory/group/host vars | Pod CIDR exposed to kube-vip egress logic |
+| `kube_vip_egress_service_cidr` | No | `{{ service_cidr }}` | inventory/group/host vars | Service CIDR exposed to kube-vip egress logic |
+| `kube_vip_service_election_enabled` | No | `true` | inventory/group/host vars | Enables documented kube-vip service election runtime configuration |
+| `kube_vip_dhcp_enabled` | No | `true` | inventory/group/host vars | Default-on DHCP controls |
+| `kube_vip_dhcp_mode` | No | `ipv4` | inventory/group/host vars | DHCP address family used by kube-vip |
+| `kube_vip_rbac_baseline_enforced` | No | `true` | inventory/group/host vars | Enforces consolidated RBAC baseline |
+
+## Kube-VIP Hardening Release Notes
+
+- Added shared hardening configuration validation and status reporting hooks to the kube-vip role.
+- Added managed egress, service election, DHCP lifecycle, and RBAC reconciliation task modules.
+- Added daemonset env wiring for documented kube-vip egress, service-election, and DHCP runtime knobs plus an RBAC baseline manifest.
+- Added integration test scaffolding and scenario playbooks for fresh deploy and upgrade validation paths.
+
 - **v1.0.0** - Initial baseline release
   - Core cluster provisioning (embedded etcd HA)
   - kube-vip integration (VIP + LoadBalancer)

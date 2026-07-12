@@ -1,0 +1,38 @@
+---
+- name: Kube-vip hardening integration helpers
+  hosts: "{{ target_hosts | default('k3s_servers[0]') }}"
+  gather_facts: false
+  tasks:
+    - name: Wait for Kubernetes API readiness
+      ansible.builtin.command: kubectl get --raw=/readyz
+      register: api_ready
+      retries: 10
+      delay: 3
+      until: api_ready.stdout is search('ok')
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+
+    - name: Read kube-vip daemonset readiness snapshot
+      ansible.builtin.command: >-
+        kubectl -n kube-system get daemonset kube-vip
+        -o jsonpath='{.status.desiredNumberScheduled}:{.status.numberReady}'
+      register: kube_vip_daemonset_status
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+
+    - name: Assert kube-vip daemonset has ready pods
+      ansible.builtin.assert:
+        that:
+          - (kube_vip_daemonset_status.stdout.split(':')[0] | int) > 0
+          - (kube_vip_daemonset_status.stdout.split(':')[1] | int) > 0
+        fail_msg: "kube-vip daemonset is not ready; run lifecycle playbook before integration scenarios."
+
+    - name: Validate required kube-vip service accounts exist
+      ansible.builtin.command: >-
+        kubectl -n kube-system get serviceaccount
+        kube-vip kube-vip-cloud-provider --no-headers
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false

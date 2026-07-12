@@ -8,3 +8,16 @@ kube_vip_interface: "eth0"
 kube_vip_deployment_mode: "daemonset"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+
+# Kube-vip hardening defaults
+kube_vip_egress_enabled: true
+kube_vip_egress_internal: true
+kube_vip_egress_pod_cidr: "{{ cluster_cidr }}"
+kube_vip_egress_service_cidr: "{{ service_cidr }}"
+
+kube_vip_service_election_enabled: true
+
+kube_vip_dhcp_enabled: true
+kube_vip_dhcp_mode: "ipv4"
+
+kube_vip_rbac_baseline_enforced: true

@@ -1,0 +1,40 @@
+---
+- name: Validate DHCP hostname request surface
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Create DHCP service with hostname annotation
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: kube-vip-dhcp-hostname
+            namespace: default
+            annotations:
+              kube-vip.io/loadbalancerHostname: kube-vip-dhcp-hostname
+          spec:
+            type: LoadBalancer
+            loadBalancerIP: 0.0.0.0
+            selector:
+              app: kube-vip-dhcp-hostname
+            ports:
+              - name: http
+                port: 80
+                targetPort: 8080
+
+    - name: Read DHCP hostname annotation
+      ansible.builtin.command: kubectl -n default get service kube-vip-dhcp-hostname -o jsonpath='{.metadata.annotations.kube-vip\.io/loadbalancerHostname}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: dhcp_hostname
+      changed_when: false
+
+    - name: Assert DHCP hostname request surface is present
+      ansible.builtin.assert:
+        that:
+          - dhcp_hostname.stdout == 'kube-vip-dhcp-hostname'

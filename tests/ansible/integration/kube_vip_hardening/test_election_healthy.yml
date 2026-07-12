@@ -1,0 +1,18 @@
+---
+- name: Validate healthy service election behavior
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    - name: Read service election daemonset env
+      ansible.builtin.command: >-
+        kubectl -n kube-system get daemonset kube-vip
+        -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="svc_election")].value}:{.spec.template.spec.containers[0].env[?(@.name=="vip_leaderelection")].value}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: election_healthy
+      changed_when: false
+
+    - name: Assert documented election knobs are enabled
+      ansible.builtin.assert:
+        that:
+          - "'true:true' in election_healthy.stdout"

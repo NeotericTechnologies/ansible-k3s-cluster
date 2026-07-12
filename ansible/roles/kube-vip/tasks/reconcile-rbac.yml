@@ -1,0 +1,39 @@
+---
+# Reconcile least-privilege RBAC baseline
+
+- name: Apply consolidated kube-vip RBAC baseline
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-rbac-baseline.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_rbac_baseline_enforced | default(true)
+    - item is not none
+
+- name: Validate kube-vip service account can list services
+  ansible.builtin.command: >-
+    kubectl auth can-i --as=system:serviceaccount:kube-system:kube-vip list services
+  register: kube_vip_can_i_services
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_rbac_baseline_enforced | default(true)
+
+- name: Set actionable permission diagnostics fact when can-i fails
+  ansible.builtin.set_fact:
+    kube_vip_permission_denied_diagnostics: >-
+      Permission denied for kube-vip service account while listing services.
+      Verify RBAC baseline and rerun reconciliation.
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_rbac_baseline_enforced | default(true)
+    - kube_vip_can_i_services.stdout | default('no') | trim != 'yes'
