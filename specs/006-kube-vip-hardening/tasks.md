@@ -133,16 +133,18 @@
 
 - [ ] T044 [P] [US4] Add automated RBAC baseline conformance scenario in tests/ansible/integration/kube_vip_hardening/test_rbac_baseline.yml
 - [ ] T045 [P] [US4] Add automated RBAC drift reconciliation scenario in tests/ansible/integration/kube_vip_hardening/test_rbac_reconcile.yml
+- [ ] T046 [P] [US4] Add automated permission-denied actionable-diagnostics scenario in tests/ansible/integration/kube_vip_hardening/test_rbac_permission_denied_diagnostics.yml
 
 ### Implementation for User Story 4
 
-- [ ] T046 [US4] Add RBAC baseline enforcement variables in ansible/roles/kube-vip/defaults/main.yml
-- [ ] T047 [US4] Create consolidated RBAC baseline template in ansible/roles/kube-vip/templates/kube-vip-rbac-baseline.yaml.j2
-- [ ] T048 [US4] Implement RBAC drift-detection and reconcile tasks in ansible/roles/kube-vip/tasks/reconcile-rbac.yml
-- [ ] T049 [US4] Integrate RBAC reconciliation include into role flow in ansible/roles/kube-vip/tasks/install.yml
-- [ ] T050 [US4] Integrate RBAC reconciliation into unified upgrades in ansible/playbooks/includes/upgrade-kube-vip.yml
-- [ ] T051 [US4] Add RBAC validation execution to fresh-deploy runner in tests/ansible/integration/kube_vip_hardening/run_fresh_deploy.yml
-- [ ] T052 [US4] Add RBAC validation execution to upgrade-path runner in tests/ansible/integration/kube_vip_hardening/run_upgrade_path.yml
+- [ ] T047 [US4] Add RBAC baseline enforcement variables in ansible/roles/kube-vip/defaults/main.yml
+- [ ] T048 [US4] Create consolidated RBAC baseline template in ansible/roles/kube-vip/templates/kube-vip-rbac-baseline.yaml.j2
+- [ ] T049 [US4] Implement RBAC drift-detection and reconcile tasks in ansible/roles/kube-vip/tasks/reconcile-rbac.yml
+- [ ] T050 [US4] Implement clear actionable permission-denied diagnostics in ansible/roles/kube-vip/tasks/report-status.yml
+- [ ] T051 [US4] Integrate RBAC reconciliation include into role flow in ansible/roles/kube-vip/tasks/install.yml
+- [ ] T052 [US4] Integrate RBAC reconciliation into unified upgrades in ansible/playbooks/includes/upgrade-kube-vip.yml
+- [ ] T053 [US4] Add RBAC validation execution to fresh-deploy runner in tests/ansible/integration/kube_vip_hardening/run_fresh_deploy.yml
+- [ ] T054 [US4] Add RBAC validation execution to upgrade-path runner in tests/ansible/integration/kube_vip_hardening/run_upgrade_path.yml
 
 **Checkpoint**: US4 is independently functional and validation-ready.
 
@@ -152,10 +154,13 @@
 
 **Purpose**: Final documentation alignment and end-to-end validation across stories.
 
-- [ ] T053 [P] Align lifecycle and automated validation guidance in specs/006-kube-vip-hardening/contracts/kube-vip-lifecycle-contracts.md
-- [ ] T054 [P] Align automated validation execution and evidence sections in specs/006-kube-vip-hardening/quickstart.md
-- [ ] T055 Run full fresh-deploy and upgrade-path automated validation walkthrough in specs/006-kube-vip-hardening/quickstart.md
-- [ ] T056 [P] Document release and upgrade notes for kube-vip hardening in docs/ansible-k3s-baseline.md
+- [ ] T055 [P] Align lifecycle and automated validation guidance in specs/006-kube-vip-hardening/contracts/kube-vip-lifecycle-contracts.md
+- [ ] T056 [P] Align automated validation execution and evidence sections in specs/006-kube-vip-hardening/quickstart.md
+- [ ] T057 Add explicit kube-vip hardening configuration matrix (required/optional/default/override) in docs/ansible-k3s-baseline.md
+- [ ] T058 Add feasibility-exception and manual-fallback documentation section in specs/006-kube-vip-hardening/contracts/kube-vip-lifecycle-contracts.md
+- [ ] T059 Add feasibility-exception and manual-fallback execution notes in specs/006-kube-vip-hardening/quickstart.md
+- [ ] T060 Run full fresh-deploy and upgrade-path automated validation walkthrough in specs/006-kube-vip-hardening/quickstart.md
+- [ ] T061 [P] Document release and upgrade notes for kube-vip hardening in docs/ansible-k3s-baseline.md
 
 ---
 
@@ -191,8 +196,8 @@
 - US1 tests: T013, T014, and T015 run in parallel.
 - US2 tests: T024 and T025 run in parallel.
 - US3 tests: T033, T034, and T035 run in parallel.
-- US4 tests: T044 and T045 run in parallel.
-- Polish: T053, T054, and T056 run in parallel before T055 closes.
+- US4 tests: T044, T045, and T046 run in parallel.
+- Polish: T055, T056, and T061 run in parallel before T060 closes.
 
 ---
 
@@ -240,10 +245,11 @@ T039 ansible/roles/kube-vip/templates/kube-vip-dhcp-configmap.yaml.j2
 # Run US4 automated RBAC scenarios together:
 T044 tests/ansible/integration/kube_vip_hardening/test_rbac_baseline.yml
 T045 tests/ansible/integration/kube_vip_hardening/test_rbac_reconcile.yml
+T046 tests/ansible/integration/kube_vip_hardening/test_rbac_permission_denied_diagnostics.yml
 
 # Implement RBAC artifacts:
-T047 ansible/roles/kube-vip/templates/kube-vip-rbac-baseline.yaml.j2
-T048 ansible/roles/kube-vip/tasks/reconcile-rbac.yml
+T048 ansible/roles/kube-vip/templates/kube-vip-rbac-baseline.yaml.j2
+T049 ansible/roles/kube-vip/tasks/reconcile-rbac.yml
 ```
 
 ---
@@ -263,7 +269,8 @@ T048 ansible/roles/kube-vip/tasks/reconcile-rbac.yml
 2. Deliver US2 for resilient leader-election behavior.
 3. Deliver US3 for DHCP acquisition/retry/renewal behavior.
 4. Deliver US4 for RBAC hardening and drift reconciliation.
-5. Execute final cross-story automated validation (T055).
+5. Complete cross-cutting documentation/feasibility tasks (T055-T059).
+6. Execute final cross-story automated validation (T060).
 
 ### Parallel Team Strategy
 
