@@ -58,7 +58,7 @@
 # --- T006: Detect Helm-deployed component versions ---
 - name: Get Helm releases across all namespaces
   ansible.builtin.command:
-    cmd: helm list -A -o json
+    cmd: helm list -A --all -o json
   register: helm_releases_raw
   changed_when: false
   failed_when: false
@@ -75,9 +75,16 @@
       {{ helm_releases | items2dict(key_name='name', value_name='app_version') }}
   when: helm_releases | length > 0
 
+- name: Build Helm status map (release_name → status)
+  ansible.builtin.set_fact:
+    helm_status_map: >-
+      {{ helm_releases | items2dict(key_name='name', value_name='status') }}
+  when: helm_releases | length > 0
+
 - name: Set empty Helm version map if no releases
   ansible.builtin.set_fact:
     helm_version_map: {}
+    helm_status_map: {}
   when: helm_releases | length == 0
 
 # --- T032: Detect manifest_label based component versions (kube-vip, multus) ---
@@ -155,6 +162,36 @@
          | ternary(cert_manager_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
                    'not_installed') }}
 
+- name: Detect Rancher version from deployment image
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get deployment rancher -n cattle-system
+      -o jsonpath='{.spec.template.spec.containers[0].image}'
+  register: rancher_image_raw
+  changed_when: false
+  failed_when: false
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Parse Rancher version from image tag
+  ansible.builtin.set_fact:
+    rancher_live_version_fallback: >-
+      {{ (rancher_image_raw.rc == 0 and rancher_image_raw.stdout | length > 0)
+         | ternary(rancher_image_raw.stdout | regex_search(':(v?[0-9]+\.[0-9]+\.[0-9]+.*)') | default('not_installed'),
+                   'not_installed') | regex_replace('^:', '') }}
+
+- name: Resolve Rancher live state from Helm status/version with fallback
+  ansible.builtin.set_fact:
+    rancher_live_state: >-
+      {% set _status = (helm_status_map['rancher'] | default('not_installed') | string | lower | trim) %}
+      {% if _status is match('^pending-') %}
+      {{ _status }}
+      {% elif (helm_version_map['rancher'] | default('') | string | trim | length) > 0 %}
+      {{ helm_version_map['rancher'] | string | trim }}
+      {% else %}
+      {{ rancher_live_version_fallback | default('not_installed') | string | trim }}
+      {% endif %}
+
 - name: Detect synology-csi version from controller StatefulSet image
   ansible.builtin.command:
     cmd: >-
@@ -179,7 +216,7 @@
     detected_versions:
       k3s_servers: "{{ k3s_servers_live_version }}"
       k3s_agents: "{{ k3s_agents_live_version }}"
-      rancher: "{{ helm_version_map['rancher'] | default('not_installed') }}"
+      rancher: "{{ rancher_live_state }}"
       kube_vip: "{{ kube_vip_live_version | regex_replace('^:', '') }}"
       cert_manager: "{{ cert_manager_live_version | regex_replace('^:', '') }}"
       traefik: "{{ traefik_live_version | regex_replace('^:', '') }}"
@@ -219,6 +256,7 @@
     _action: >-
       {% if not _enabled %}none
       {% elif _live == 'not_installed' and ((is_fresh_install | default(false) | bool) or (_desired_is_set | bool)) %}install
+      {% elif _live is match('^pending-') and (_desired_is_set | bool) %}upgrade
       {% elif not _desired_is_set %}none
       {% elif _live == _desired %}none
       {% elif _can_compare and (_desired_norm is version(_live_norm, '>')) %}upgrade
