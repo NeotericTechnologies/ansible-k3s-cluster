@@ -112,10 +112,9 @@ For workloads covered by kube-vip egress defaults, confirm outbound traffic uses
 Enable egress defaults globally for environments via variables inside `group_vars/all.yml`:
 ```yaml
 kube_vip_egress_enable: true
-kube_vip_egress_destination: "10.0.0.0/8" # Optional traffic scope
 ```
 
-By default, workloads use kube-vip egress mapping IP. To explicitly opt-out a namespace or specific workload pod from egress routing, configure annotations:
+By default, workloads use kube-vip egress mapping IP. To explicitly opt-out a namespace or specific workload pod from egress routing, configure annotations on the service:
 
 ```yaml
 apiVersion: v1

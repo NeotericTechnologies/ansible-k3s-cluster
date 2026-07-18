@@ -103,17 +103,11 @@ spec:
           value: "2"
         - name: address
           value: "{{ control_plane_vip }}"
-{% if kube_vip_egress_enable | default(true) %}
-        - name: egress_enable
-          value: "true"
-{% if kube_vip_egress_destination | default("") | length > 0 %}
-        - name: egress_destination
-          value: "{{ kube_vip_egress_destination }}"
-{% endif %}
-{% if kube_vip_egress_source | default("") | length > 0 %}
-        - name: egress_source
-          value: "{{ kube_vip_egress_source }}"
-{% endif %}
+{% if kube_vip_egress_enable | default(true) | bool %}
+        - name: egress_podcidr
+          value: "{{ cluster_cidr }}"
+        - name: egress_servicecidr
+          value: "{{ service_cidr }}"
 {% endif %}
 {% if kube_vip_lb_enable | default(false) %}
         - name: svc_enable
