@@ -4,15 +4,20 @@
     "features": {
         "ghcr.io/devcontainers-extra/features/uv:1": {},
         "ghcr.io/devcontainers-extra/features/ansible:2": {},
-        "ghcr.io/hspaans/devcontainer-features/ansible-lint:2": {}
+        "ghcr.io/hspaans/devcontainer-features/ansible-lint:2": {},
+        "ghcr.io/devcontainers/features/node:2.1.0": {
+        "version": "24"
+        }
     },
     "customizations": {
         "vscode": {
             "extensions": [
                 "github.copilot-chat",
+                "continue.continue",
                 "redhat.vscode-yaml",
                 "redhat.ansible",
-                "yzhang.markdown-all-in-one"
+                "yzhang.markdown-all-in-one",
+                "streetsidesoftware.code-spell-checker"
             ]
          }
     },

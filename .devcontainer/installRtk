@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# RTK
+# https://github.com/rtk-ai/rtk/releases
+# v0.43.0 - 5a7880d404db8364d602f2ecdc41dd790f64013f
+# Set both RTK_INSTALL_SCRIPT_VERSION and RTK_VERSION to the matching release.
+
+# Defines the pinned version of the install script to be used.
+export RTK_INSTALL_SCRIPT_VERSION=5a7880d404db8364d602f2ecdc41dd790f64013f
+# Pins the RTK version to be installed.  By default the script will install the latest version.
+export RTK_VERSION=v0.43.0
+
+pushd "${SCRIPT_DIR}/.."
+curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/${RTK_INSTALL_SCRIPT_VERSION}/install.sh | sh
+popd

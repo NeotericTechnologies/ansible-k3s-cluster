@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 if command -v specify &>/dev/null; then
     echo "specify already installed — skipping"
 else

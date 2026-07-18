@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+# Caveman Skills
+# https://github.com/JuliusBrussee/caveman/releases
+# v1.9.1 - 0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0
+export CAVEMAN_VERSION=0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0
+
+pushd "${SCRIPT_DIR}/.."
+curl -fsSL https://raw.githubusercontent.com/JuliusBrussee/caveman/${CAVEMAN_VERSION}/install.sh | sudo bash
+popd
