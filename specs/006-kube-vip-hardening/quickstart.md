@@ -138,6 +138,8 @@ Ensure egress defaults are enabled globally in `group_vars/all.yml`:
 kube_vip_egress_enable: true
 ```
 
+Note: Enabling `kube_vip_egress_enable` automatically enforces `svc_election=true` in the rendered kube-vip DaemonSet, because service election is required for egress services.
+
 ### Egress Opt-Out and Validation Commands
 
 To explicitly opt-out an entire namespace or specific workload pod from egress routing rules, configure `kube-vip.io/egress: "false"` on the relevant workload Service or namespace policy entry.

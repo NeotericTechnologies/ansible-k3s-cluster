@@ -181,7 +181,7 @@
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - kube_vip_lb_enable | default(false)
-    - kube_vip_service_election_enable | default(true) | bool
+    - (kube_vip_service_election_enable | default(true) | bool) or (kube_vip_egress_enable | default(true) | bool)
 
 - name: Verify DHCP configuration mapping if enabled
   ansible.builtin.assert:

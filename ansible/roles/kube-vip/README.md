@@ -93,6 +93,8 @@ kubectl get svc -A | grep -E 'LoadBalancer|EXTERNAL-IP'
 
 Configure workload egress Services via `kube_vip_services` in `ansible/group_vars/all.yml` and re-run `ansible/playbooks/cluster-core.yml`. The role renders and applies these Service resources automatically; manual `kubectl create service` steps are not required.
 
+When `kube_vip_egress_enable: true`, service election is enabled automatically in the rendered kube-vip DaemonSet (`svc_election=true`) even if `kube_vip_service_election_enable` is set to `false`. This enforces the kube-vip requirement that egress operation depends on service election.
+
 ## Migration Notes
 
 ### Upgrading from v0.6.4 to v1.1.2

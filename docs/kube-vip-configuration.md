@@ -39,6 +39,8 @@ Configure egress features globally via Ansible variables:
 kube_vip_egress_enable: true
 ```
 
+When egress is enabled, service election is also enabled automatically in the kube-vip DaemonSet (`svc_election=true`). You do not need a separate manual toggle to satisfy this prerequisite for kube-vip egress behavior.
+
 Kube-vip uses this setting to map `egress_podcidr` and `egress_servicecidr` in the DaemonSet. These values are automatically and dynamically retrieved from your live Kubernetes cluster's initialization config (`cluster-cidr` and `service-cluster-ip-range`), eliminating manual parameter configuration errors and preventing outbound routing rewrites when communicating with internal resources.
 
 ## Network Policy Integration

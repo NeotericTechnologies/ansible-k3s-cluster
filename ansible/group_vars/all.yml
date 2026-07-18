@@ -33,9 +33,13 @@ kube_vip_lb_ip_range: "{{ '0.0.0.0/32' if (kube_vip_dhcp_enable | default(false)
 
 # Egress Hardening (US1)
 kube_vip_egress_enable: true
+# Note: When enabled, kube-vip service election is enforced automatically in the rendered
+# DaemonSet (svc_election=true), because egress services require service election.
 
 # HA Service Election (US2)
 kube_vip_service_election_enable: true
+# Note: This remains configurable for non-egress scenarios, but if
+# kube_vip_egress_enable=true then service election is forced on.
 
 # List of Service configurations to create when LoadBalancer is enabled
 kube_vip_services: []
