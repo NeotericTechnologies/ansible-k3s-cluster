@@ -10,11 +10,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kube-vip
 data:
-{% if kube_vip_dhcp_enable | default(false) | bool %}
-  cidr-global: "0.0.0.0/32"
-{% else %}
   range-global: {{ kube_vip_lb_ip_range }}
-{% endif %}
   # Supported formats:
   # - Range: 192.168.1.200-192.168.1.220
   # - CIDR: 192.168.1.0/24 (v1.1.2+)

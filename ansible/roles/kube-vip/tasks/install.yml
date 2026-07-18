@@ -100,6 +100,20 @@
           kube-vip bootstrap failed because Kubernetes API readiness/discovery checks did not succeed.
           Review the diagnostics printed above.
 
+- name: Apply kube-vip RBAC manifests via API
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-rbac.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - item is not none
+
 - name: Apply kube-vip DaemonSet via API
   kubernetes.core.k8s:
     definition: "{{ item }}"
@@ -150,7 +164,7 @@
   ansible.builtin.assert:
     that:
       - >-
-        (lookup('template', 'kube-vip-configmap.yaml.j2') | from_yaml | list | selectattr('data', 'defined') | first).data['cidr-global'] == '0.0.0.0/32'
+        (lookup('template', 'kube-vip-configmap.yaml.j2') | from_yaml | list | selectattr('data', 'defined') | first).data['range-global'] == '0.0.0.0/32'
     fail_msg: "DHCP configuration mapping invalid. Missing 0.0.0.0/32 global sentinel."
   when:
     - inventory_hostname == groups['k3s_servers'][0]

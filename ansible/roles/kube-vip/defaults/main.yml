@@ -17,3 +17,6 @@ kube_vip_service_election_enable: true
 
 # DHCP LB Addressing (US3)
 kube_vip_dhcp_enable: false
+
+# Conditionally compute range based on DHCP state
+kube_vip_lb_ip_range: "{{ '0.0.0.0/32' if (kube_vip_dhcp_enable | default(false) | bool) else '192.168.1.200-192.168.1.220' }}"

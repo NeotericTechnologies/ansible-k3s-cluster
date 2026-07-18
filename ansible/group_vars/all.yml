@@ -31,16 +31,15 @@ kube_vip_ha_min_replicas: 2
 kube_vip_non_ha_default_replicas: 1
 kube_vip_interface: "eth0"
 kube_vip_lb_enable: true
-kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+# DHCP LB Addressing (US3)
+kube_vip_dhcp_enable: false
+kube_vip_lb_ip_range: "{{ '0.0.0.0/32' if (kube_vip_dhcp_enable | default(false) | bool) else '192.168.1.200-192.168.1.220' }}"
 
 # Egress Hardening (US1)
 kube_vip_egress_enable: true
 
 # HA Service Election (US2)
 kube_vip_service_election_enable: true
-
-# DHCP LB Addressing (US3)
-kube_vip_dhcp_enable: false
 
 # Add-ons enablement (deployed via cluster-addons.yml)
 cert_manager_enabled: false
