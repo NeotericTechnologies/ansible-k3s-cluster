@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Install testConnection
 sudo curl https://raw.githubusercontent.com/bcgov/openshift-developer-tools/refs/heads/master/bin/testConnection -O
 sudo mv testConnection /usr/local/bin/

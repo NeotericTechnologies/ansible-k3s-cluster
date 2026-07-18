@@ -75,3 +75,22 @@ htmlcov/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# ================================================================
+# RTK AI (Rust Token Killer) & AI Agent Rules
+# ----------------------------------------------------------------
+
+# RTK raw output dumps on failure (tee mode)
+**/rtk-failed-*.log
+**/rtk-tee/
+
+# Local workspace cache and internal databases
+.rtk/
+rtk-tracking.db
+rtk-tracking.db-journal
+
+# AI Coding Agent Worktrees & Hooks (e.g., Claude Code + RTK)
+.claude/worktrees/
+.claude/hooks/rtk-rewrite.sh
+hooks/rtk-rewrite.sh
+# ================================================================

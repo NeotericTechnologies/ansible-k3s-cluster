@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+# RTK Initialization
+pushd "${SCRIPT_DIR}/.."
+rtk telemetry disable
+rtk init --copilot
+popd

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+# Codebase Memory MCP
+# https://github.com/DeusData/codebase-memory-mcp/releases
+# v0.9.0 - b637e3330c96cfe452da623db068c241aaa3ec01
+# Set both CMM_INSTALL_SCRIPT_VERSION and CMM_VERSION to the matching release.
+
+# Defines the pinned version of the install script to be used.
+export CMM_INSTALL_SCRIPT_VERSION=b637e3330c96cfe452da623db068c241aaa3ec01
+export CMM_VERSION=v0.9.0
+
+
+# Codebase Memory MCP install script currently installed the latest release.
+#   - No super easy way to pin to a commit hash.
+pushd "${SCRIPT_DIR}/.."
+curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/${CMM_INSTALL_SCRIPT_VERSION}/install.sh | bash
+codebase-memory-mcp config set auto_index true
+
+# Reinstall after config update
+# Theres an issue with the initial install where codebase-memory-mcp is not registered with the agents.
+codebase-memory-mcp install
+popd

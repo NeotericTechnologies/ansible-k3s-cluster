@@ -4,5 +4,5 @@ version = "0.1.0"
 description = "A devContainer with spec-kit installed for testing and development purposes."
 requires-python = ">=3.11" # Check spec-kit's required Python version
 dependencies = [
-    "specify-cli @ git+https://github.com/github/spec-kit.git@v0.12.2"
+    "specify-cli @ git+https://github.com/github/spec-kit.git@v0.13.0"
 ]

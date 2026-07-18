@@ -4,7 +4,7 @@
 
 **Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
 
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
+**Note**: This template is filled in by the `/speckit.plan` command; its definition describes the execution workflow.
 
 ## Summary
 
@@ -40,7 +40,11 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- [ ] Aligns with k3s baseline principles (minimal scope, idempotence, k3s-specific constraints, inventory clarity, secure defaults).
+- [ ] Uses token-optimized execution rules: Caveman skill active, CLI commands routed via `rtk`, and source operations routed via `codebase-memory-mcp` where available.
+- [ ] Uses silent output discipline: no narration, no unsolicited explanation, no reasoning disclosure, and diff-only file changes.
+- [ ] Distinguishes confirmed facts from assumptions and records evidence source for all material claims.
+- [ ] Avoids unsupported claims; when repository evidence is insufficient, cites explicit external references.
 
 ## Project Structure
 
