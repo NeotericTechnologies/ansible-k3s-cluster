@@ -105,16 +105,42 @@ Expected outcome:
 - no kube-vip authorization-denied errors appear in healthy deployments
 
 ## 6. Verify egress behavior
-For workloads covered by kube-vip egress defaults, confirm outbound traffic uses the expected load-balancer egress path. For workloads with explicit opt-out, confirm default routing remains in place.
+Verify egress routing and stable source address translation on active workloads.
 
-### Egress Opt-Out and Validation Commands
+Egress behavior is driven dynamically at the Service level through playbook-managed kube-vip Service definitions.
 
-Enable egress defaults globally for environments via variables inside `group_vars/all.yml`:
+### Service Egress Activation & Configuration
+
+To enable egress source address translation (SNAT) through kube-vip for workloads, define service entries under `kube_vip_services` in inventory variables and re-run the core playbook:
+
+```yaml
+kube_vip_services:
+  - name: egress-authorized-workload
+    namespace: secure-workloads
+    egress_enabled: true
+    external_traffic_policy: Local
+    selector:
+      app: secure-app
+    ports:
+      - name: https
+        port: 443
+        target_port: 8443
+```
+
+Apply changes:
+
+```bash
+ansible-playbook -i ansible/inventories/test-cluster ansible/playbooks/cluster-core.yml
+```
+
+Ensure egress defaults are enabled globally in `group_vars/all.yml`:
 ```yaml
 kube_vip_egress_enable: true
 ```
 
-By default, workloads use kube-vip egress mapping IP. To explicitly opt-out a namespace or specific workload pod from egress routing, configure annotations on the service:
+### Egress Opt-Out and Validation Commands
+
+To explicitly opt-out an entire namespace or specific workload pod from egress routing rules, configure `kube-vip.io/egress: "false"` on the relevant workload Service or namespace policy entry.
 
 ```yaml
 apiVersion: v1

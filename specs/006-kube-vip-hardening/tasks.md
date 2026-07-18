@@ -109,6 +109,13 @@
 - [x] T022 Document full cluster failure-scenario drills (split-brain, DHCP timeout) in [docs/ansible-k3s-baseline.md](docs/ansible-k3s-baseline.md)
 - [x] T023 Perform complete inventory validation and Ansible dry-run syntax verification using `rtk ansible-playbook --check` on [ansible/playbooks/site.yml](ansible/playbooks/site.yml)
 
+### Egress Service Automation Alignment
+
+- [x] T024 [US1] Render workload LoadBalancer Service manifests from `kube_vip_services` in [ansible/roles/kube-vip/templates/kube-vip-services.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-services.yaml.j2)
+- [x] T025 [US1] Apply rendered kube-vip service manifests automatically in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml) when LB mode is enabled
+- [x] T026 [P] [US1] Define cluster-scoped `kube_vip_services` inventory configuration in [ansible/group_vars/all.yml](ansible/group_vars/all.yml)
+- [x] T027 [P] [US1] Update operator runbooks to remove manual Service deployment steps and document variable-driven playbook application in [docs/kube-vip-configuration.md](docs/kube-vip-configuration.md) and [ansible/roles/kube-vip/README.md](ansible/roles/kube-vip/README.md)
+
 ---
 
 ## Dependencies & Completion Graph

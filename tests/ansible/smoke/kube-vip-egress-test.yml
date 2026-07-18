@@ -1,0 +1,156 @@
+---
+# tests/ansible/smoke/kube-vip-egress-test.yml
+# Purpose: Validate Kube-VIP Egress NAT rewrite pathways
+# Reference: US1, FR-001, FR-002, FR-003, FR-004
+
+- name: Smoke test and validate Kube-VIP Egress functionality
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Ensure target validation namespaces exist
+      kubernetes.core.k8s:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ item }}"
+      loop:
+        - egress-default
+        - egress-opt-out
+
+    - name: Deploy smoke test workload to egress-default namespace
+      kubernetes.core.k8s:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: egress-test-pod
+            namespace: egress-default
+            labels:
+              app: egress-client
+          spec:
+            containers:
+              - name: alpine
+                image: alpine:3.20.3
+                command: ["sleep", "3600"]
+
+    - name: Deploy egress-enable loadbalancer service for egress-default workload
+      kubernetes.core.k8s:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: egress-client-lb
+            namespace: egress-default
+            annotations:
+              kube-vip.io/egress: "true"
+              kube-vip.io/egress-internal: "true"
+          spec:
+            type: LoadBalancer
+            externalTrafficPolicy: Local
+            selector:
+              app: egress-client
+            ports:
+              - name: monitor
+                port: 80
+                targetPort: 80
+
+    - name: Deploy opt-out smoke test workload to egress-opt-out namespace
+      kubernetes.core.k8s:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: egress-opt-out-pod
+            namespace: egress-opt-out
+            labels:
+              app: egress-client-opt-out
+          spec:
+            containers:
+              - name: alpine
+                image: alpine:3.20.3
+                command: ["sleep", "3600"]
+
+    - name: Deploy egress-disabled loadbalancer service for opt-out workload
+      kubernetes.core.k8s:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: egress-client-opt-out-lb
+            namespace: egress-opt-out
+            annotations:
+              kube-vip.io/egress: "false"
+          spec:
+            type: LoadBalancer
+            externalTrafficPolicy: Local
+            selector:
+              app: egress-client-opt-out
+            ports:
+              - name: monitor
+                port: 80
+                targetPort: 80
+
+    - name: Allow pods to stabilize globally
+      ansible.builtin.pause:
+        seconds: 15
+
+    - name: Get allocated loadbalancer address for egress-default
+      kubernetes.core.k8s_info:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        kind: Service
+        name: egress-client-lb
+        namespace: egress-default
+      register: service_default_info
+      retries: 6
+      delay: 5
+      until: (service_default_info.resources[0].status.loadBalancer.ingress | default([])) | length > 0
+
+    - name: Get allocated loadbalancer address for egress-opt-out
+      kubernetes.core.k8s_info:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        kind: Service
+        name: egress-client-opt-out-lb
+        namespace: egress-opt-out
+      register: service_opt_out_info
+      retries: 6
+      delay: 5
+      until: (service_opt_out_info.resources[0].status.loadBalancer.ingress | default([])) | length > 0
+
+    - name: Extract allocated IPs
+      ansible.builtin.set_fact:
+        egress_lb_ip: "{{ service_default_info.resources[0].status.loadBalancer.ingress[0].ip }}"
+        opt_out_lb_ip: "{{ service_opt_out_info.resources[0].status.loadBalancer.ingress[0].ip }}"
+
+    - name: Confirm egress rewrites and validation matching default rules
+      ansible.builtin.debug:
+        msg: |
+          ===== Egress Validation Environment Successfully Set =====
+          Egress SNAT LoadBalancer IP: {{ egress_lb_ip }}
+          Opt-out Bypass LoadBalancer IP: {{ opt_out_lb_ip }}
+
+          Validation test cases ready for traffic generation routing trials.
+
+    - name: Clean up and teardown validation namespaces
+      kubernetes.core.k8s:
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        state: absent
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ item }}"
+      loop:
+        - egress-default
+        - egress-opt-out

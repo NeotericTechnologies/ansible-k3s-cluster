@@ -98,15 +98,15 @@
       until: vip_health.rc == 0
       changed_when: false
 
-    - name: Verify kube-vip egress service is running if enabled
+    - name: Verify kube-vip is active on control-plane nodes
       ansible.builtin.shell: |
         KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl -n kube-system get pod -l app.kubernetes.io/name=kube-vip -o jsonpath='{.items[*].status.phase}'
-      register: kube_vip_egress_status
+      register: kube_vip_status
       retries: 5
       delay: 10
-      until: "'Running' in kube_vip_egress_status.stdout"
+      until: "'Running' in kube_vip_status.stdout"
       changed_when: false
-      when: kube_vip_egress_enable | default(true) | bool
+      when: kube_vip_enabled | default(true) | bool
 
     - name: Collect HA observations for core components
       ansible.builtin.include_tasks: ../roles/k3s-common/tasks/collect-ha-observations.yml

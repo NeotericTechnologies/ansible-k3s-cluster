@@ -6,7 +6,7 @@
 
 ## Summary
 
-Extend the existing kube-vip role and cluster playbooks to add four coordinated behaviors: default-on kube-vip egress with explicit opt-out, service-election-backed LoadBalancer leadership, environment-wide DHCP mode for kube-vip LoadBalancer services, and hard-fail RBAC regression gates. Keep the feature inside the existing Ansible automation surface and validate it with documented checks, smoke tests, and traceable evidence.
+Extend the existing kube-vip role and cluster playbooks to add four coordinated behaviors: default-on kube-vip egress with explicit opt-out, service-election-backed LoadBalancer leadership, environment-wide DHCP mode for kube-vip LoadBalancer services, and hard-fail RBAC regression gates. Egress-enabled workload services are declared through `kube_vip_services` and applied automatically by the kube-vip role, removing manual Service deployment from the operational path. Keep the feature inside the existing Ansible automation surface and validate it with documented checks, smoke tests, and traceable evidence.
 
 ## Technical Context
 
