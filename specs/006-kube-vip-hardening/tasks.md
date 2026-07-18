@@ -19,8 +19,8 @@
 
 **Purpose**: Project initialization and base configurations
 
-- [ ] T001 Define configuration variables for egress, election, and DHCP in [ansible/roles/kube-vip/defaults/main.yml](ansible/roles/kube-vip/defaults/main.yml) and global environment variables in [ansible/group_vars/all.yml](ansible/group_vars/all.yml)
-- [ ] T002 Add pre-flight asset/variable validations in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml)
+- [x] T001 Define configuration variables for egress, election, and DHCP in [ansible/roles/kube-vip/defaults/main.yml](ansible/roles/kube-vip/defaults/main.yml) and global environment variables in [ansible/group_vars/all.yml](ansible/group_vars/all.yml)
+- [x] T002 Add pre-flight asset/variable validations in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml)
 - [x] T003 Configure token-optimized execution defaults in [.github/copilot-instructions.md](.github/copilot-instructions.md) and [.specify/memory/constitution.md](.specify/memory/constitution.md)
 
 ---
@@ -29,9 +29,9 @@
 
 **Purpose**: Core RBAC and playbook hooks that must exist before implementing functional behaviors
 
-- [ ] T004 Review, expand, and enforce required API permissions for kube-vip in [ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2)
-- [ ] T005 Setup pipeline verification task in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml) to run local dry-run validation of applied templates
-- [ ] T006 [P] Update Kube-VIP Cloud Provider RBAC definition in [ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2)
+- [x] T004 Review, expand, and enforce required API permissions for kube-vip in [ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2)
+- [x] T005 Setup pipeline verification task in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml) to run local dry-run validation of applied templates
+- [x] T006 [P] Update Kube-VIP Cloud Provider RBAC definition in [ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2)
 
 **Checkpoint**: Foundation ready - functional user story implementation can begin
 
@@ -45,10 +45,10 @@
 
 ### Implementation for User Story 1
 
-- [ ] T007 Configure egress container flags in [ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2) based on egress variables
-- [ ] T008 [P] Document egress validation commands and opt-out annotations in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
-- [ ] T009 [P] Update egress routing and network policy configuration examples in [docs/ai-prompts/kube-vip-configuration.md](docs/ai-prompts/kube-vip-configuration.md)
-- [ ] T010 Add egress verification tasks to playbooks in [ansible/playbooks/cluster-core.yml](ansible/playbooks/cluster-core.yml)
+- [x] T007 Configure egress container flags in [ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2) based on egress variables
+- [x] T008 [P] Document egress validation commands and opt-out annotations in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
+- [x] T009 [P] Update egress routing and network policy configuration examples in [docs/kube-vip-configuration.md](docs/kube-vip-configuration.md)
+- [x] T010 Add egress verification tasks to playbooks in [ansible/playbooks/cluster-core.yml](ansible/playbooks/cluster-core.yml)
 
 **Checkpoint**: User Story 1 egress handling functional and testable on a live cluster
 
@@ -62,10 +62,10 @@
 
 ### Implementation for User Story 2
 
-- [ ] T011 Update DaemonSet leader election arguments in [ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2)
-- [ ] T012 Configure service-election options in [ansible/roles/kube-vip/defaults/main.yml](ansible/roles/kube-vip/defaults/main.yml)
-- [ ] T013 Verify service-election arguments match official spec within [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml)
-- [ ] T014 [P] Update HA service election instructions in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
+- [x] T011 Update DaemonSet leader election arguments in [ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2)
+- [x] T012 Configure service-election options in [ansible/roles/kube-vip/defaults/main.yml](ansible/roles/kube-vip/defaults/main.yml)
+- [x] T013 Verify service-election arguments match official spec within [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml)
+- [x] T014 [P] Update HA service election instructions in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
 
 **Checkpoint**: User Stories 1 and 2 functional and stable
 
@@ -79,10 +79,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T015 Support `0.0.0.0/32` IP ConfigMap structure in [ansible/roles/kube-vip/templates/kube-vip-configmap.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-configmap.yaml.j2) when DHCP mode is enabled
-- [ ] T016 Add dynamic DHCP lease check logic in Cloud Provider template [ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2)
-- [ ] T017 Integrate DHCP-enabled checks inside validation playbook tasks in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml)
-- [ ] T018 [P] Document DHCP address verification procedures in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
+- [x] T015 Support `0.0.0.0/32` IP ConfigMap structure in [ansible/roles/kube-vip/templates/kube-vip-configmap.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-configmap.yaml.j2) when DHCP mode is enabled
+- [x] T016 Add dynamic DHCP lease check logic in Cloud Provider template [ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2](ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2)
+- [x] T017 Integrate DHCP-enabled checks inside validation playbook tasks in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml)
+- [x] T018 [P] Document DHCP address verification procedures in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
 
 **Checkpoint**: Kube-VIP DHCP and IPPool allocated services co-exist stably
 
@@ -96,9 +96,9 @@
 
 ### Implementation for User Story 4
 
-- [ ] T019 Implement hard-fail RBAC verification lookup in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml) to assert presence of essential API permissions
-- [ ] T020 Run complete RBAC validation checks using `kube-vip` serviceaccount impersonation
-- [ ] T021 [P] Document RBAC debugging steps and permission audit command sequences in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
+- [x] T019 Implement hard-fail RBAC verification lookup in [ansible/roles/kube-vip/tasks/install.yml](ansible/roles/kube-vip/tasks/install.yml) to assert presence of essential API permissions
+- [x] T020 Run complete RBAC validation checks using `kube-vip` serviceaccount impersonation
+- [x] T021 [P] Document RBAC debugging steps and permission audit command sequences in [specs/006-kube-vip-hardening/quickstart.md](specs/006-kube-vip-hardening/quickstart.md)
 
 ---
 
@@ -106,8 +106,8 @@
 
 **Purpose**: Operational validation and runbooks alignment
 
-- [ ] T022 Document full cluster failure-scenario drills (split-brain, DHCP timeout) in [docs/ansible-k3s-baseline.md](docs/ansible-k3s-baseline.md)
-- [ ] T023 Perform complete inventory validation and Ansible dry-run syntax verification using `rtk ansible-playbook --check` on [ansible/playbooks/site.yml](ansible/playbooks/site.yml)
+- [x] T022 Document full cluster failure-scenario drills (split-brain, DHCP timeout) in [docs/ansible-k3s-baseline.md](docs/ansible-k3s-baseline.md)
+- [x] T023 Perform complete inventory validation and Ansible dry-run syntax verification using `rtk ansible-playbook --check` on [ansible/playbooks/site.yml](ansible/playbooks/site.yml)
 
 ---
 

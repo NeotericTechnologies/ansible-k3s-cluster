@@ -5,6 +5,16 @@
 # NON-NEGOTIABLE: DaemonSet mode per docs/ai-prompts/plan.md
 # CONSTRAINT: No file copies to nodes — deploy via Kubernetes API only (R-013)
 
+- name: Validate pre-flight variables for kube-vip configurations
+  ansible.builtin.assert:
+    that:
+      - kube_vip_enabled is defined
+      - kube_vip_egress_enable is defined
+      - kube_vip_service_election_enable is defined
+      - kube_vip_dhcp_enable is defined
+    fail_msg: "Required configurations are missing or unset."
+  when: inventory_hostname == groups['k3s_servers'][0]
+
 - name: Ensure k3s service is running on bootstrap server
   ansible.builtin.systemd:
     name: k3s
@@ -22,6 +32,11 @@
 - name: Validate Kubernetes API is ready for kube-vip bootstrap
   when: inventory_hostname == groups['k3s_servers'][0]
   block:
+    - name: Perform local manifest dry-run testing (T005)
+      ansible.builtin.shell: >-
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl auth can-i create clusterrole --as=system:serviceaccount:kube-system:kube-vip --dry-run=client
+      changed_when: false
+
     - name: Wait for Kubernetes API readiness endpoint
       ansible.builtin.command: >-
         kubectl --request-timeout=10s --server https://127.0.0.1:6443 --insecure-skip-tls-verify=true get --raw=/readyz
@@ -120,6 +135,28 @@
   changed_when: false
   when: inventory_hostname == groups['k3s_servers'][0]
 
+- name: Verify service election is configured in DaemonSet if enabled
+  ansible.builtin.assert:
+    that:
+      - >-
+        ('svc_election' in (lookup('template', 'kube-vip-daemonset.yaml.j2') | from_yaml_all | list | selectattr('kind', 'defined') | selectattr('kind', 'equalto', 'DaemonSet') | first).spec.template.spec.containers[0].env | map(attribute='name') | list)
+    fail_msg: "svc_election environment variable missing from DaemonSet spec."
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - kube_vip_service_election_enable | default(true) | bool
+
+- name: Verify DHCP configuration mapping if enabled
+  ansible.builtin.assert:
+    that:
+      - >-
+        (lookup('template', 'kube-vip-configmap.yaml.j2') | from_yaml | list | selectattr('data', 'defined') | first).data['cidr-global'] == '0.0.0.0/32'
+    fail_msg: "DHCP configuration mapping invalid. Missing 0.0.0.0/32 global sentinel."
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - kube_vip_dhcp_enable | default(false) | bool
+
 - name: Apply kube-vip ConfigMap via API
   kubernetes.core.k8s:
     definition: "{{ item }}"
@@ -157,4 +194,28 @@
     timeout: 60
   delegate_to: localhost
   become: false
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Enforce mandatory target RBAC permissions check (T019, T020)
+  block:
+    - name: Audit ClusterRole services API permissions
+      ansible.builtin.shell: >-
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl auth can-i update services --as=system:serviceaccount:kube-system:kube-vip
+      register: rbac_services_check
+      changed_when: false
+      failed_when: "'yes' not in rbac_services_check.stdout"
+
+    - name: Audit ClusterRole coordiation leases API permissions
+      ansible.builtin.shell: >-
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl auth can-i create leases --as=system:serviceaccount:kube-system:kube-vip --namespace=kube-system
+      register: rbac_leases_check
+      changed_when: false
+      failed_when: "'yes' not in rbac_leases_check.stdout"
+
+    - name: Audit ClusterRole pods API egress permissions
+      ansible.builtin.shell: >-
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl auth can-i update pods --as=system:serviceaccount:kube-system:kube-vip
+      register: rbac_pods_check
+      changed_when: false
+      failed_when: "'yes' not in rbac_pods_check.stdout"
   when: inventory_hostname == groups['k3s_servers'][0]

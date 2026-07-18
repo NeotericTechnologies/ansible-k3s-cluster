@@ -22,6 +22,9 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["list", "get", "watch", "update", "create"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get", "watch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -100,11 +103,27 @@ spec:
           value: "2"
         - name: address
           value: "{{ control_plane_vip }}"
+{% if kube_vip_egress_enable | default(true) %}
+        - name: egress_enable
+          value: "true"
+{% if kube_vip_egress_destination | default("") | length > 0 %}
+        - name: egress_destination
+          value: "{{ kube_vip_egress_destination }}"
+{% endif %}
+{% if kube_vip_egress_source | default("") | length > 0 %}
+        - name: egress_source
+          value: "{{ kube_vip_egress_source }}"
+{% endif %}
+{% endif %}
 {% if kube_vip_lb_enable | default(false) %}
         - name: svc_enable
           value: "true"
         - name: svc_leasename
           value: "plndr-svcs-lock"
+{% if kube_vip_service_election_enable | default(true) %}
+        - name: svc_election
+          value: "true"
+{% endif %}
         - name: lb_enable
           value: "true"
         - name: lb_port

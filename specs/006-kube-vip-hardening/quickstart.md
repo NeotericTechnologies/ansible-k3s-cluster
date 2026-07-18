@@ -37,6 +37,18 @@ kubectl -n kube-system get pods -l app.kubernetes.io/name=kube-vip
 kubectl -n kube-system get ds kube-vip
 ```
 
+### Enable Service Election Globally
+
+Setup variable inside `group_vars/all.yml` or default variables:
+```yaml
+kube_vip_service_election_enable: true
+```
+
+Verify service election variable applies successfully in pod environments:
+```bash
+kubectl -n kube-system describe pod -l app.kubernetes.io/name=kube-vip | grep svc_election
+```
+
 Expected outcome:
 - kube-vip pods are running on control-plane nodes
 - service election is enabled for managed LB services where required
@@ -44,11 +56,27 @@ Expected outcome:
 ## 4. Verify DHCP mode consistency
 If DHCP mode is enabled for the environment, create or update multiple kube-vip-managed LoadBalancer services and confirm all of them receive DHCP-backed addresses using the same cluster-wide mode.
 
+### Enable DHCP Load Balancer Allocations
+
+Toggle variable inside `group_vars/all.yml` or defaults:
+```yaml
+kube_vip_dhcp_enable: true
+```
+
+Verify DHCP global CIDR is applied in target ConfigMap resource structures:
+```bash
+kubectl -n kube-system describe configmap kubevip | grep cidr-global
+```
+
+Verify Cloud Provider pod maps sentinel addressing:
+```bash
+kubectl -n kube-system describe deploy kube-vip-cloud-controller | grep 0.0.0.0/32
+```
+
 Example checks:
 
 ```bash
 kubectl get svc -A | grep LoadBalancer
-kubectl describe svc -n kube-system <service-name>
 ```
 
 Expected outcome:
@@ -58,12 +86,50 @@ Expected outcome:
 ## 5. Verify RBAC hard-fail gate
 Run the RBAC validation path used by the plan and confirm any missing permission blocks deployment.
 
+### Auditing & Impersonation Diagnosis
+
+If permission checks fail, inspect ClusterRoles configurations:
+```bash
+kubectl get clusterrole kube-vip -o yaml
+```
+
+Diagnose active permissions using ServiceAccount impersonation checks manually:
+```bash
+kubectl auth can-i update services --as=system:serviceaccount:kube-system:kube-vip
+kubectl auth can-i create leases --as=system:serviceaccount:kube-system:kube-vip --namespace=kube-system
+kubectl auth can-i update pods --as=system:serviceaccount:kube-system:kube-vip
+```
+
 Expected outcome:
 - RBAC regression checks fail the rollout if permissions are incomplete
 - no kube-vip authorization-denied errors appear in healthy deployments
 
 ## 6. Verify egress behavior
 For workloads covered by kube-vip egress defaults, confirm outbound traffic uses the expected load-balancer egress path. For workloads with explicit opt-out, confirm default routing remains in place.
+
+### Egress Opt-Out and Validation Commands
+
+Enable egress defaults globally for environments via variables inside `group_vars/all.yml`:
+```yaml
+kube_vip_egress_enable: true
+kube_vip_egress_destination: "10.0.0.0/8" # Optional traffic scope
+```
+
+By default, workloads use kube-vip egress mapping IP. To explicitly opt-out a namespace or specific workload pod from egress routing, configure annotations:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: billing-system
+  annotations:
+    kube-vip.io/egress: "false" # Opts-out entire namespace
+```
+
+Verify egress mapping and applied routes on active pods:
+```bash
+kubectl describe pod -n kube-system -l app.kubernetes.io/name=kube-vip
+```
 
 Expected outcome:
 - default workloads use kube-vip egress

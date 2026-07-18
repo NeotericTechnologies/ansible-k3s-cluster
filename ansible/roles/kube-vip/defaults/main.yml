@@ -8,3 +8,14 @@ kube_vip_interface: "eth0"
 kube_vip_deployment_mode: "daemonset"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+
+# Egress Hardening (US1)
+kube_vip_egress_enable: true
+kube_vip_egress_destination: ""
+kube_vip_egress_source: ""
+
+# HA Service Election (US2)
+kube_vip_service_election_enable: true
+
+# DHCP LB Addressing (US3)
+kube_vip_dhcp_enable: false

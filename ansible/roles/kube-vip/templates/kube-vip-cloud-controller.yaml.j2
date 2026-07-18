@@ -18,7 +18,7 @@ rules:
   verbs: ["get", "list", "watch", "update", "patch"]
 - apiGroups: [""]
   resources: ["configmaps"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "update", "patch"]
 - apiGroups: ["discovery.k8s.io"]
   resources: ["endpointslices"]
   verbs: ["list", "get", "watch"]
@@ -71,8 +71,13 @@ spec:
           value: kube-system
         - name: KUBEVIP_CONFIG_MAP
           value: kubevip
+{% if kube_vip_dhcp_enable | default(false) | bool %}
+        - name: KUBEVIP_CIDR
+          value: "0.0.0.0/32"
+{% else %}
         - name: KUBEVIP_CIDR
           value: "{{ kube_vip_lb_ip_range }}"
+{% endif %}
         resources:
           limits:
             cpu: 100m
