@@ -129,3 +129,10 @@
 - [Assumption about scope boundaries, e.g., "Mobile support is out of scope for v1"]
 - [Assumption about data/environment, e.g., "Existing authentication system will be reused"]
 - [Dependency on existing system/service, e.g., "Requires access to the existing user profile API"]
+
+## Evidence & Verification *(mandatory)*
+
+- **Confirmed Facts**: [List each material fact with repository evidence links or explicit external citations]
+- **Assumptions**: [List each assumption, why it exists, and how/when it will be validated]
+- **Unsupported Claims Check**: [Confirm no unsupported claims remain; if risk exists, document mitigation]
+- **Source Hierarchy**: [Prefer observed code/docs/tests/validated requirements; cite external sources only when repository evidence is insufficient]
