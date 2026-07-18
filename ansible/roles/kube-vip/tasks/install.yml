@@ -114,6 +114,29 @@
     - inventory_hostname == groups['k3s_servers'][0]
     - item is not none
 
+- name: Retrieve dynamic cluster networking configuration
+  block:
+    - name: Query live cluster Pod CIDR (cluster-cidr)
+      ansible.builtin.shell: >-
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl cluster-info dump | grep -m 1 cluster-cidr | tr -d '", ' | cut -d= -f2
+      register: retrieved_cluster_cidr
+      changed_when: false
+      failed_when: retrieved_cluster_cidr.stdout | trim | length == 0
+
+    - name: Query live cluster Service CIDR (service-cluster-ip-range)
+      ansible.builtin.shell: >-
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl cluster-info dump | grep -m 1 service-cluster-ip-range | tr -d '", ' | cut -d= -f2
+      register: retrieved_service_cidr
+      changed_when: false
+      failed_when: retrieved_service_cidr.stdout | trim | length == 0
+
+    - name: Set dynamic cluster networking facts
+      ansible.builtin.set_fact:
+        dynamic_cluster_cidr: "{{ retrieved_cluster_cidr.stdout | trim }}"
+        dynamic_service_cidr: "{{ retrieved_service_cidr.stdout | trim }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+
 - name: Apply kube-vip DaemonSet via API
   kubernetes.core.k8s:
     definition: "{{ item }}"

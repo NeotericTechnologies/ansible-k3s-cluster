@@ -81,9 +81,9 @@ spec:
           value: "6443"
 {% if kube_vip_egress_enable | default(true) | bool %}
         - name: egress_podcidr
-          value: "{{ cluster_cidr }}"
+          value: "{{ dynamic_cluster_cidr }}"
         - name: egress_servicecidr
-          value: "{{ service_cidr }}"
+          value: "{{ dynamic_service_cidr }}"
 {% endif %}
 {% endif %}
         securityContext:

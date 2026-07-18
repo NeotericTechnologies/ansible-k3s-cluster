@@ -84,8 +84,8 @@
           {{ cluster_nodes.stdout }}
 
           Control-plane VIP: {{ control_plane_vip }}:{{ api_port }}
-          Cluster CIDR: {{ cluster_cidr }}
-          Service CIDR: {{ service_cidr }}
+          Cluster CIDR (Dynamic): {{ hostvars[groups['k3s_servers'][0]]['dynamic_cluster_cidr'] | default('Unknown') }}
+          Service CIDR (Dynamic): {{ hostvars[groups['k3s_servers'][0]]['dynamic_service_cidr'] | default('Unknown') }}
 
     - name: Verify control-plane VIP is accessible
       ansible.builtin.command: >-

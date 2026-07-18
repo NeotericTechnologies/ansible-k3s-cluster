@@ -9,7 +9,7 @@ Configure egress mappings via DaemonSet variables to enforce destination targeti
 kube_vip_egress_enable: true
 ```
 
-Kube-vip will utilize the loadbalancer IP allocated to the service as the source egress address. In order to distinguish local cluster CIDR scopes and bypass egress rewrites, `egress_podcidr` and `egress_servicecidr` are specified.
+Kube-vip will utilize the loadbalancer IP allocated to the service as the source egress address. In order to distinguish local cluster CIDR scopes and bypass egress rewrites, `egress_podcidr` and `egress_servicecidr` are specified. These values are automatically and dynamically retrieved from your live Kubernetes cluster's initialization config (`cluster-cidr` and `service-cluster-ip-range`), eliminating manual parameter configuration errors.
 
 ## Network Policy Integration
 
