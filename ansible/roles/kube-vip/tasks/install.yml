@@ -441,6 +441,53 @@
     - kube_vip_lb_enable | default(false)
     - kube_vip_default_egress_gateway_enabled | default(false) | bool
 
+- name: Detect Cilium egress gateway policy CRD
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: ciliumegressgatewaypolicies.cilium.io
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  register: kube_vip_cilium_egress_crd
+  failed_when: false
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_global_egress_enable | default(false) | bool
+    - kube_vip_global_egress_mode == 'cni-native'
+    - kube_vip_global_egress_cni_provider == 'cilium'
+
+- name: Fail when Cilium-native global egress interception is requested but unsupported
+  ansible.builtin.fail:
+    msg: >-
+      kube_vip_global_egress_enable=true with cni-native/cilium mode requires the
+      Cilium CRD ciliumegressgatewaypolicies.cilium.io, but it was not found.
+      Install/enable Cilium egress-gateway support or disable kube_vip_global_egress_enable.
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_global_egress_enable | default(false) | bool
+    - kube_vip_global_egress_mode == 'cni-native'
+    - kube_vip_global_egress_cni_provider == 'cilium'
+    - (kube_vip_cilium_egress_crd.resources | default([]) | length) == 0
+
+- name: Apply Cilium-native global egress interception policy via API
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-cilium-egress-policy.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_global_egress_enable | default(false) | bool
+    - kube_vip_global_egress_mode == 'cni-native'
+    - kube_vip_global_egress_cni_provider == 'cilium'
+    - (kube_vip_cilium_egress_crd.resources | default([]) | length) > 0
+    - item is not none
+
 - name: Determine whether live kube-vip service election validation is applicable
   ansible.builtin.set_fact:
     kube_vip_service_election_validation_enabled: >-

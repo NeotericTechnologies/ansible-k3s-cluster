@@ -76,6 +76,24 @@ kube_vip_default_egress_gateway_run_as_non_root: "{{ kube_vip_default_egress_gat
 kube_vip_default_egress_gateway_run_as_user: "{{ kube_vip_default_egress_gateway_profile_config.run_as_user | default(65532) }}"
 kube_vip_default_egress_gateway_read_only_root_filesystem: "{{ kube_vip_default_egress_gateway_profile_config.read_only_root_filesystem | default(true) }}"
 
+# Global egress interception mode (CNI-native preferred)
+# Set true to enforce cluster-wide egress interception using the selected mode.
+kube_vip_global_egress_enable: false
+kube_vip_global_egress_mode: cni-native
+kube_vip_global_egress_cni_provider: cilium
+kube_vip_global_egress_policy_name: kube-vip-global-egress
+kube_vip_global_egress_destination_cidrs:
+  - 0.0.0.0/0
+kube_vip_global_egress_excluded_cidrs:
+  - "{{ dynamic_cluster_cidr | default('10.42.0.0/16') }}"
+  - "{{ dynamic_service_cidr | default('10.43.0.0/16') }}"
+  - "{{ control_plane_vip }}/32"
+kube_vip_global_egress_opt_out_label_key: kube-vip.io/egress-opt-out
+kube_vip_global_egress_opt_out_label_value: "true"
+kube_vip_global_egress_gateway_node_selector:
+  kubernetes.io/hostname: "{{ groups['k3s_servers'][0] }}"
+kube_vip_global_egress_egress_ip: "{{ control_plane_vip }}"
+
 kube_vip_default_egress_service:
   name: default-egress-lb
   namespace: "{{ kube_vip_default_egress_gateway_namespace }}"

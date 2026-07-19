@@ -39,6 +39,24 @@ Configure egress features globally via Ansible variables:
 kube_vip_egress_enable: true
 ```
 
+To enable cluster-wide interception with the preferred CNI-native path (Cilium):
+
+```yaml
+kube_vip_global_egress_enable: true
+kube_vip_global_egress_mode: cni-native
+kube_vip_global_egress_cni_provider: cilium
+kube_vip_global_egress_egress_ip: "192.168.1.100"  # usually control_plane_vip
+```
+
+Opt-out is label-based:
+
+```yaml
+kube_vip_global_egress_opt_out_label_key: kube-vip.io/egress-opt-out
+kube_vip_global_egress_opt_out_label_value: "true"
+```
+
+Any pod with label `kube-vip.io/egress-opt-out: "true"` is excluded from global interception.
+
 When egress is enabled, service election is also enabled automatically in the kube-vip DaemonSet (`svc_election=true`). You do not need a separate manual toggle to satisfy this prerequisite for kube-vip egress behavior.
 
 Kube-vip uses this setting to map `egress_podcidr` and `egress_servicecidr` in the DaemonSet. These values are automatically and dynamically retrieved from your live Kubernetes cluster's initialization config (`cluster-cidr` and `service-cluster-ip-range`), eliminating manual parameter configuration errors and preventing outbound routing rewrites when communicating with internal resources.

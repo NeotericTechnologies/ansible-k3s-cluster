@@ -1,0 +1,37 @@
+---
+# Cilium-native global egress interception policy managed by kube-vip role
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: {{ kube_vip_global_egress_policy_name }}
+spec:
+  selectors:
+    - podSelector:
+        matchExpressions:
+          - key: {{ kube_vip_global_egress_opt_out_label_key }}
+            operator: NotIn
+            values:
+              - {{ kube_vip_global_egress_opt_out_label_value | to_json }}
+      namespaceSelector:
+        matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: NotIn
+            values:
+              - kube-system
+  destinationCIDRs:
+{% for cidr in (kube_vip_global_egress_destination_cidrs | default(['0.0.0.0/0'])) %}
+    - {{ cidr | to_json }}
+{% endfor %}
+{% if (kube_vip_global_egress_excluded_cidrs | default([]) | length) > 0 %}
+  excludedCIDRs:
+{% for cidr in (kube_vip_global_egress_excluded_cidrs | default([])) %}
+    - {{ cidr | to_json }}
+{% endfor %}
+{% endif %}
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+{% for k, v in (kube_vip_global_egress_gateway_node_selector | default({})).items() %}
+        {{ k }}: {{ v | to_json }}
+{% endfor %}
+    egressIP: {{ kube_vip_global_egress_egress_ip | to_json }}
