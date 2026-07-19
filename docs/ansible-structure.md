@@ -104,7 +104,6 @@ For development or small deployments:
 
 ### Cluster-Wide Variables (`group_vars/all.yml`)
 - Cluster identity (name, version)
-- Network CIDRs (cluster_cidr, service_cidr)
 - Control-plane VIP and port
 - Add-on enablement flags
 - Add-on configuration (cert-manager, multus, Rancher, etc.)

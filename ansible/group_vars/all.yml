@@ -12,10 +12,6 @@ k3s_version: "v1.28.5+k3s1"
 k3s_server_ha_min_replicas: 3
 k3s_server_non_ha_default_replicas: 1
 
-# Cluster networking
-cluster_cidr: "10.42.0.0/16"
-service_cidr: "10.43.0.0/16"
-
 # Control-plane access (VIP managed by kube-vip)
 control_plane_vip: "192.168.1.100"
 api_port: 6443
@@ -31,7 +27,34 @@ kube_vip_ha_min_replicas: 2
 kube_vip_non_ha_default_replicas: 1
 kube_vip_interface: "eth0"
 kube_vip_lb_enable: true
-kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+# DHCP LB Addressing (US3)
+kube_vip_dhcp_enable: false
+kube_vip_lb_ip_range: "{{ '0.0.0.0/32' if (kube_vip_dhcp_enable | default(false) | bool) else '192.168.1.200-192.168.1.220' }}"
+
+# Egress Hardening (US1)
+# Note: When enabled, kube-vip service election is enforced automatically in the rendered
+# DaemonSet (svc_election=true), because egress services require service election.
+kube_vip_egress_enable: true
+
+# HA Service Election (US2)
+# Note: This remains configurable for non-egress scenarios, but if
+# kube_vip_egress_enable=true then service election is forced on.
+kube_vip_service_election_enable: true
+
+# List of Service configurations to create when LoadBalancer is enabled
+kube_vip_services: []
+# Example format:
+# kube_vip_services:
+#   - name: egress-default-lb
+#     namespace: kube-system
+#     external_traffic_policy: Local
+#     egress_enabled: true
+#     selector:
+#       app: my-app
+#     ports:
+#       - name: http
+#         port: 80
+#         target_port: 80
 
 # Add-ons enablement (deployed via cluster-addons.yml)
 cert_manager_enabled: false

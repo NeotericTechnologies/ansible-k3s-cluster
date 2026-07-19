@@ -1,0 +1,36 @@
+{% if kube_vip_effective_services | default(kube_vip_services | default([])) | length > 0 %}
+{% for svc in (kube_vip_effective_services | default(kube_vip_services | default([]))) %}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ svc.name }}"
+  namespace: "{{ svc.namespace | default('default') }}"
+  annotations:
+    kube-vip.io/egress: "{{ 'true' if (svc.egress_enabled | default(true) | bool) else 'false' }}"
+    {% if svc.egress_enabled | default(true) | bool %}
+    kube-vip.io/egress-internal: "true"
+    {% endif %}
+    {% if svc.annotations is defined %}
+    {% for k, v in svc.annotations.items() %}
+    {{ k }}: "{{ v }}"
+    {% endfor %}
+    {% endif %}
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: "{{ svc.external_traffic_policy | default('Local') }}"
+  selector:
+    {% for k, v in (svc.selector | default({})).items() %}
+    {{ k }}: "{{ v }}"
+    {% endfor %}
+  ports:
+    {% for port in (svc.ports | default([])) %}
+    - name: "{{ port.name | default('port-' ~ loop.index) }}"
+      port: {{ port.port }}
+      targetPort: {{ port.target_port | default(port.port) }}
+      {% if port.protocol is defined %}
+      protocol: "{{ port.protocol }}"
+      {% endif %}
+    {% endfor %}
+{% endfor %}
+{% endif %}

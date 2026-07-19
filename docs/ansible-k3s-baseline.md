@@ -58,6 +58,10 @@ Worker Nodes:
 
 kube-vip:
 - ARP broadcasts for VIP failover (Layer 2 network)
+- Default-on Egress routing mapping with opt-out annotation hooks
+- HA service-election coordination for active service advertisements
+- Environment-wide consistent DHCP LoadBalancer IP allocation
+- Workload LoadBalancer and egress Services declared through `kube_vip_services` in group_vars and applied by playbook runs
 
 **Internet Access:**
 - Required for downloading k3s binaries (get.k3s.io)

@@ -1,0 +1,55 @@
+---
+# Managed default egress gateway workload for kube-vip service-based egress
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ kube_vip_default_egress_gateway_name }}
+  namespace: {{ kube_vip_default_egress_gateway_namespace }}
+  labels:
+    app.kubernetes.io/name: kube-vip-egress-gateway
+spec:
+  replicas: {{ kube_vip_default_egress_gateway_replicas | int }}
+  selector:
+    matchLabels:
+      app: {{ kube_vip_default_egress_gateway_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ kube_vip_default_egress_gateway_name }}
+        app.kubernetes.io/name: kube-vip-egress-gateway
+    spec:
+      containers:
+        - name: egress-gateway
+          image: {{ kube_vip_default_egress_gateway_image }}
+          imagePullPolicy: IfNotPresent
+{% if kube_vip_default_egress_gateway_command | default([]) | length > 0 %}
+          command:
+{% for cmd in kube_vip_default_egress_gateway_command %}
+            - {{ cmd }}
+{% endfor %}
+{% endif %}
+{% if kube_vip_default_egress_gateway_args | default([]) | length > 0 %}
+          args:
+{% for arg in kube_vip_default_egress_gateway_args %}
+            - {{ arg | to_json }}
+{% endfor %}
+{% endif %}
+          ports:
+            - containerPort: {{ kube_vip_default_egress_gateway_port | int }}
+              name: egress
+              protocol: TCP
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: {{ kube_vip_default_egress_gateway_read_only_root_filesystem | bool | lower }}
+            runAsNonRoot: {{ kube_vip_default_egress_gateway_run_as_non_root | bool | lower }}
+            runAsUser: {{ kube_vip_default_egress_gateway_run_as_user | int }}
+            capabilities:
+              drop:
+                - ALL

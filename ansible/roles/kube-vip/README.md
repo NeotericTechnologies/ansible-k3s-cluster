@@ -85,10 +85,15 @@ curl -k https://<control_plane_vip>:6443/healthz
 # Check kube-vip pods
 kubectl get pods -n kube-system -l app.kubernetes.io/name=kube-vip
 
-# Test LoadBalancer service (if enabled)
-kubectl create service loadbalancer test --tcp=80:80
-kubectl get svc test  # Should show EXTERNAL-IP from pool
+# Verify playbook-managed LoadBalancer services from kube_vip_services
+kubectl get svc -A | grep -E 'LoadBalancer|EXTERNAL-IP'
 ```
+
+## Egress Services Configuration
+
+Configure workload egress Services via `kube_vip_services` in `ansible/group_vars/all.yml` and re-run `ansible/playbooks/cluster-core.yml`. The role renders and applies these Service resources automatically; manual `kubectl create service` steps are not required.
+
+When `kube_vip_egress_enable: true`, service election is enabled automatically in the rendered kube-vip DaemonSet (`svc_election=true`) even if `kube_vip_service_election_enable` is set to `false`. This enforces the kube-vip requirement that egress operation depends on service election.
 
 ## Migration Notes
 
