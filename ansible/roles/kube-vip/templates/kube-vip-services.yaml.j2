@@ -1,5 +1,5 @@
-{% if kube_vip_services | default([]) | length > 0 %}
-{% for svc in kube_vip_services %}
+{% if kube_vip_effective_services | default(kube_vip_services | default([])) | length > 0 %}
+{% for svc in (kube_vip_effective_services | default(kube_vip_services | default([]))) %}
 ---
 apiVersion: v1
 kind: Service

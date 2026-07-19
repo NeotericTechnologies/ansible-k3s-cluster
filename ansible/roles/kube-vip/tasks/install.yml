@@ -34,8 +34,19 @@
   block:
     - name: Perform local manifest dry-run testing (T005)
       ansible.builtin.shell: >-
-        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl auth can-i create clusterrole --as=system:serviceaccount:kube-system:kube-vip --dry-run=client
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl auth can-i create clusterrole --as=system:serviceaccount:kube-system:kube-vip
+      register: kube_vip_rbac_probe
       changed_when: false
+      failed_when: false
+
+    - name: Report non-blocking RBAC probe result
+      ansible.builtin.debug:
+        msg: >-
+          kube-vip RBAC probe returned '{{ kube_vip_rbac_probe.stdout | default('unknown') }}'.
+          Continuing bootstrap checks; readiness/discovery probes are authoritative.
+      when:
+        - (kube_vip_rbac_probe.rc | default(0) | int) != 0 or
+          (kube_vip_rbac_probe.stdout | default('') | trim | lower) != 'yes'
 
     - name: Wait for Kubernetes API readiness endpoint
       ansible.builtin.command: >-
@@ -66,7 +77,7 @@
       failed_when: false
 
     - name: Collect recent k3s journal logs for diagnostics
-      ansible.builtin.command: journalctl -u k3s -n 200 --no-pager
+      ansible.builtin.command: journalctl -u k3s -n 80 --no-pager
       register: kube_vip_diag_journal
       changed_when: false
       failed_when: false
@@ -84,12 +95,13 @@
       ansible.builtin.debug:
         msg: |
           kube-vip bootstrap blocked: Kubernetes API is not ready.
+          Showing last 60 lines of systemctl and journal output.
 
           systemctl status k3s:
-          {{ kube_vip_diag_systemctl.stdout | default('no output') }}
+          {{ ((kube_vip_diag_systemctl.stdout_lines | default([]))[-60:] | join('\n')) if (kube_vip_diag_systemctl.stdout_lines | default([]) | length) > 0 else 'no output' }}
 
-          journalctl -u k3s -n 200:
-          {{ kube_vip_diag_journal.stdout | default('no output') }}
+          journalctl -u k3s -n 80:
+          {{ ((kube_vip_diag_journal.stdout_lines | default([]))[-60:] | join('\n')) if (kube_vip_diag_journal.stdout_lines | default([]) | length) > 0 else 'no output' }}
 
           kubectl get --raw=/readyz?verbose:
           {{ kube_vip_diag_readyz.stdout | default(kube_vip_diag_readyz.stderr | default('no output')) }}
@@ -100,19 +112,94 @@
           kube-vip bootstrap failed because Kubernetes API readiness/discovery checks did not succeed.
           Review the diagnostics printed above.
 
-- name: Apply kube-vip RBAC manifests via API
+- name: Build kube-vip RBAC manifest list
+  ansible.builtin.set_fact:
+    kube_vip_rbac_manifests: "{{ lookup('template', 'kube-vip-rbac.yaml.j2') | from_yaml_all | list }}"
+  when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Apply kube-vip RBAC manifests via API (except cloud-controller ClusterRoleBinding)
   kubernetes.core.k8s:
     definition: "{{ item }}"
     state: present
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     host: https://127.0.0.1:6443
     validate_certs: false
-  loop: "{{ lookup('template', 'kube-vip-rbac.yaml.j2') | from_yaml_all | list }}"
+  loop: "{{ kube_vip_rbac_manifests }}"
   loop_control:
     label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - item is not none
+    - not (item.kind == 'ClusterRoleBinding' and item.metadata.name == 'kube-vip-cloud-controller')
+
+- name: Apply kube-vip cloud-controller ClusterRoleBinding via API
+  when: inventory_hostname == groups['k3s_servers'][0]
+  block:
+    - name: Select desired cloud-controller ClusterRoleBinding manifest
+      ansible.builtin.set_fact:
+        kube_vip_cloud_controller_crb_definition: >-
+          {{
+            kube_vip_rbac_manifests
+            | selectattr('kind', 'equalto', 'ClusterRoleBinding')
+            | selectattr('metadata.name', 'equalto', 'kube-vip-cloud-controller')
+            | first
+          }}
+
+    - name: Read existing cloud-controller ClusterRoleBinding
+      kubernetes.core.k8s_info:
+        api_version: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        name: kube-vip-cloud-controller
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+      register: kube_vip_cloud_controller_crb_info
+
+    - name: Detect immutable roleRef drift on cloud-controller ClusterRoleBinding
+      ansible.builtin.set_fact:
+        kube_vip_cloud_controller_crb_role_ref_mismatch: >-
+          {{
+            (kube_vip_cloud_controller_crb_info.resources | default([]) | length) > 0 and
+            (
+              (kube_vip_cloud_controller_crb_info.resources[0].roleRef.apiGroup | default('')) !=
+              (kube_vip_cloud_controller_crb_definition.roleRef.apiGroup | default('')) or
+              (kube_vip_cloud_controller_crb_info.resources[0].roleRef.kind | default('')) !=
+              (kube_vip_cloud_controller_crb_definition.roleRef.kind | default('')) or
+              (kube_vip_cloud_controller_crb_info.resources[0].roleRef.name | default('')) !=
+              (kube_vip_cloud_controller_crb_definition.roleRef.name | default(''))
+            )
+          }}
+
+    - name: Replace cloud-controller ClusterRoleBinding when immutable roleRef drift is detected
+      kubernetes.core.k8s:
+        api_version: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        name: kube-vip-cloud-controller
+        state: absent
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+      when:
+        - kube_vip_cloud_controller_crb_role_ref_mismatch | bool
+        - not ansible_check_mode
+
+    - name: Apply cloud-controller ClusterRoleBinding
+      kubernetes.core.k8s:
+        definition: "{{ kube_vip_cloud_controller_crb_definition }}"
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        host: https://127.0.0.1:6443
+        validate_certs: false
+      when: not (ansible_check_mode and (kube_vip_cloud_controller_crb_role_ref_mismatch | bool))
+
+    - name: Report immutable roleRef drift in check mode
+      ansible.builtin.debug:
+        msg: >-
+          Check mode detected immutable roleRef drift for ClusterRoleBinding/kube-vip-cloud-controller.
+          A normal run (without --check) will replace the binding and converge to the desired roleRef.
+      when:
+        - ansible_check_mode
+        - kube_vip_cloud_controller_crb_role_ref_mismatch | bool
 
 - name: Retrieve dynamic cluster networking configuration
   block:
@@ -121,19 +208,48 @@
         KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl cluster-info dump | grep -m 1 cluster-cidr | tr -d '", ' | cut -d= -f2
       register: retrieved_cluster_cidr
       changed_when: false
-      failed_when: retrieved_cluster_cidr.stdout | trim | length == 0
+      failed_when: false
 
     - name: Query live cluster Service CIDR (service-cluster-ip-range)
       ansible.builtin.shell: >-
         KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl cluster-info dump | grep -m 1 service-cluster-ip-range | tr -d '", ' | cut -d= -f2
       register: retrieved_service_cidr
       changed_when: false
-      failed_when: retrieved_service_cidr.stdout | trim | length == 0
+      failed_when: false
+
+    - name: Query k3s service cluster CIDR fallback
+      ansible.builtin.shell: >-
+        systemctl cat k3s | grep -m 1 -o -- '--cluster-cidr=[^ ]*' | cut -d= -f2
+      register: retrieved_cluster_cidr_fallback
+      changed_when: false
+      failed_when: false
+
+    - name: Query k3s service service CIDR fallback
+      ansible.builtin.shell: >-
+        systemctl cat k3s | grep -m 1 -o -- '--service-cidr=[^ ]*' | cut -d= -f2
+      register: retrieved_service_cidr_fallback
+      changed_when: false
+      failed_when: false
 
     - name: Set dynamic cluster networking facts
       ansible.builtin.set_fact:
-        dynamic_cluster_cidr: "{{ retrieved_cluster_cidr.stdout | trim }}"
-        dynamic_service_cidr: "{{ retrieved_service_cidr.stdout | trim }}"
+        dynamic_cluster_cidr: >-
+          {{
+            (retrieved_cluster_cidr.stdout | default('') | trim)
+            or (retrieved_cluster_cidr_fallback.stdout | default('') | trim)
+            or '10.42.0.0/16'
+          }}
+        dynamic_service_cidr: >-
+          {{
+            (retrieved_service_cidr.stdout | default('') | trim)
+            or (retrieved_service_cidr_fallback.stdout | default('') | trim)
+            or '10.43.0.0/16'
+          }}
+
+    - name: Report resolved cluster networking values
+      ansible.builtin.debug:
+        msg: >-
+          Using cluster CIDR {{ dynamic_cluster_cidr }} and service CIDR {{ dynamic_service_cidr }} for kube-vip egress.
   when:
     - inventory_hostname == groups['k3s_servers'][0]
 
@@ -171,6 +287,54 @@
     (kube_vip_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
   when: inventory_hostname == groups['k3s_servers'][0]
+
+- name: Detect pre-defined default kube-vip egress service
+  ansible.builtin.set_fact:
+    kube_vip_default_egress_already_defined: >-
+      {{
+        (
+          kube_vip_services | default([])
+          | selectattr('name', 'equalto', kube_vip_default_egress_service.name)
+          | selectattr('namespace', 'equalto', (kube_vip_default_egress_service.namespace | default('default')))
+          | list
+          | length
+        ) > 0
+      }}
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+
+- name: Compute effective kube-vip service definitions
+  ansible.builtin.set_fact:
+    kube_vip_effective_services: >-
+      {{
+        (kube_vip_services | default([]))
+        +
+        (
+          [kube_vip_default_egress_service]
+          if
+          (
+            (kube_vip_default_egress_service_enabled | default(false) | bool)
+            and not (kube_vip_default_egress_already_defined | default(false) | bool)
+          )
+          else
+          []
+        )
+      }}
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+
+- name: Report default kube-vip egress service injection
+  ansible.builtin.debug:
+    msg: >-
+      Added default kube-vip egress service {{ kube_vip_default_egress_service.namespace | default('default') }}/{{ kube_vip_default_egress_service.name }}
+      to effective service set.
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - kube_vip_default_egress_service_enabled | default(false) | bool
+    - not (kube_vip_default_egress_already_defined | default(false) | bool)
 
 - name: Verify service election is configured in DaemonSet if enabled
   ansible.builtin.assert:
@@ -224,6 +388,22 @@
     - kube_vip_lb_enable | default(false)
     - item is not none
 
+- name: Apply default kube-vip egress gateway deployment via API
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-egress-gateway.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - kube_vip_default_egress_gateway_enabled | default(false) | bool
+    - item is not none
+
 - name: Deploy configured loadbalancer and egress services via API
   kubernetes.core.k8s:
     definition: "{{ item }}"
@@ -237,8 +417,104 @@
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - kube_vip_lb_enable | default(false)
-    - kube_vip_services | default([]) | length > 0
+    - kube_vip_effective_services | default([]) | length > 0
     - item is not none
+
+- name: Wait for default kube-vip egress gateway deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ kube_vip_default_egress_gateway_name }}"
+    namespace: "{{ kube_vip_default_egress_gateway_namespace }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  register: kube_vip_egress_gateway_deployment
+  retries: 18
+  delay: 5
+  until: >-
+    (kube_vip_egress_gateway_deployment.resources | default([]) | length) > 0 and
+    (kube_vip_egress_gateway_deployment.resources[0].status.readyReplicas | default(0) | int) > 0
+  changed_when: false
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - kube_vip_default_egress_gateway_enabled | default(false) | bool
+
+- name: Determine whether live kube-vip service election validation is applicable
+  ansible.builtin.set_fact:
+    kube_vip_service_election_validation_enabled: >-
+      {{
+        (kube_vip_egress_enable | default(false) | bool) or
+        ((kube_vip_effective_services | default([]) | length) > 0)
+      }}
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - (kube_vip_service_election_enable | default(true) | bool) or (kube_vip_egress_enable | default(true) | bool)
+
+- name: Report skipped live kube-vip service election validation
+  ansible.builtin.debug:
+    msg: >-
+      Skipping live plndr-svcs-lock validation because no playbook-managed LoadBalancer or egress services are configured.
+      Control-plane leader election remains validated separately by kube-vip DaemonSet readiness.
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - (kube_vip_service_election_enable | default(true) | bool) or (kube_vip_egress_enable | default(true) | bool)
+    - not (kube_vip_service_election_validation_enabled | default(false) | bool)
+
+- name: Wait for kube-vip service election lease to report activity
+  kubernetes.core.k8s_info:
+    api_version: coordination.k8s.io/v1
+    kind: Lease
+    name: plndr-svcs-lock
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  register: kube_vip_service_election_lease
+  retries: 18
+  delay: 5
+  until: >-
+    (kube_vip_service_election_lease.resources | default([]) | length) > 0 and
+    (kube_vip_service_election_lease.resources[0].spec.leaseDurationSeconds | default(0) | int) > 0 and
+    (kube_vip_service_election_lease.resources[0].spec.renewTime | default('') | length) > 0
+  changed_when: false
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - (kube_vip_service_election_enable | default(true) | bool) or (kube_vip_egress_enable | default(true) | bool)
+    - kube_vip_service_election_validation_enabled | default(false) | bool
+
+- name: Verify kube-vip service election lease health
+  ansible.builtin.assert:
+    that:
+      - (kube_vip_service_election_lease.resources | default([]) | length) > 0
+      - (kube_vip_service_election_lease.resources[0].spec.leaseDurationSeconds | default(0) | int) > 0
+      - (kube_vip_service_election_lease.resources[0].spec.acquireTime | default('') | length) > 0
+      - (kube_vip_service_election_lease.resources[0].spec.renewTime | default('') | length) > 0
+    fail_msg: >-
+      kube-vip service election lease validation failed. Expected Lease/kube-system/plndr-svcs-lock
+      to have leaseDurationSeconds, acquireTime, and renewTime set.
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - (kube_vip_service_election_enable | default(true) | bool) or (kube_vip_egress_enable | default(true) | bool)
+    - kube_vip_service_election_validation_enabled | default(false) | bool
+
+- name: Report empty kube-vip service election holder identity (non-blocking)
+  ansible.builtin.debug:
+    msg: >-
+      Lease/kube-system/plndr-svcs-lock has empty holderIdentity while renewTime is present.
+      Treating lease as active because renewal fields are updating.
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_lb_enable | default(false)
+    - (kube_vip_service_election_enable | default(true) | bool) or (kube_vip_egress_enable | default(true) | bool)
+    - kube_vip_service_election_validation_enabled | default(false) | bool
+    - (kube_vip_service_election_lease.resources | default([]) | length) > 0
+    - (kube_vip_service_election_lease.resources[0].spec.holderIdentity | default('') | trim) == ''
 
 - name: Verify control-plane VIP is reachable
   ansible.builtin.wait_for:
