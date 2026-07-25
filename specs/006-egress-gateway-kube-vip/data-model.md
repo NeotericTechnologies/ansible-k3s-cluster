@@ -149,11 +149,12 @@ A `CiliumEgressGatewayPolicy` custom resource that steers matching pod egress tr
 | `kube_vip_egress_policy_name` | `defaults/main.yml` | string | Name of the CiliumEgressGatewayPolicy CR. Default: `egress-gateway-policy`. |
 | `kube_vip_egress_pod_selector` | `defaults/main.yml` | dict | Kubernetes label selector matching pods whose egress is gated. Default: `{}` (match all — operator should restrict). |
 | `kube_vip_egress_namespace_selector` | `defaults/main.yml` | dict | Namespace selector for the policy. Default: `{}`. |
-| `kube_vip_egress_gateway_node_selector` | `defaults/main.yml` | dict | Node selector for the gateway node. Must match the node holding the kube-vip egress VIP. |
+| `kube_vip_egress_gateway_node_selector` | `defaults/main.yml` | dict | Label selector for the **pool** of eligible gateway nodes. kube-vip `svc_election` elects the active VIP holder; Cilium detects the active node via ARP. Default: `{node-role.kubernetes.io/control-plane: "true"}`. |
 | `kube_vip_egress_gateway_interface` | `defaults/main.yml` | string | Network interface for egress on gateway node. Default: `{{ kube_vip_interface }}`. |
 
 **Validation rules**:
 - `kube_vip_egress_gateway_node_selector` MUST be non-empty when `kube_vip_egress_enabled: true`
+- SHOULD select ≥2 nodes in HA clusters to avoid single-node dependency
 
 ---
 

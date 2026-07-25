@@ -15,8 +15,14 @@
 **Mechanics** (confirmed: https://kube-vip.io/docs/usage/egress/):
 - Pod traffic source IP is rewritten by kube-vip to the LoadBalancer VIP
 - `externalTrafficPolicy: Local` required — VIP must be on same node as pod
-- `serviceElection` (`svc_election: "true"`) required — ensures VIP follows pods across nodes
+- `serviceElection` (`svc_election: "true"`) required — ensures VIP follows pods across nodes via per-service leader election
 - Auto-detection of pod/service CIDRs; configurable via `egress_podcidr`/`egress_servicecidr` env vars
+
+**HA design** (confirmed: Cilium egress gateway active-backup + kube-vip svc_election):
+- `CiliumEgressGatewayPolicy.egressGateway.nodeSelector` targets a **pool** of nodes (e.g., all control-plane nodes), not a single hostname
+- kube-vip `svc_election` elects the active egress VIP holder within that pool; VIP migrates on node failure via ARP
+- Cilium detects which node currently has `egressIP` bound (via ARP/neighbor table) and routes pod egress there — synchronization is automatic, no Ansible coordination required during failover
+- Pinning `nodeSelector` to a single hostname (`kubernetes.io/hostname: node1`) creates SPOF — operators MUST use a role/group label
 
 **Alternatives considered**:
 - kube-vip egress v1 (pre-v1.0, iptables-based): rejected — current version is v1.0+, v2 is native

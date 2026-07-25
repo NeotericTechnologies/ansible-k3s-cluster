@@ -42,9 +42,13 @@ kube_vip_egress_pod_selector: {}
 # Namespace selector for the CiliumEgressGatewayPolicy
 kube_vip_egress_namespace_selector: {}
 
-# Node selector for the egress gateway node (must match the node holding the kube-vip egress VIP)
-# REQUIRED when kube_vip_egress_enabled: true
-kube_vip_egress_gateway_node_selector: {}  # e.g. {kubernetes.io/hostname: "node1"}
+# Node selector for the POOL of eligible egress gateway nodes.
+# kube-vip svc_election elects the active VIP holder within this pool.
+# Cilium egress gateway active-backup detects which node has egressIP bound (via ARP)
+# and routes there automatically — no manual sync required on failover.
+# Default targets all control-plane nodes; narrow only if a dedicated gateway node pool is used.
+kube_vip_egress_gateway_node_selector:
+  node-role.kubernetes.io/control-plane: "true"
 
 # Network interface for egress on the gateway node
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
@@ -125,7 +129,7 @@ cilium_helm_values: {}
 | `kube_vip_lb_dhcp_enabled: true` AND `kube_vip_lb_ip_range` non-empty | Playbook fails with descriptive error |
 | `kube_vip_egress_enabled: true` AND `cilium_enabled: false` | Playbook fails: "Cilium CNI required for egress gateway" |
 | `kube_vip_egress_enabled: true` AND `kube_vip_egress_ip` empty | Playbook fails: "kube_vip_egress_ip required when kube_vip_egress_enabled" |
-| `kube_vip_egress_enabled: true` AND `kube_vip_egress_gateway_node_selector` empty | Playbook fails: "kube_vip_egress_gateway_node_selector required when kube_vip_egress_enabled" |
+| `kube_vip_egress_enabled: true` AND `kube_vip_egress_gateway_node_selector` empty | Playbook fails: "kube_vip_egress_gateway_node_selector must not be empty — specify at least one label to select the gateway node pool" |
 | `kube_vip_egress_enabled: true` | `kube_vip_svc_election_enabled` forced `true` |
 
 ---

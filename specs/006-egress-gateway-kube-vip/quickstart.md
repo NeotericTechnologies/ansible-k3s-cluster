@@ -173,7 +173,7 @@ kube_vip_egress_enabled: true
 kube_vip_egress_ip: "192.168.1.245"  # reserved IP outside LB pool
 kube_vip_egress_hostname: "egress.cluster.local"
 kube_vip_egress_gateway_node_selector:
-  kubernetes.io/hostname: "server-node-1"  # node that will hold the VIP
+  node-role.kubernetes.io/control-plane: "true"  # pool of eligible gateway nodes — kube-vip svc_election + Cilium active-backup determine active node
 kube_vip_egress_pod_selector:
   egress-gated: "true"
 kube_vip_egress_namespace_selector: {}
