@@ -105,6 +105,7 @@ description: "Task list for Egress Gateway and Kube-VIP Enhancements"
 - [ ] T025 [P] [US1] Update `docs/ansible-k3s-baseline.md` — remove "No Calico/Cilium" non-goal statement; add Cilium CNI section documenting egress gateway capability, `--flannel-backend=none`, `--disable-network-policy` k3s flags (FR-012)
 - [ ] T026 [P] [US1] Update `ansible/roles/cilium/README.md` — document k3s flags required, Flannel migration note, `cilium_version` pinning requirement, and auto-enable behavior with egress gateway
 - [ ] T027 [P] [US1] Update `ansible/roles/kube-vip/README.md` — document all egress gateway variables, `kube_vip_egress_gateway_node_selector` CONSTRAINT (must target subset of control-plane nodes where kube-vip DaemonSet runs), and failover behavior
+- [ ] T027a [P] [US1] Update `docs/ansible-structure.md` — (a) replace Flannel port entries (`8472/udp`, `51820/udp`, `51821/udp`) in Network Requirements with Cilium equivalents (`8472/udp` VXLAN or `4240/tcp` health, `4244/tcp` Hubble) annotated as CNI-dependent; (b) update Non-Goals to replace "Custom CNI plugins beyond Flannel" with a note that Cilium is the supported CNI when egress gateway is enabled; (c) add a new **CNI Selection** subsection under Variable Structure documenting: this decision must be made at initial cluster deployment — Flannel-to-Cilium migration on a live cluster requires rolling k3s-server restarts and Flannel artifact cleanup; recommend Cilium (`cilium_enabled: true`) for any cluster intended to support egress or ingress gateway; document the deciding factors (stable predictable egress IP, `CiliumEgressGatewayPolicy` pod-level traffic steering, HA failover via kube-vip svc_election) vs Flannel (simpler, no egress gateway capability); note Flannel remains the default (`cilium_enabled: false`) for clusters that do not require egress gateway
 
 ---
 
@@ -175,8 +176,9 @@ US2 (T015–T018): no US dependency; requires T001–T009
 US1 (T019–T027): requires US4 (consolidated RBAC) + US2 (svc_election) + T008, T009 (Cilium role)
 US3 (T028–T031): independent; requires T001–T009 (validate.yml, configmap template)
 
+T027a: requires T009 (Cilium role exists for context); parallel with T025–T027
 T032: requires T009 (Cilium role exists); implement alongside Phase 2
-T033: requires T009 (Cilium role); cluster-core.yml integration
+T033: requires T009, T032 (Cilium role with k3s flags); cluster-core.yml integration
 T034: requires T033 (Cilium in cluster-core.yml); cluster-addons.yml integration
 T035: requires T009 (Cilium role); component-registry.yml entry
 T036: requires T035 (registry entry references upgrade-cilium.yml)
@@ -190,7 +192,8 @@ T038, T039: require all implementation tasks complete (T001–T037)
 - US2: T015 (test) can run in parallel with T016–T017 (implementation); T018 (README) is parallel
 - US1: T020, T021 (templates) can run in parallel; T024–T027 (docs/defaults) can run in parallel after T020–T023
 - US3: T028 (test) can run in parallel with T029–T030 (implementation); T031 (README) is parallel
-- Phase 7: T032, T033, T034, T037 can proceed as soon as T009 (Cilium role) is complete; T034 and T037 are parallel; T036 requires T035
+- Phase 5 docs: T025, T026, T027, T027a can all run in parallel once T009 is complete
+- Phase 7: T032 can proceed as soon as T009 is complete; T033 requires T032; T034 and T037 are parallel; T036 requires T035
 
 ---
 
