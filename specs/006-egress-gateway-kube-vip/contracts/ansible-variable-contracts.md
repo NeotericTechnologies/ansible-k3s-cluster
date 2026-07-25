@@ -26,12 +26,6 @@ kube_vip_egress_hostname: ""  # e.g. "egress.cluster.local"
 # Namespace for the egress LoadBalancer Service
 kube_vip_egress_namespace: "kube-system"
 
-# Override auto-detected pod CIDR for kube-vip egress rules (leave empty for auto-detect)
-kube_vip_egress_pod_cidr_override: ""
-
-# Override auto-detected service CIDR for kube-vip egress rules (leave empty for auto-detect)
-kube_vip_egress_svc_cidr_override: ""
-
 # Name of the CiliumEgressGatewayPolicy CR created by this role
 kube_vip_egress_policy_name: "egress-gateway-policy"
 
@@ -55,8 +49,10 @@ kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
 ```
 
 **Side effects when `kube_vip_egress_enabled: true`**:
-- `kube_vip_svc_election_enabled` is forced `true` (required for egress `externalTrafficPolicy: Local`)
+- `kube_vip_svc_election_enabled` is forced `true` (required so kube-vip binds the egress VIP to the active gateway node)
 - Cilium presence is asserted; playbook fails if Cilium is not the active CNI
+
+**Design note**: The egress LoadBalancer Service is a standard kube-vip LB service — NO `kube-vip.io/egress-internal` annotation, NO `externalTrafficPolicy: Local`. kube-vip manages the VIP lifecycle only. Cilium `CiliumEgressGatewayPolicy` handles pod selection, traffic routing, and SNAT using `egressIP: {{ kube_vip_egress_ip }}`.
 
 ---
 

@@ -8,25 +8,29 @@
 
 ## Decision 1: kube-vip Egress Mechanism
 
-**Decision**: Use kube-vip egress v2 (internal implementation, available v1.0+).
+**Decision**: kube-vip acts as **pure VIP manager** for the egress IP — it binds the stable IP to the active gateway node's interface via `svc_election`. Cilium `CiliumEgressGatewayPolicy` performs all pod traffic routing and SNAT using that VIP as `egressIP`. kube-vip's own egress annotation (`kube-vip.io/egress-internal`) is NOT used.
 
-**Rationale**: Current pinned version is v1.1.2 (confirmed: `group_vars/all.yml`). kube-vip v1.0+ ships egress v2 — fully internal Go implementation, no external `iptables`/`nftables` binary dependency. Enabled via annotation `kube-vip.io/egress-internal: "true"` on a LoadBalancer Service. Requires `externalTrafficPolicy: Local` and `serviceElection` enabled.
+**Rationale**:
+- kube-vip egress v2 (`kube-vip.io/egress-internal: "true"`) and `CiliumEgressGatewayPolicy` both perform SNAT independently. Using both creates double-SNAT on the gateway node.
+- kube-vip egress requires `externalTrafficPolicy: Local` (pod must be on same node as VIP), which directly conflicts with Cilium's role of routing pod traffic TO the gateway node from any other node.
+- Correct separation of concerns: Cilium owns egress routing + SNAT; kube-vip owns HA VIP lifecycle.
 
-**Mechanics** (confirmed: https://kube-vip.io/docs/usage/egress/):
-- Pod traffic source IP is rewritten by kube-vip to the LoadBalancer VIP
-- `externalTrafficPolicy: Local` required — VIP must be on same node as pod
-- `serviceElection` (`svc_election: "true"`) required — ensures VIP follows pods across nodes via per-service leader election
-- Auto-detection of pod/service CIDRs; configurable via `egress_podcidr`/`egress_servicecidr` env vars
+**Mechanics**:
+- kube-vip creates a standard LoadBalancer Service with `loadBalancerIP: {{ kube_vip_egress_ip }}` — no egress annotations, no `externalTrafficPolicy: Local`
+- kube-vip `svc_election` binds the VIP to the current leader node's interface
+- `CiliumEgressGatewayPolicy` specifies `egressGateway.egressIP: {{ kube_vip_egress_ip }}` and `egressGateway.nodeSelector` matching the control-plane node pool
+- Cilium detects which node has the VIP bound (via ARP/neighbor table), routes matching pod egress there, and SNATs source IP to the VIP
+- On kube-vip VIP failover (node failure), kube-vip migrates VIP via ARP; Cilium detects the new binding and reroutes automatically — no external coordination required
 
-**HA design** (confirmed: Cilium egress gateway active-backup + kube-vip svc_election):
-- `CiliumEgressGatewayPolicy.egressGateway.nodeSelector` targets a **pool** of nodes (e.g., all control-plane nodes), not a single hostname
-- kube-vip `svc_election` elects the active egress VIP holder within that pool; VIP migrates on node failure via ARP
-- Cilium detects which node currently has `egressIP` bound (via ARP/neighbor table) and routes pod egress there — synchronization is automatic, no Ansible coordination required during failover
-- Pinning `nodeSelector` to a single hostname (`kubernetes.io/hostname: node1`) creates SPOF — operators MUST use a role/group label
+**HA design**:
+- `CiliumEgressGatewayPolicy.egressGateway.nodeSelector` targets the **pool** of eligible gateway nodes (e.g., `node-role.kubernetes.io/control-plane: "true"`), not a single hostname
+- kube-vip `svc_election` elects the active VIP holder within that pool; VIP migrates on node failure via ARP within the configured lease duration (≤15s default)
+- Pinning `nodeSelector` to a single hostname creates SPOF — operators MUST use a role/group label
 
 **Alternatives considered**:
-- kube-vip egress v1 (pre-v1.0, iptables-based): rejected — current version is v1.0+, v2 is native
-- Pure Cilium egress without kube-vip: rejected — spec requires combined HA VIP approach
+- kube-vip egress annotation + Cilium as CNI only: rejected — double-SNAT conflict; `externalTrafficPolicy: Local` incompatible with Cilium routing
+- Pure Cilium egress with static `egressIP` (no kube-vip): rejected — no HA for the egress IP; VIP would be lost on gateway node failure
+- kube-vip egress annotation alone (no Cilium EgressGatewayPolicy): rejected — requires all egress pods to follow the VIP node; no cluster-wide pod selection
 
 ---
 

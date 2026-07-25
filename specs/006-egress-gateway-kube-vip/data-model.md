@@ -18,14 +18,12 @@ A dedicated Kubernetes LoadBalancer Service that holds the cluster's stable outb
 | `kube_vip_egress_ip` | `defaults/main.yml` | string | IPv4 address for the egress VIP. Independent of `kube_vip_lb_ip_range`. No default — must be set by operator when enabled. |
 | `kube_vip_egress_hostname` | `defaults/main.yml` | string | Hostname associated with egress VIP (for documentation; DNS out of scope). Default: `""`. |
 | `kube_vip_egress_namespace` | `defaults/main.yml` | string | Namespace for the egress Service. Default: `kube-system`. |
-| `kube_vip_egress_pod_cidr_override` | `defaults/main.yml` | string | Overrides auto-detected pod CIDR for egress rules (`egress_podcidr`). Default: `""` (auto-detect). |
-| `kube_vip_egress_svc_cidr_override` | `defaults/main.yml` | string | Overrides auto-detected service CIDR for egress rules (`egress_servicecidr`). Default: `""` (auto-detect). |
 
 **Service manifest fields** (managed by kube-vip role template):
 - `type: LoadBalancer`
 - `loadBalancerIP: {{ kube_vip_egress_ip }}`
-- `externalTrafficPolicy: Local`
-- `annotations.kube-vip.io/egress-internal: "true"`
+- No egress annotations; no `externalTrafficPolicy: Local`
+- kube-vip manages VIP binding only; Cilium performs SNAT via `CiliumEgressGatewayPolicy`
 
 **State transitions**:
 1. `kube_vip_egress_enabled: false` (default) → no egress Service created, no Cilium policy applied
