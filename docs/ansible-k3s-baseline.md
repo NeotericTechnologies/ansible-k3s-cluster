@@ -54,10 +54,23 @@ Control-Plane Nodes:
 
 Worker Nodes:
 - `10250/tcp` - Kubelet API
-- `8472/udp` - Flannel VXLAN overlay network
+- `8472/udp` - Flannel VXLAN overlay network (default CNI) or Cilium VXLAN when `cilium_enabled: true`
+- `4240/tcp` - Cilium health checks (when `cilium_enabled: true`)
+- `4244/tcp` - Cilium Hubble (when `cilium_enabled: true`)
 
 kube-vip:
 - ARP broadcasts for VIP failover (Layer 2 network)
+
+### Cilium CNI and Egress Gateway
+
+Cilium is an opt-in CNI that replaces Flannel when `cilium_enabled: true` (`ansible/roles/cilium`).
+Enabling Cilium is required for the load-balanced egress gateway feature
+(`kube_vip_egress_enabled: true`, `ansible/roles/kube-vip`), which combines a kube-vip HA
+LoadBalancer VIP with a `CiliumEgressGatewayPolicy` to give the cluster a single, stable
+outbound source IP. k3s MUST start with `--flannel-backend=none --disable-network-policy`
+when Cilium is enabled. See [`ansible/roles/cilium/README.md`](../ansible/roles/cilium/README.md)
+and [`ansible/roles/kube-vip/README.md`](../ansible/roles/kube-vip/README.md) for configuration
+details.
 
 **Internet Access:**
 - Required for downloading k3s binaries (get.k3s.io)
@@ -167,9 +180,9 @@ This baseline intentionally does NOT include:
    - Use Rancher for multi-cluster needs
 
 3. **Advanced Networking**
-   - No Calico/Cilium integration
-   - No network policies by default
-   - Basic Flannel VXLAN only
+   - Cilium is supported as an opt-in CNI (`cilium_enabled: true`, replaces Flannel) — see [Cilium CNI and Egress Gateway](#cilium-cni-and-egress-gateway) below
+   - No network policies by default when Flannel is used (k3s default)
+   - Flannel VXLAN remains the default CNI
 
 4. **Complex Storage Solutions**
    - No Rook/Ceph integration

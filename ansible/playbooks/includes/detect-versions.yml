@@ -223,6 +223,7 @@
       rancher_monitoring: "{{ helm_version_map['rancher-monitoring'] | default('not_installed') }}"
       multus: "{{ multus_live_version | regex_replace('^:', '') }}"
       synology_csi: "{{ synology_csi_live_version | regex_replace('^:', '') }}"
+      cilium: "{{ helm_version_map['cilium'] | default('not_installed') }}"
 
 - name: Set fresh install flag
   ansible.builtin.set_fact:

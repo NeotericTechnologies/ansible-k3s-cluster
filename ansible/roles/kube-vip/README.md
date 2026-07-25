@@ -26,12 +26,82 @@ This role supports **kube-vip v1.1.2** and compatible cloud-provider versions. S
 - Binds VIP to specified network interface
 - Provides highly available Kubernetes API access via VIP
 
+### Consolidated RBAC (FR-008, FR-009)
+
+- Single ClusterRole `kube-vip` (`templates/kube-vip-rbac.yaml.j2`) grants the union of permissions
+  required by both the kube-vip DaemonSet and the kube-vip-cloud-controller Deployment.
+- Two ServiceAccounts (`kube-vip`, `kube-vip-cloud-controller`) and two ClusterRoleBindings, both
+  referencing the single ClusterRole.
+- Applied with `state: present` before the DaemonSet/Deployment on every run — clean overwrite,
+  no custom-rule detection or migration. Any manually applied rules not in the template are
+  overwritten on the next role run (by design).
+
 ### Service Load Balancer (FR-012)
 
 - Deploys kube-vip cloud controller for LoadBalancer service type
 - Creates ConfigMap with IP address pool for LoadBalancer IPs
 - Enables LoadBalancer services (replaces k3s default servicelb/klipper-lb)
 - Uses nftables for port forwarding (v1.1.2+)
+
+### DHCP Mode for LoadBalancer IPs (FR-007, FR-010)
+
+- `kube_vip_lb_dhcp_enabled: true` switches the LoadBalancer IP pool from the static
+  `kube_vip_lb_ip_range` to per-service DHCP-assigned addresses.
+- **Mutually exclusive with `kube_vip_lb_ip_range`** — setting both a non-empty
+  `kube_vip_lb_ip_range` and `kube_vip_lb_dhcp_enabled: true` fails validation
+  (`ansible/roles/kube-vip/tasks/validate.yml`).
+- When enabled, the `kubevip` ConfigMap omits the `range-global` key entirely.
+- **DHCP networking prerequisites**:
+  - An external DHCP server reachable from the node network is required.
+  - Nodes must support macvlan interfaces with a MAC address the DHCP server can lease
+    against (kube-vip generates a macvlan interface per DHCP-assigned service).
+  - The `macvlan` kernel module must be loaded on all control-plane nodes.
+- **Operator action required per service**: set `loadBalancerIP: 0.0.0.0` on each Service
+  of `type: LoadBalancer` to request a DHCP-assigned address instead of one drawn from a
+  static pool.
+
+### Service Leader Election (FR-004, FR-005)
+
+
+- `kube_vip_svc_election_enabled: true` enables per-service leader election: each
+  LoadBalancer Service holds its own `coordination.k8s.io` Lease, and kube-vip instances
+  compete for it independently — spreads VIP ownership across nodes instead of pinning
+  all services to one global leader.
+- Automatically forced `true` when `kube_vip_egress_enabled: true` (required for egress VIP
+  binding to the active gateway node).
+- Lease timing is controlled via `vip_leaseduration` (default `15`s), `vip_renewdeadline`
+  (default `10`s), and `vip_retryperiod` (default `2`s).
+
+### Load-Balanced Egress Gateway (FR-001–FR-003a)
+
+Combines a kube-vip HA LoadBalancer VIP with a Cilium `CiliumEgressGatewayPolicy` so all
+outbound pod traffic exits through one stable, predictable IP. **Requires Cilium as the active
+CNI** (`cilium_enabled: true`, see `ansible/roles/cilium`) — the playbook fails otherwise.
+
+```yaml
+kube_vip_egress_enabled: false                # Master enable flag
+kube_vip_egress_ip: ""                        # REQUIRED when enabled — dedicated IP, independent of kube_vip_lb_ip_range
+kube_vip_egress_hostname: ""                  # Documentation only — DNS registration is out of scope
+kube_vip_egress_namespace: "kube-system"
+kube_vip_egress_policy_name: "egress-gateway-policy"
+kube_vip_egress_pod_selector: {}              # Label selector for gated pods — operators SHOULD restrict this
+kube_vip_egress_namespace_selector: {}
+kube_vip_egress_gateway_node_selector:
+  node-role.kubernetes.io/control-plane: "true"
+kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
+```
+
+**`kube_vip_egress_gateway_node_selector` CONSTRAINT**: MUST only match nodes where the kube-vip
+DaemonSet actually runs (the DaemonSet is hard-affinitized to
+`node-role.kubernetes.io/control-plane`). Targeting worker-only nodes means the egress IP is
+never bound and Cilium finds no active gateway — egress silently breaks. Select a subset of
+control-plane nodes; use ≥2 nodes in HA clusters to avoid a single point of failure.
+
+**Failover behavior**: kube-vip `svc_election` (auto-enabled) binds the egress VIP to the
+current leader node within the pool selected by `kube_vip_egress_gateway_node_selector`. On
+node failure, kube-vip migrates the VIP via ARP within `vip_leaseduration` (default 15s);
+Cilium detects the new binding automatically and reroutes matching pod egress — no manual
+coordination required.
 
 ## Role Variables
 

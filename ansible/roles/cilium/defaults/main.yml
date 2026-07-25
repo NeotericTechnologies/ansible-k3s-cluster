@@ -1,0 +1,12 @@
+---
+# ansible/roles/cilium/defaults/main.yml
+# Purpose: Default variables for cilium role
+# Reference: FR-003c, contracts/ansible-variable-contracts.md
+
+cilium_enabled: false
+cilium_version: ""
+cilium_namespace: "kube-system"
+cilium_helm_repo: "https://helm.cilium.io/"
+cilium_helm_release_name: "cilium"
+cilium_helm_values: {}
+cilium_egress_gateway_enabled: false

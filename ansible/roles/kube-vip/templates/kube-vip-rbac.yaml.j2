@@ -1,0 +1,69 @@
+---
+# ansible/roles/kube-vip/templates/kube-vip-rbac.yaml.j2
+# Purpose: Consolidated RBAC for kube-vip DaemonSet + kube-vip-cloud-controller
+# Reference: FR-008, FR-009, data-model.md §4, contracts/ansible-variable-contracts.md
+# Single ClusterRole `kube-vip` is the union of prior kube-vip + kube-vip-cloud-controller
+# ClusterRoles. Both ServiceAccounts bind to it via separate ClusterRoleBindings.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-vip
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-vip-cloud-controller
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-vip
+rules:
+  - apiGroups: [""]
+    resources: ["services", "services/status"]
+    verbs: ["list", "get", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["nodes", "endpoints"]
+    verbs: ["list", "get", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["list", "get", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["list", "get", "watch", "update", "create"]
+  # pods: add "list","get","watch" if kube-vip egress v2 requires pod tracking
+  # (verify against kube-vip v1.1.2 source at implementation time)
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-vip
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-vip
+subjects:
+  - kind: ServiceAccount
+    name: kube-vip
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-vip-cloud-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-vip
+subjects:
+  - kind: ServiceAccount
+    name: kube-vip-cloud-controller
+    namespace: kube-system

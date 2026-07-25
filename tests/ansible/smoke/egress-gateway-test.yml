@@ -1,0 +1,286 @@
+---
+# tests/ansible/smoke/egress-gateway-test.yml
+# Purpose: Smoke tests for Egress Gateway and Kube-VIP Enhancements (006-egress-gateway-kube-vip)
+# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/egress-gateway-test.yml
+# Reference: FR-013, SC-001, SC-002, SC-003, SC-004
+
+- name: Egress Gateway and Kube-VIP Enhancements Smoke Tests
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    # --- User Story 4: Consolidated RBAC ---
+    - name: Get consolidated kube-vip ClusterRole
+      ansible.builtin.command: kubectl get clusterrole kube-vip -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_clusterrole
+      changed_when: false
+
+    - name: Assert single consolidated ClusterRole kube-vip exists
+      ansible.builtin.assert:
+        that:
+          - kube_vip_clusterrole.rc == 0
+        fail_msg: "Consolidated ClusterRole 'kube-vip' not found"
+
+    - name: Get kube-vip ClusterRoleBinding roleRef
+      ansible.builtin.command: kubectl get clusterrolebinding kube-vip -o jsonpath='{.roleRef.name}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_crb_ref
+      changed_when: false
+
+    - name: Get kube-vip-cloud-controller ClusterRoleBinding roleRef
+      ansible.builtin.command: kubectl get clusterrolebinding kube-vip-cloud-controller -o jsonpath='{.roleRef.name}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_cc_crb_ref
+      changed_when: false
+
+    - name: Assert both ClusterRoleBindings reference the consolidated ClusterRole
+      ansible.builtin.assert:
+        that:
+          - kube_vip_crb_ref.stdout == "kube-vip"
+          - kube_vip_cc_crb_ref.stdout == "kube-vip"
+        fail_msg: "kube-vip and kube-vip-cloud-controller ClusterRoleBindings must both reference roleRef.name: kube-vip"
+
+    - name: Check kube-vip pod logs for RBAC-denied errors
+      ansible.builtin.shell: >-
+        kubectl logs -n kube-system -l app.kubernetes.io/name=kube-vip --tail=200 2>/dev/null
+        | grep -iE "forbidden|rbac|denied" || true
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_rbac_errors
+      changed_when: false
+
+    - name: Check kube-vip-cloud-controller pod logs for RBAC-denied errors
+      ansible.builtin.shell: >-
+        kubectl logs -n kube-system -l app.kubernetes.io/name=kube-vip-cloud-controller --tail=200 2>/dev/null
+        | grep -iE "forbidden|rbac|denied" || true
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_cc_rbac_errors
+      changed_when: false
+
+    - name: Assert zero RBAC-denied log lines (SC-004)
+      ansible.builtin.assert:
+        that:
+          - kube_vip_rbac_errors.stdout | length == 0
+          - kube_vip_cc_rbac_errors.stdout | length == 0
+        fail_msg: "RBAC-denied log lines found in kube-vip or kube-vip-cloud-controller pods"
+
+    # --- User Story 2: Service Election ---
+    - name: Get kube-vip DaemonSet env vars
+      ansible.builtin.command: >-
+        kubectl get daemonset kube-vip -n kube-system -o jsonpath='{.spec.template.spec.containers[0].env}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_ds_env
+      changed_when: false
+
+    - name: Assert svc_election env var present when service election is enabled
+      ansible.builtin.assert:
+        that:
+          - "'svc_election' in kube_vip_ds_env.stdout"
+        fail_msg: "svc_election env var not found in kube-vip DaemonSet pod spec"
+      when: kube_vip_svc_election_enabled | default(false) | bool
+
+    - name: Get service VIP leases in kube-system
+      ansible.builtin.command: kubectl get leases -n kube-system -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_leases
+      changed_when: false
+      when: kube_vip_svc_election_enabled | default(false) | bool
+
+    - name: Assert each service VIP lease has exactly one holder
+      ansible.builtin.assert:
+        that:
+          - (item.spec.holderIdentity | default('')) | length > 0
+        fail_msg: "Lease {{ item.metadata.name }} has no single holder — possible split-brain"
+      loop: "{{ (kube_vip_leases.stdout | from_json).items | default([]) }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      when: kube_vip_svc_election_enabled | default(false) | bool
+
+    # --- User Story 1: Load-Balanced Egress Gateway ---
+    - name: Get egress gateway Service
+      ansible.builtin.command: kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_svc
+      changed_when: false
+      when: kube_vip_egress_enabled | default(false) | bool
+
+    - name: Assert egress Service loadBalancerIP matches kube_vip_egress_ip (FR-013, SC-001)
+      ansible.builtin.assert:
+        that:
+          - (egress_svc.stdout | from_json).spec.loadBalancerIP == kube_vip_egress_ip
+        fail_msg: "Egress gateway Service loadBalancerIP does not match kube_vip_egress_ip"
+      when: kube_vip_egress_enabled | default(false) | bool
+
+    - name: Assert CiliumEgressGatewayPolicy exists
+      ansible.builtin.command: kubectl get ciliumegressgatewaypolicy {{ kube_vip_egress_policy_name | default('egress-gateway-policy') }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_policy
+      changed_when: false
+      failed_when: egress_policy.rc != 0
+      when: kube_vip_egress_enabled | default(false) | bool
+
+    - name: Launch test pod for egress source-IP verification
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: egress-gateway-smoke-test
+            namespace: default
+            labels: "{{ kube_vip_egress_pod_selector | default({}) }}"
+          spec:
+            containers:
+              - name: curl
+                image: curlimages/curl:latest
+                command: ["sleep", "120"]
+      when: kube_vip_egress_enabled | default(false) | bool
+
+    - name: Wait for test pod to be running
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        name: egress-gateway-smoke-test
+        namespace: default
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+      register: egress_test_pod
+      retries: 15
+      delay: 5
+      until: (egress_test_pod.resources | default([]) | length) > 0 and egress_test_pod.resources[0].status.phase == "Running"
+      when: kube_vip_egress_enabled | default(false) | bool
+
+    - name: Check outbound source IP from test pod (SC-001)
+      ansible.builtin.command: >-
+        kubectl exec -n default egress-gateway-smoke-test -- curl -s --max-time 10 {{ egress_source_ip_check_url | default('https://ifconfig.me') }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_source_ip
+      changed_when: false
+      failed_when: false
+      when: kube_vip_egress_enabled | default(false) | bool
+
+    - name: Assert observed egress source IP matches kube_vip_egress_ip (FR-013, SC-001)
+      ansible.builtin.assert:
+        that:
+          - egress_source_ip.stdout | trim == kube_vip_egress_ip
+        fail_msg: "Observed egress source IP '{{ egress_source_ip.stdout }}' does not match kube_vip_egress_ip '{{ kube_vip_egress_ip }}'"
+      when:
+        - kube_vip_egress_enabled | default(false) | bool
+        - egress_source_ip.rc == 0
+
+    - name: Clean up egress gateway test pod
+      kubernetes.core.k8s:
+        state: absent
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        api_version: v1
+        kind: Pod
+        name: egress-gateway-smoke-test
+        namespace: default
+      when: kube_vip_egress_enabled | default(false) | bool
+
+    # --- Egress gateway failover (FR-003, SC-002) ---
+    - name: Identify node currently holding the egress VIP
+      ansible.builtin.command: >-
+        kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }}
+        -o jsonpath='{.metadata.annotations.kube-vip\.io/vipHost}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_vip_host_before
+      changed_when: false
+      when:
+        - kube_vip_egress_enabled | default(false) | bool
+        - egress_run_failover_test | default(false) | bool
+
+    - name: Cordon node holding the egress VIP to simulate failure
+      ansible.builtin.command: kubectl cordon {{ egress_vip_host_before.stdout }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: true
+      when:
+        - kube_vip_egress_enabled | default(false) | bool
+        - egress_run_failover_test | default(false) | bool
+        - egress_vip_host_before.stdout | default('') | length > 0
+
+    - name: Wait for VIP to migrate within the configured lease duration
+      ansible.builtin.command: >-
+        kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }}
+        -o jsonpath='{.metadata.annotations.kube-vip\.io/vipHost}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_vip_host_after
+      changed_when: false
+      retries: "{{ (vip_leaseduration | default(15) | int) + 5 }}"
+      delay: 1
+      until: egress_vip_host_after.stdout | default('') != egress_vip_host_before.stdout | default('')
+      when:
+        - kube_vip_egress_enabled | default(false) | bool
+        - egress_run_failover_test | default(false) | bool
+        - egress_vip_host_before.stdout | default('') | length > 0
+
+    - name: Assert egress VIP migrated to a different node (SC-002)
+      ansible.builtin.assert:
+        that:
+          - egress_vip_host_after.stdout != egress_vip_host_before.stdout
+        fail_msg: "Egress VIP did not fail over to another node within vip_leaseduration"
+      when:
+        - kube_vip_egress_enabled | default(false) | bool
+        - egress_run_failover_test | default(false) | bool
+        - egress_vip_host_before.stdout | default('') | length > 0
+
+    - name: Uncordon previously cordoned node
+      ansible.builtin.command: kubectl uncordon {{ egress_vip_host_before.stdout }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: true
+      when:
+        - kube_vip_egress_enabled | default(false) | bool
+        - egress_run_failover_test | default(false) | bool
+        - egress_vip_host_before.stdout | default('') | length > 0
+
+    # --- User Story 3: DHCP Mode (FR-007, FR-010) ---
+    - name: Attempt playbook run with DHCP and static IP range both set (expected failure)
+      ansible.builtin.command: >-
+        ansible-playbook -i {{ dhcp_test_inventory | default('tests/ansible/inventories/local') }}
+        ansible/playbooks/cluster-core.yml
+        -e kube_vip_lb_dhcp_enabled=true -e kube_vip_lb_ip_range=192.168.1.200-192.168.1.220
+        --tags kube-vip
+      register: dhcp_conflict_run
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      when: dhcp_run_mutual_exclusion_test | default(false) | bool
+
+    - name: Assert mutually-exclusive DHCP + static range configuration fails the playbook (FR-007)
+      ansible.builtin.assert:
+        that:
+          - dhcp_conflict_run.rc != 0
+          - "'mutually exclusive' in dhcp_conflict_run.stdout or 'mutually exclusive' in dhcp_conflict_run.stderr"
+        fail_msg: "Playbook did not fail as expected for kube_vip_lb_dhcp_enabled + kube_vip_lb_ip_range conflict"
+      when: dhcp_run_mutual_exclusion_test | default(false) | bool
+
+    - name: Get kube-vip ConfigMap when DHCP mode is enabled
+      ansible.builtin.command: kubectl get configmap kubevip -n kube-system -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_dhcp_configmap
+      changed_when: false
+      when: kube_vip_lb_dhcp_enabled | default(false) | bool
+
+    - name: Assert ConfigMap omits range-global key when DHCP mode is enabled (FR-010)
+      ansible.builtin.assert:
+        that:
+          - "'range-global' not in ((kube_vip_dhcp_configmap.stdout | from_json).data | default({}))"
+        fail_msg: "kubevip ConfigMap must omit range-global when kube_vip_lb_dhcp_enabled is true"
+      when: kube_vip_lb_dhcp_enabled | default(false) | bool
+
+

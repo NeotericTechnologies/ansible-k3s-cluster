@@ -1,0 +1,48 @@
+---
+# ansible/roles/cilium/tasks/install.yml
+# Purpose: Install Cilium CNI via Helm; enable egress gateway datapath when required
+# Reference: FR-003c, FR-003a (cilium_egress_gateway_enabled), data-model.md §5
+
+- name: Auto-enable Cilium egress gateway datapath when kube-vip egress gateway is enabled
+  ansible.builtin.set_fact:
+    cilium_egress_gateway_enabled: true
+  when: kube_vip_egress_enabled | default(false) | bool
+
+- name: Merge egress gateway setting into Cilium Helm values
+  ansible.builtin.set_fact:
+    cilium_helm_values: "{{ cilium_helm_values | combine({'egressGateway': {'enabled': cilium_egress_gateway_enabled | bool}}, recursive=True) }}"
+
+- name: Add Cilium Helm repository
+  kubernetes.core.helm_repository:
+    name: cilium
+    repo_url: "{{ cilium_helm_repo }}"
+
+- name: Deploy Cilium Helm chart
+  kubernetes.core.helm:
+    name: "{{ cilium_helm_release_name }}"
+    chart_ref: cilium/cilium
+    chart_version: "{{ cilium_version }}"
+    release_namespace: "{{ cilium_namespace }}"
+    create_namespace: false
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    values: "{{ cilium_helm_values }}"
+    wait: true
+    wait_timeout: "300s"
+  register: cilium_helm_install
+
+- name: Wait for Cilium DaemonSet to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: cilium
+    namespace: "{{ cilium_namespace }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_ds
+  retries: 30
+  delay: 10
+  until: >-
+    (cilium_ds.resources | default([]) | length) > 0 and
+    (cilium_ds.resources[0].status.numberReady | default(0) | int) ==
+    (cilium_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
+    (cilium_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
+  changed_when: false

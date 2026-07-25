@@ -299,6 +299,30 @@
         - _curr_component == 'kube_vip'
         - _curr_action != 'none'
 
+    # Cilium
+    - name: "Execute cilium"
+      block:
+        - name: Display cilium context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install cilium
+          ansible.builtin.include_role:
+            name: cilium
+          when: _curr_action == 'install'
+
+        - name: Upgrade cilium
+          ansible.builtin.include_tasks: includes/upgrade-cilium.yml
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'cilium'
+        - _curr_action != 'none'
+
     # Rancher
     - name: "Execute rancher"
       block:

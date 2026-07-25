@@ -63,9 +63,11 @@ Before running the playbooks, ensure each target host meets the following requir
   - **6443/tcp**: Kubernetes API (control-plane VIP)
   - **10250/tcp**: Kubelet metrics
   - **2379-2380/tcp**: etcd (control-plane only, embedded etcd HA)
-  - **8472/udp**: Flannel VXLAN (default CNI)
-  - **51820/udp**: Flannel Wireguard (if using Wireguard backend)
-  - **51821/udp**: Flannel Wireguard (if using Wireguard backend)
+  - **8472/udp**: Flannel VXLAN (default CNI) or Cilium VXLAN (when `cilium_enabled: true`) — CNI-dependent
+  - **51820/udp**: Flannel Wireguard (if using Wireguard backend; not applicable when Cilium is enabled)
+  - **51821/udp**: Flannel Wireguard (if using Wireguard backend; not applicable when Cilium is enabled)
+  - **4240/tcp**: Cilium health checks (only when `cilium_enabled: true`)
+  - **4244/tcp**: Cilium Hubble (only when `cilium_enabled: true`)
 
 #### Software Prerequisites
 - **systemd**: Required for k3s service management
@@ -137,6 +139,23 @@ For development or small deployments:
 - `group_vars/k3s_agents.yml`: Worker node configuration
 - `host_vars/<hostname>.yml`: Per-host overrides (labels, taints, IPs)
 
+### CNI Selection
+
+The cluster supports two CNI options, chosen via `cilium_enabled`:
+
+- **Flannel** (default, `cilium_enabled: false`): Simpler, no egress or ingress gateway capability.
+- **Cilium** (opt-in, `cilium_enabled: true`, `ansible/roles/cilium`): Required for the
+  load-balanced egress gateway feature (`kube_vip_egress_enabled: true`). Provides pod-level
+  traffic steering via `CiliumEgressGatewayPolicy` and integrates with kube-vip `svc_election`
+  for HA failover of the egress VIP.
+
+This decision MUST be made at initial cluster deployment. Migrating an existing Flannel cluster
+to Cilium on a live cluster requires coordinated rolling restarts of `k3s-server` on all
+control-plane nodes and cleanup of Flannel artifacts (interfaces, CNI config) — not automated by
+this project. Deciding factors for Cilium: stable predictable egress IP, pod-level traffic
+steering via `CiliumEgressGatewayPolicy`, and HA failover via kube-vip `svc_election`. Flannel
+remains the default (`cilium_enabled: false`) for clusters that do not require an egress gateway.
+
 ## Playbook Usage
 
 ### Provision New Cluster
@@ -193,7 +212,7 @@ For larger deployments or advanced scenarios, additional tooling and tuning may 
 - Application workload deployment (focus is infrastructure only)
 - Multi-cluster federation or management
 - Air-gapped or offline installations (assumes internet access)
-- Custom CNI plugins beyond Flannel (k3s default) and multus (secondary networks)
+- Custom CNI plugins beyond Flannel (k3s default), Cilium (opt-in, see CNI Selection below), and multus (secondary networks)
 
 ## References
 

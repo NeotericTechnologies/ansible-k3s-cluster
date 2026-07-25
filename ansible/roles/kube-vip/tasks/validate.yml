@@ -1,0 +1,34 @@
+---
+# ansible/roles/kube-vip/tasks/validate.yml
+# Purpose: Pre-flight assertions for kube-vip feature-gated variables
+# Reference: FR-003b, FR-007, data-model.md
+
+- name: Assert kube_vip_egress_ip is set when egress gateway is enabled
+  ansible.builtin.assert:
+    that:
+      - kube_vip_egress_ip is defined
+      - kube_vip_egress_ip | length > 0
+    fail_msg: "kube_vip_egress_ip required when kube_vip_egress_enabled"
+  when: kube_vip_egress_enabled | default(false) | bool
+
+- name: Assert kube_vip_egress_gateway_node_selector is non-empty when egress gateway is enabled
+  ansible.builtin.assert:
+    that:
+      - kube_vip_egress_gateway_node_selector | default({}) | length > 0
+    fail_msg: >-
+      kube_vip_egress_gateway_node_selector must not be empty — specify at least one label
+      to select the gateway node pool
+  when: kube_vip_egress_enabled | default(false) | bool
+
+- name: Assert Cilium is enabled when egress gateway is enabled
+  ansible.builtin.assert:
+    that:
+      - cilium_enabled | default(false) | bool
+    fail_msg: "Cilium CNI required for egress gateway (cilium_enabled must be true)"
+  when: kube_vip_egress_enabled | default(false) | bool
+
+- name: Assert DHCP and static LB IP range are mutually exclusive
+  ansible.builtin.assert:
+    that:
+      - not (kube_vip_lb_dhcp_enabled | default(false) | bool and (kube_vip_lb_ip_range | default('') | length > 0))
+    fail_msg: "kube_vip_lb_dhcp_enabled and kube_vip_lb_ip_range are mutually exclusive"

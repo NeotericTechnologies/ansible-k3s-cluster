@@ -45,6 +45,15 @@
     - role: kube-vip
       tags: ['kube-vip', 'vip']
 
+- name: Deploy Cilium CNI
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: cilium
+      tags: ['cilium', 'networking']
+      when: cilium_enabled | default(false) | bool
+
 - name: Deploy k3s worker (agent) nodes
   hosts: k3s_agents
   become: true

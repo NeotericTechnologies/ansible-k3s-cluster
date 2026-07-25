@@ -56,6 +56,7 @@
           - rancher-monitoring: {{ rancher_monitoring_enabled | default(false) }}
           - Traefik: {{ traefik_enabled | default(true) }}
           - Synology CSI: {{ synology_csi_enabled | default(false) }}
+          - Cilium CNI: {{ cilium_enabled | default(false) }} (deployed in cluster-core.yml, listed here for version tracking)
 
     - name: Validate cert-manager version variable when enabled
       ansible.builtin.assert:
@@ -96,6 +97,14 @@
           - synology_csi_version | length > 0
         fail_msg: "synology_csi_version must be defined when synology_csi_enabled=true"
       when: synology_csi_enabled | default(false)
+
+    - name: Validate Cilium version variable when enabled
+      ansible.builtin.assert:
+        that:
+          - cilium_version is defined
+          - cilium_version | length > 0
+        fail_msg: "cilium_version must be defined when cilium_enabled=true"
+      when: cilium_enabled | default(false)
 
 - name: Deploy cert-manager
   hosts: k3s_servers[0]
@@ -176,6 +185,7 @@
           {{ '✓ Rancher' if rancher_enabled | default(false) else '✗ Rancher (disabled)' }}
           {{ '✓ rancher-monitoring' if rancher_monitoring_enabled | default(false) else '✗ rancher-monitoring (disabled)' }}
           {{ '✓ Synology CSI' if synology_csi_enabled | default(false) else '✗ Synology CSI (disabled)' }}
+          {{ '✓ Cilium CNI' if cilium_enabled | default(false) else '✗ Cilium CNI (disabled)' }}
 
           Verify deployment:
           kubectl get pods -A

@@ -1,0 +1,33 @@
+---
+# upgrade-cilium.yml
+# Purpose: Upgrade Cilium CNI by re-running the cilium role with the new version
+#
+# Cilium is deployed via Helm (kubernetes.core.helm), so upgrading means
+# re-running the cilium role which re-applies the Helm release with the
+# new cilium_version variable, then waiting for the DaemonSet rollout.
+#
+# Reference: FR-012, specs/006-egress-gateway-kube-vip
+
+- name: "Upgrading Cilium"
+  ansible.builtin.debug:
+    msg: >-
+      cilium: {{ hostvars[groups['k3s_servers'][0]].component_plan.cilium.live_version }}
+      → {{ hostvars[groups['k3s_servers'][0]].component_plan.cilium.desired_version }}
+
+- name: Include cilium role for upgrade
+  ansible.builtin.include_role:
+    name: cilium
+
+- name: Wait for Cilium DaemonSet to roll out with the new version
+  ansible.builtin.command:
+    cmd: >-
+      kubectl rollout status daemonset/cilium
+      -n {{ cilium_namespace | default('kube-system') }}
+      --timeout=300s
+  register: cilium_rollout
+  changed_when: false
+  retries: 3
+  delay: 10
+  until: cilium_rollout.rc == 0
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml

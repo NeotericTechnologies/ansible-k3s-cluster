@@ -8,3 +8,20 @@ kube_vip_interface: "eth0"
 kube_vip_deployment_mode: "daemonset"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+kube_vip_lb_dhcp_enabled: false
+
+kube_vip_svc_election_enabled: false
+vip_leaseduration: 15
+vip_renewdeadline: 10
+vip_retryperiod: 2
+
+kube_vip_egress_enabled: false
+kube_vip_egress_ip: ""
+kube_vip_egress_hostname: ""
+kube_vip_egress_namespace: "kube-system"
+kube_vip_egress_policy_name: "egress-gateway-policy"
+kube_vip_egress_pod_selector: {}
+kube_vip_egress_namespace_selector: {}
+kube_vip_egress_gateway_node_selector:
+  node-role.kubernetes.io/control-plane: "true"
+kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
