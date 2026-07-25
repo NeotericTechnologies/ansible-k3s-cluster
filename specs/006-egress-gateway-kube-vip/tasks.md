@@ -126,13 +126,40 @@ description: "Task list for Egress Gateway and Kube-VIP Enhancements"
 
 ---
 
-## Phase 7: Polish and Cross-Cutting Concerns
+## Phase 7: Lifecycle Integration (Install, Upgrade, and Configuration Hooks)
 
-**Purpose**: Idempotence validation, documentation completeness, and k3s flag integration.
+**Purpose**: Wire Cilium into every lifecycle entry point — fresh install, add-on deployment, version detection, and upgrade orchestration — so `cilium_enabled: true` works correctly whether invoked via `cluster-core.yml`, `cluster-addons.yml`, or `site.yml`.
 
-- [ ] T032 Add k3s server extra-args for Cilium to `ansible/roles/k3s-server/` or `ansible/roles/k3s-common/` — `--flannel-backend=none` and `--disable-network-policy` gated on `cilium_enabled | bool` (FR-003c); verify correct role location by inspecting existing k3s server flag configuration
-- [ ] T033 [P] Run `ansible-lint` on all modified roles and resolve any lint errors: `rtk ansible-lint ansible/roles/kube-vip/ ansible/roles/cilium/`
-- [ ] T034 [P] Validate idempotence of all modified tasks — run playbook twice against test inventory and confirm second run reports `changed=0` for all kube-vip and cilium tasks (FR-011)
+### k3s Server Flag Prerequisites
+
+- [ ] T032 Locate existing k3s server extra-args configuration by inspecting `ansible/roles/k3s-server/` and `ansible/roles/k3s-common/` task files; add `--flannel-backend=none` and `--disable-network-policy` to k3s server start flags gated on `cilium_enabled | bool` (FR-003c) — these flags MUST be set before k3s server starts, not after Cilium is installed
+
+### Fresh Install Sequence — cluster-core.yml
+
+- [ ] T033 Insert a Cilium play in `ansible/playbooks/cluster-core.yml` between the kube-vip play and the k3s-agent play — Cilium CNI MUST be active before agent nodes join so agents reach `Ready` state; gate the entire play on `cilium_enabled | default(false) | bool`; use `hosts: k3s_servers[0]` and `include_role: name: cilium`
+
+### Add-on Deployment — cluster-addons.yml
+
+- [ ] T034 [P] Add Cilium to `ansible/playbooks/cluster-addons.yml` — add `cilium` to the add-ons deployment header debug message; add `cilium_version` assertion task (must be defined and non-empty when `cilium_enabled: true`); add `include_role: name: cilium` gated on `cilium_enabled | default(false) | bool`; position before kube-vip in the play order (CNI precedes LB)
+
+### Component Registry — site.yml Unified Orchestrator
+
+- [ ] T035 Add `cilium` entry to `ansible/playbooks/includes/vars/component-registry.yml` — `version_var: cilium_version`, `enabled_var: cilium_enabled`, `detect_method: helm_release` with `detect_args: {release_name: cilium, namespace: kube-system}`, `fresh_install_priority: 11` (between kube-vip=10 and k3s_agents=12 — CNI must be up before agents join), `upgrade_priority: 22` (between kube-vip=20 and k3s_agents=25 — upgrade CNI after control-plane, before workers reconnect), `play_file: includes/upgrade-cilium.yml`
+
+- [ ] T036 Create `ansible/playbooks/includes/upgrade-cilium.yml` — upgrade play that displays the version transition (live → desired), then calls `include_role: name: cilium`; follow the pattern of `includes/upgrade-addon.yml` (observed) using `component_plan.cilium` for version display
+
+### Version Detection — detect-versions.yml
+
+- [ ] T037 [P] Add Cilium Helm release detection to `ansible/playbooks/includes/detect-versions.yml` — detect live Cilium version via `helm list -n kube-system -o json` filtered for release name `cilium`; follow the existing Helm detection pattern used for other components; set `cilium_live_version` fact; skip detection gracefully when `cilium_enabled: false`
+
+---
+
+## Phase 8: Polish and Quality Gates
+
+**Purpose**: Idempotence validation and lint compliance across all modified files.
+
+- [ ] T038 [P] Run `rtk ansible-lint ansible/roles/kube-vip/ ansible/roles/cilium/` and resolve any lint errors in modified role files
+- [ ] T039 [P] Validate idempotence — run `cluster-core.yml` and `cluster-addons.yml` twice against test inventory; confirm second run reports `changed=0` for all kube-vip and cilium tasks (FR-011)
 
 ---
 
@@ -147,8 +174,15 @@ US4 (T010–T014): no US dependency; requires T001–T009
 US2 (T015–T018): no US dependency; requires T001–T009
 US1 (T019–T027): requires US4 (consolidated RBAC) + US2 (svc_election) + T008, T009 (Cilium role)
 US3 (T028–T031): independent; requires T001–T009 (validate.yml, configmap template)
-T032: requires US1 (determines Cilium is needed)
-T033, T034: require all implementation tasks complete
+
+T032: requires T009 (Cilium role exists); implement alongside Phase 2
+T033: requires T009 (Cilium role); cluster-core.yml integration
+T034: requires T033 (Cilium in cluster-core.yml); cluster-addons.yml integration
+T035: requires T009 (Cilium role); component-registry.yml entry
+T036: requires T035 (registry entry references upgrade-cilium.yml)
+T037: requires T035 (registry entry triggers detection)
+
+T038, T039: require all implementation tasks complete (T001–T037)
 ```
 
 **Parallel opportunities per story**:
@@ -156,14 +190,16 @@ T033, T034: require all implementation tasks complete
 - US2: T015 (test) can run in parallel with T016–T017 (implementation); T018 (README) is parallel
 - US1: T020, T021 (templates) can run in parallel; T024–T027 (docs/defaults) can run in parallel after T020–T023
 - US3: T028 (test) can run in parallel with T029–T030 (implementation); T031 (README) is parallel
+- Phase 7: T032, T033, T034, T037 can proceed as soon as T009 (Cilium role) is complete; T034 and T037 are parallel; T036 requires T035
 
 ---
 
 ## Implementation Strategy
 
-**MVP scope (US4 + US2 + US1)**:
-1. Phase 1 setup → Phase 2 foundation → Phase 3 (US4 RBAC) → Phase 4 (US2 election) → Phase 5 (US1 egress)
+**MVP scope (US4 + US2 + US1 + Phase 7)**:
+1. Phase 1 setup → Phase 2 foundation → Phase 3 (US4 RBAC) → Phase 4 (US2 election) → Phase 5 (US1 egress) → Phase 7 (lifecycle integration)
 2. US4 and US2 are P2 but must be implemented before US1 (P1) because US1 depends on both
-3. Deliver US3 (DHCP, P3) as a follow-on increment after US1 is validated
+3. Phase 7 lifecycle integration is required for the feature to be operationally complete — `site.yml` will not orchestrate Cilium correctly without T035–T037
+4. Deliver US3 (DHCP, P3) as a follow-on increment after US1 is validated
 
 **Evidence requirement** (§V Traceability): Each task completion MUST be backed by: test assertion pass, idempotence check (`changed=0`), or documented observation confirming the change is validated against its FR/SC requirement.
