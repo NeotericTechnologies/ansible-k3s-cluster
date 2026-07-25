@@ -102,6 +102,7 @@ description: "Task list for Egress Gateway and Kube-VIP Enhancements"
 - [ ] T022 [US1] Add egress gateway tasks to `ansible/roles/kube-vip/tasks/install.yml` — `kubernetes.core.k8s` with `state: present` for egress Service and CiliumEgressGatewayPolicy, both gated on `kube_vip_egress_enabled | bool`; force `kube_vip_svc_election_enabled: true` when egress enabled (set_fact)
 - [ ] T023 [US1] Add `cilium_egress_gateway_enabled: true` auto-set logic in `ansible/roles/cilium/tasks/install.yml` when `kube_vip_egress_enabled: true` (set_fact before Helm install)
 - [ ] T024 [P] [US1] Add egress gateway variable defaults to `ansible/roles/kube-vip/defaults/main.yml`: `kube_vip_egress_enabled`, `kube_vip_egress_ip`, `kube_vip_egress_hostname`, `kube_vip_egress_namespace`, `kube_vip_egress_policy_name`, `kube_vip_egress_pod_selector`, `kube_vip_egress_namespace_selector`, `kube_vip_egress_gateway_node_selector`, `kube_vip_egress_gateway_interface` (if not already added in T002)
+- [ ] T024a [US1] Add failover test block to `tests/ansible/smoke/egress-gateway-test.yml` — cordon/drain the node currently holding the `kube_vip_egress_ip` lease, assert egress source IP resumes matching `kube_vip_egress_ip` within `vip_leaseduration` seconds (FR-003, SC-002)
 - [ ] T025 [P] [US1] Update `docs/ansible-k3s-baseline.md` — remove "No Calico/Cilium" non-goal statement; add Cilium CNI section documenting egress gateway capability, `--flannel-backend=none`, `--disable-network-policy` k3s flags (FR-012)
 - [ ] T026 [P] [US1] Update `ansible/roles/cilium/README.md` — document k3s flags required, Flannel migration note, `cilium_version` pinning requirement, and auto-enable behavior with egress gateway
 - [ ] T027 [P] [US1] Update `ansible/roles/kube-vip/README.md` — document all egress gateway variables, `kube_vip_egress_gateway_node_selector` CONSTRAINT (must target subset of control-plane nodes where kube-vip DaemonSet runs), and failover behavior
@@ -121,7 +122,7 @@ description: "Task list for Egress Gateway and Kube-VIP Enhancements"
 
 ### Implementation for User Story 3
 
-- [ ] T029 [US3] Update `ansible/roles/kube-vip/tasks/validate.yml` — add assertion: fail when `kube_vip_lb_dhcp_enabled: true` AND `kube_vip_lb_ip_range` is non-empty, with message `"kube_vip_lb_dhcp_enabled and kube_vip_lb_ip_range are mutually exclusive"` (FR-007)
+- [ ] T029 [US3] Verify `ansible/roles/kube-vip/tasks/validate.yml` assertion from T006 covers FR-007 mutual exclusion (`kube_vip_lb_dhcp_enabled: true` AND non-empty `kube_vip_lb_ip_range`); no new assertion needed — proceed to T030 configmap conditional
 - [ ] T030 [US3] Update `ansible/roles/kube-vip/templates/kube-vip-configmap.yaml.j2` — add conditional: omit `range-global` key when `kube_vip_lb_dhcp_enabled: true`; keep existing `range-global: {{ kube_vip_lb_ip_range }}` when DHCP disabled
 - [ ] T031 [P] [US3] Update `ansible/roles/kube-vip/README.md` — document `kube_vip_lb_dhcp_enabled`, mutual exclusion with `kube_vip_lb_ip_range`, DHCP networking prerequisites (external DHCP server, macvlan MAC support, macvlan kernel module), and per-service `loadBalancerIP: 0.0.0.0` operator action (FR-010)
 
@@ -173,7 +174,7 @@ T006, T007, T008, T009 → [Phase 3+]
 
 US4 (T010–T014): no US dependency; requires T001–T009
 US2 (T015–T018): no US dependency; requires T001–T009
-US1 (T019–T027): requires US4 (consolidated RBAC) + US2 (svc_election) + T008, T009 (Cilium role)
+US1 (T019–T027, T024a): requires US4 (consolidated RBAC) + US2 (svc_election) + T008, T009 (Cilium role)
 US3 (T028–T031): independent; requires T001–T009 (validate.yml, configmap template)
 
 T027a: requires T009 (Cilium role exists for context); parallel with T025–T027
