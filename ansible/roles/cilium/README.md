@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Install and configure Cilium as the k3s cluster CNI, replacing Flannel. Required when `kube_vip_egress_enabled: true` (see `kube-vip` role) since egress gateway steering depends on `CiliumEgressGatewayPolicy`.
+Install and configure Cilium as the k3s cluster CNI, replacing Flannel. Required when `kube_vip_egress_enabled: true` (see `kube-vip` role) since egress gateway steering depends on `CiliumEgressGatewayPolicy`. This role owns the `CiliumEgressGatewayPolicy` CR (it is a Cilium CRD, only registered once the Helm chart is installed); the kube-vip role owns the corresponding egress LoadBalancer `Service`.
 
 ## Requirements
 
@@ -14,7 +14,7 @@ Install and configure Cilium as the k3s cluster CNI, replacing Flannel. Required
 
 ```yaml
 cilium_enabled: false                       # Master enable flag; replaces Flannel when true
-cilium_version: ""                          # REQUIRED when enabled — pin exact version, no "latest"
+cilium_version: ""                          # REQUIRED when enabled — pin the exact Cilium version (e.g. "v1.16.6" or "1.16.6"), no "latest"
 cilium_namespace: "kube-system"
 cilium_helm_repo: "https://helm.cilium.io/"
 cilium_helm_release_name: "cilium"
@@ -24,10 +24,12 @@ cilium_egress_gateway_enabled: false         # Sets egressGateway.enabled in Hel
 
 ## Role Tasks
 
+- Asserts `cilium_version` is set (fails fast otherwise)
 - Adds the Cilium Helm repository
 - Auto-enables `egressGateway.enabled` in Helm values when `kube_vip_egress_enabled: true` (kube-vip role)
-- Installs/upgrades the Cilium Helm release, pinned to `cilium_version`
+- Installs/upgrades the Cilium Helm release, pinned to `cilium_version` (the official chart is versioned 1:1 with the Cilium app version, without a leading "v" — the role strips it automatically when resolving the chart version, so either "v1.16.6" or "1.16.6" works)
 - Waits for the Cilium DaemonSet to report all pods ready
+- Applies the `CiliumEgressGatewayPolicy` CR when `kube_vip_egress_enabled: true` (after the DaemonSet-ready wait, so the CRD is guaranteed to exist); uses `kube_vip_egress_*` variables owned by the kube-vip role and mirrored in `ansible/group_vars/all.yml`
 
 ## Dependencies
 

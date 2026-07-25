@@ -3,6 +3,13 @@
 # Purpose: Install Cilium CNI via Helm; enable egress gateway datapath when required
 # Reference: FR-003c, FR-003a (cilium_egress_gateway_enabled), data-model.md §5
 
+- name: Assert cilium_version is set
+  ansible.builtin.assert:
+    that:
+      - cilium_version is defined
+      - cilium_version | length > 0
+    fail_msg: "cilium_version must be set to a pinned Cilium version (e.g. 'v1.16.6') — no default is provided"
+
 - name: Auto-enable Cilium egress gateway datapath when kube-vip egress gateway is enabled
   ansible.builtin.set_fact:
     cilium_egress_gateway_enabled: true
@@ -21,7 +28,11 @@
   kubernetes.core.helm:
     name: "{{ cilium_helm_release_name }}"
     chart_ref: cilium/cilium
-    chart_version: "{{ cilium_version }}"
+    # The official Cilium Helm chart is versioned 1:1 with the Cilium app version,
+    # but published chart versions omit any leading "v" (e.g. chart "1.16.6" installs
+    # Cilium app version v1.16.6). cilium_version documents the actual Cilium version
+    # (accepts either "v1.16.6" or "1.16.6") — strip the "v" for the Helm chart lookup.
+    chart_version: "{{ cilium_version | regex_replace('^v', '') }}"
     release_namespace: "{{ cilium_namespace }}"
     create_namespace: false
     kubeconfig: /etc/rancher/k3s/k3s.yaml
@@ -46,3 +57,19 @@
     (cilium_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
     (cilium_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
+
+# The CiliumEgressGatewayPolicy CRD is only registered once the Cilium Helm chart
+# above has installed successfully, so this MUST run after the DaemonSet-ready wait.
+# kube_vip_egress_* variables are owned by the kube-vip role but mirrored in
+# ansible/group_vars/all.yml, making them available here regardless of role order.
+- name: Apply CiliumEgressGatewayPolicy for kube-vip egress gateway
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ lookup('template', 'cilium-egress-gateway-policy.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - kube_vip_egress_enabled | default(false) | bool
+    - item is not none

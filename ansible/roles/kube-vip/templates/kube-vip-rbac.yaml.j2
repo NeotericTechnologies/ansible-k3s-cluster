@@ -22,14 +22,15 @@ metadata:
   name: kube-vip
 rules:
   - apiGroups: [""]
-    resources: ["services", "services/status"]
+    resources: ["services", "services/status", "nodes", "endpoints"]
     verbs: ["list", "get", "watch", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["nodes", "endpoints"]
-    verbs: ["list", "get", "watch", "update", "patch"]
+    # From a different iteration
+    # verbs: ["list", "get", "watch", "update", "patch", "create"]
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "list", "watch"]
+    # From a different iteration
+    # verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
@@ -39,8 +40,6 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["list", "get", "watch", "update", "create"]
-  # pods: add "list","get","watch" if kube-vip egress v2 requires pod tracking
-  # (verify against kube-vip v1.1.2 source at implementation time)
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

@@ -1,7 +1,12 @@
 ---
-# ansible/roles/kube-vip/templates/kube-vip-egress-policy.yaml.j2
+# ansible/roles/cilium/templates/cilium-egress-gateway-policy.yaml.j2
 # Purpose: CiliumEgressGatewayPolicy steering matching pod egress through the kube-vip egress VIP
 # Reference: FR-003a, data-model.md §6
+# Note: Lives in the cilium role (not kube-vip) because it is a Cilium CRD — the CRD is
+# only registered once the Cilium Helm chart is installed, and the cilium role owns the
+# Helm/CRD lifecycle. Values reference kube-vip's egress variables (mirrored in
+# ansible/group_vars/all.yml), since the egress gateway feature is jointly owned by
+# kube-vip (VIP/Service) and Cilium (traffic steering/SNAT).
 apiVersion: cilium.io/v2
 kind: CiliumEgressGatewayPolicy
 metadata:

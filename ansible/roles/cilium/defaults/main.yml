@@ -4,6 +4,10 @@
 # Reference: FR-003c, contracts/ansible-variable-contracts.md
 
 cilium_enabled: false
+# Pinned Cilium version (the actual Cilium app version, e.g. "v1.16.6" or "1.16.6").
+# REQUIRED when cilium_enabled is true — no default is provided. The official Helm chart
+# is versioned 1:1 with the app version (without a "v" prefix); install.yml strips a
+# leading "v" automatically when resolving the chart version, so either form works here.
 cilium_version: ""
 cilium_namespace: "kube-system"
 cilium_helm_repo: "https://helm.cilium.io/"

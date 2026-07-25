@@ -78,6 +78,11 @@ Combines a kube-vip HA LoadBalancer VIP with a Cilium `CiliumEgressGatewayPolicy
 outbound pod traffic exits through one stable, predictable IP. **Requires Cilium as the active
 CNI** (`cilium_enabled: true`, see `ansible/roles/cilium`) — the playbook fails otherwise.
 
+This role owns the egress LoadBalancer `Service` (the kube-vip-managed VIP). The
+`CiliumEgressGatewayPolicy` CR itself is applied by the **cilium** role, not this one — it is
+a Cilium CRD that only exists once the Cilium Helm chart has installed, and the cilium role
+runs after kube-vip in `cluster-core.yml`. See `ansible/roles/cilium/README.md`.
+
 ```yaml
 kube_vip_egress_enabled: false                # Master enable flag
 kube_vip_egress_ip: ""                        # REQUIRED when enabled — dedicated IP, independent of kube_vip_lb_ip_range

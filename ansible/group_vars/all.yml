@@ -54,7 +54,7 @@ kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
 
 # Cilium CNI configuration (replaces Flannel when enabled)
 cilium_enabled: false
-cilium_version: ""
+cilium_version: "v1.19.6"
 cilium_namespace: "kube-system"
 cilium_helm_repo: "https://helm.cilium.io/"
 cilium_helm_release_name: "cilium"
