@@ -29,24 +29,28 @@
 #    FRESH INSTALL SEQUENCE (fresh_install_priority):
 #    1. k3s_servers (5) - Control plane nodes
 #    2. kube-vip (10) - Virtual IP for HA (positioned AFTER servers)
-#    3. k3s_agents (12) - Worker nodes (positioned AFTER kube-vip)
-#    4. cert-manager (20) - Certificate management
-#    5. multus (21) - Multi-interface CNI
-#    6. traefik (22) - Ingress controller
-#    7. rancher (23) - Cluster management UI
-#    8. rancher-monitoring (24) - Prometheus/Grafana monitoring
-#    9. synology-csi (25) - Storage integration
+#    3. cilium (11) - CNI, replaces Flannel when cilium_enabled=true (positioned AFTER
+#       kube-vip, BEFORE agents — agent nodes cannot reach Ready without a working CNI)
+#    4. k3s_agents (12) - Worker nodes (positioned AFTER cilium)
+#    5. cert-manager (20) - Certificate management
+#    6. multus (21) - Multi-interface CNI
+#    7. traefik (22) - Ingress controller
+#    8. rancher (23) - Cluster management UI
+#    9. rancher-monitoring (24) - Prometheus/Grafana monitoring
+#    10. synology-csi (25) - Storage integration
 #
 #    UPGRADE SEQUENCE (upgrade_priority):
 #    1. rancher (10) - Upgrade control plane first (before k3s)
 #    2. k3s_servers (15) - Server upgrade (after Rancher compatibility check)
 #    3. kube-vip (20) - Refresh virtual IP after server changes
-#    4. k3s_agents (25) - Worker upgrade (after servers stable)
-#    5. cert-manager (30) - Update cert infrastructure
-#    6. multus (31) - Update CNI
-#    7. traefik (32) - Update ingress
-#    8. rancher-monitoring (33) - Update monitoring
-#    9. synology-csi (34) - Update storage
+#    4. cilium (22) - Refresh CNI after kube-vip, BEFORE agents reconnect (positioned
+#       between kube-vip=20 and k3s_agents=25)
+#    5. k3s_agents (25) - Worker upgrade (after servers stable)
+#    6. cert-manager (30) - Update cert infrastructure
+#    7. multus (31) - Update CNI
+#    8. traefik (32) - Update ingress
+#    9. rancher-monitoring (33) - Update monitoring
+#    10. synology-csi (34) - Update storage
 #
 # 4. K3S DECOMPOSITION:
 #    k3s is split into two first-class components:
@@ -66,6 +70,11 @@
 #    KEY POSITIONING:
 #    - kube-vip between k3s_servers and k3s_agents allows its upgrade at the
 #      right point in the sequence (after servers, before agents)
+#    - cilium (CNI, `ansible/roles/cilium`) is positioned between kube-vip and
+#      k3s_agents in both sequences — agent nodes cannot reach `Ready` without
+#      a working CNI, and Cilium's CRDs (e.g. `CiliumEgressGatewayPolicy`) must
+#      be registered before any dependent resources are applied. cilium_enabled
+#      controls whether this component is enabled (default: Flannel, no-op).
 #    - Rancher positioned before k3s in upgrades allows dependency validation
 #    - Add-ons positioned after k3s ensures cluster stability before optional components
 #
@@ -85,7 +94,7 @@
 #     -e "allow_downgrade=true"
 #
 # Behavior:
-#   - Fresh hosts: Full install (k3s_servers → kube-vip → k3s_agents → add-ons)
+#   - Fresh hosts: Full install (k3s_servers → kube-vip → cilium → k3s_agents → add-ons)
 #   - No version changes: No-op with summary
 #   - Version changes: Upgrade only changed components in dependency order
 #   - Constraint violation: Fail fast with clear error before any changes
