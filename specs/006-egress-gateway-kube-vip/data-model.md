@@ -122,6 +122,7 @@ Cilium CNI installed and managed by new Ansible role `ansible/roles/cilium`.
 | `cilium_version` | `defaults/main.yml` (new role) | string | Pinned Cilium version (e.g. `v1.16.x`). No default — must be set. |
 | `cilium_namespace` | `defaults/main.yml` (new role) | string | Install namespace. Default: `kube-system`. |
 | `cilium_helm_repo` | `defaults/main.yml` (new role) | string | Helm chart repo URL. Default: `https://helm.cilium.io/`. |
+| `cilium_egress_gateway_enabled` | `defaults/main.yml` (new role) | bool | Sets `egressGateway.enabled: true` in Helm values. Required for `CiliumEgressGatewayPolicy` datapath to be active. Auto-set `true` when `kube_vip_egress_enabled: true`. Default: `false`. |
 
 **k3s flags required** (assumption, must verify vs k3s docs):
 ```
