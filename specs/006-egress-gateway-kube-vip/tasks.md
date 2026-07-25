@@ -60,10 +60,10 @@ description: "Task list for Egress Gateway and Kube-VIP Enhancements"
 
 ### Implementation for User Story 4
 
-- [ ] T011 [US4] Update `ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2` — replace existing ClusterRole with consolidated `kube-vip` ClusterRole containing union of all required rules (per data-model.md §4: services, services/status, nodes, endpoints, configmaps, events, endpointslices, leases — all verbs); verify `pods` verb requirement against kube-vip v1.1.2 and add if needed
-- [ ] T012 [US4] Update `ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2` — remove ClusterRole definition; update ClusterRoleBinding `roleRef` to reference `kube-vip` ClusterRole instead of `kube-vip-cloud-controller`
-- [ ] T013 [US4] Add `kubernetes.core.k8s` task in `ansible/roles/kube-vip/tasks/install.yml` to apply consolidated ClusterRole and both ClusterRoleBindings with `state: present` (idempotent overwrite per FR-008/FR-009)
-- [ ] T014 [P] [US4] Update `ansible/roles/kube-vip/README.md` — document consolidated RBAC design and both ClusterRoleBindings
+- [ ] T011 [US4] Create `ansible/roles/kube-vip/templates/kube-vip-rbac.yaml.j2` — dedicated RBAC template containing: ServiceAccount `kube-vip` (kube-system), ServiceAccount `kube-vip-cloud-controller` (kube-system), single consolidated ClusterRole `kube-vip` with union of all required rules (per data-model.md §4: services, services/status, nodes, endpoints, configmaps, events, endpointslices, leases — all verbs; verify `pods` verb requirement against kube-vip v1.1.2), ClusterRoleBinding `kube-vip` → SA `kube-vip`, ClusterRoleBinding `kube-vip-cloud-controller` → SA `kube-vip-cloud-controller`; all resources separated by `---`
+- [ ] T012 [US4] Remove ClusterRole, ClusterRoleBinding, and ServiceAccount definitions from `ansible/roles/kube-vip/templates/kube-vip-daemonset.yaml.j2` and `ansible/roles/kube-vip/templates/kube-vip-cloud-controller.yaml.j2` — retain only Deployment/DaemonSet manifest content in each
+- [ ] T013 [US4] Add `kubernetes.core.k8s` task in `ansible/roles/kube-vip/tasks/install.yml` to apply `kube-vip-rbac.yaml.j2` with `state: present` (idempotent overwrite per FR-008/FR-009); ensure RBAC task runs before DaemonSet and cloud-controller tasks
+- [ ] T014 [P] [US4] Update `ansible/roles/kube-vip/README.md` — document consolidated RBAC template (`kube-vip-rbac.yaml.j2`), single ClusterRole design, both ClusterRoleBindings, and all included ServiceAccounts
 
 ---
 
