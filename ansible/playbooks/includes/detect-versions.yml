@@ -229,6 +229,17 @@
   ansible.builtin.set_fact:
     is_fresh_install: "{{ detected_versions.k3s_servers == 'not_installed' }}"
 
+- name: Detect partial install scenario (core component incomplete)
+  ansible.builtin.set_fact:
+    # Partial install: k3s installed but required CNI missing
+    # (indicates incomplete core cluster setup, even though k3s + kube-vip are present)
+    is_partial_install: >-
+      {{
+        (detected_versions.k3s_servers != 'not_installed') and
+        (cilium_enabled | default(false) | bool) and
+        (detected_versions.cilium == 'not_installed')
+      }}
+
 # --- T007/T023: Compute per-component action ---
 - name: Compute component plan
   ansible.builtin.set_fact:

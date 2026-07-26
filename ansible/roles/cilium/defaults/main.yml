@@ -14,3 +14,10 @@ cilium_helm_repo: "https://helm.cilium.io/"
 cilium_helm_release_name: "cilium"
 cilium_helm_values: {}
 cilium_egress_gateway_enabled: false
+
+# k3s-specific CNI paths. Cilium must write its CNI config and binaries into the
+# paths consumed by k3s kubelet and companion CNIs (e.g. Multus) to avoid falling
+# back to stale Flannel bridge configs.
+cilium_cni_conf_path: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+cilium_cni_bin_path: "/var/lib/rancher/k3s/data/current/bin"
+cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"

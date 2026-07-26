@@ -91,6 +91,8 @@ kube_vip_egress_namespace: "kube-system"
 kube_vip_egress_policy_name: "egress-gateway-policy"
 kube_vip_egress_pod_selector: {}              # Label selector for gated pods — operators SHOULD restrict this
 kube_vip_egress_namespace_selector: {}
+kube_vip_egress_destination_cidrs:            # Destination CIDRs routed through egress gateway
+  - "0.0.0.0/0"
 kube_vip_egress_gateway_node_selector:
   node-role.kubernetes.io/control-plane: "true"
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"

@@ -36,6 +36,11 @@ kube_vip_egress_pod_selector: {}
 # Namespace selector for the CiliumEgressGatewayPolicy
 kube_vip_egress_namespace_selector: {}
 
+# Destination CIDRs routed through the egress gateway.
+# Default routes all IPv4 destinations through the configured egress IP.
+kube_vip_egress_destination_cidrs:
+  - "0.0.0.0/0"
+
 # Node selector for the POOL of eligible egress gateway nodes.
 # kube-vip svc_election elects the active VIP holder within this pool.
 # Cilium egress gateway active-backup detects which node has egressIP bound (via ARP)
@@ -121,6 +126,12 @@ cilium_helm_release_name: "cilium"
 # The cilium role sets this automatically when cilium_egress_gateway_enabled is true (see below).
 cilium_helm_values: {}
 
+# k3s-specific CNI paths used by Cilium for primary CNI config and binaries.
+# These must align with kubelet/Multus paths to prevent fallback to stale Flannel configs.
+cilium_cni_conf_path: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+cilium_cni_bin_path: "/var/lib/rancher/k3s/data/current/bin"
+cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"
+
 # Enable Cilium Egress Gateway datapath (sets egressGateway.enabled: true in Helm values)
 # Auto-set true when kube_vip_egress_enabled: true
 cilium_egress_gateway_enabled: false  # bool
@@ -142,6 +153,7 @@ cilium_egress_gateway_enabled: false  # bool
 | `kube_vip_egress_enabled: true` AND `cilium_enabled: false` | Playbook fails: "Cilium CNI required for egress gateway" |
 | `kube_vip_egress_enabled: true` AND `kube_vip_egress_ip` empty | Playbook fails: "kube_vip_egress_ip required when kube_vip_egress_enabled" |
 | `kube_vip_egress_enabled: true` AND `kube_vip_egress_gateway_node_selector` empty | Playbook fails: "kube_vip_egress_gateway_node_selector must not be empty — specify at least one label to select the gateway node pool" |
+| `kube_vip_egress_enabled: true` AND `kube_vip_egress_destination_cidrs` empty | Playbook fails: "kube_vip_egress_destination_cidrs must not be empty — specify at least one destination CIDR" |
 | `kube_vip_egress_gateway_node_selector` targets worker-only nodes | Silent failure at runtime — kube-vip DaemonSet is restricted to control-plane nodes; egressIP never bound on workers; Cilium finds no active gateway. Playbook cannot enforce this at apply time without cluster query. Operator responsibility. |
 | `kube_vip_egress_enabled: true` | `kube_vip_svc_election_enabled` forced `true`; `cilium_egress_gateway_enabled` forced `true` |
 

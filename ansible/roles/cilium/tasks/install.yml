@@ -17,7 +17,65 @@
 
 - name: Merge egress gateway setting into Cilium Helm values
   ansible.builtin.set_fact:
-    cilium_helm_values: "{{ cilium_helm_values | combine({'egressGateway': {'enabled': cilium_egress_gateway_enabled | bool}}, recursive=True) }}"
+    # egressGateway has cascading dependencies:
+    # - egressGateway.enabled requires masquerade (--enable-ipv4-masquerade) and bpf.masquerade
+    # - bpf.masquerade requires nodePort (--enable-node-port)
+    # - nodePort + bpf.masquerade require socketLB for proper traffic steering
+    # - k3s requires explicit CNI paths so kubelet and Multus read Cilium config
+    #   from /var/lib/rancher/k3s/agent/etc/cni/net.d instead of stale Flannel
+    #   configs left from prior deployments.
+    # NOTE: Do not force autoDirectNodeRoutes here. It is incompatible with
+    # routing-mode=tunnel and causes cilium-agent to exit at startup.
+    # Operators using native routing can still set it explicitly via cilium_helm_values.
+    #
+    # Enforce these automatically when egress gateway is enabled. Respect user-supplied overrides.
+    cilium_helm_values: >-
+      {{
+        cilium_helm_values | combine(
+          {
+            'egressGateway': {'enabled': cilium_egress_gateway_enabled | bool},
+            'masquerade': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.masquerade | default(false) | bool),
+            'bpf': {
+              'masquerade': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.bpf.masquerade | default(false) | bool)
+            },
+            'nodePort': {
+              'enabled': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.nodePort.enabled | default(false) | bool)
+            },
+            'socketLB': {
+              'enabled': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.socketLB.enabled | default(false) | bool)
+            },
+            'cni': {
+              'confPath': cilium_helm_values.cni.confPath | default(cilium_cni_conf_path),
+              'binPath': cilium_helm_values.cni.binPath | default(cilium_cni_bin_path)
+            }
+          },
+          recursive=True
+        )
+      }}
+
+- name: Remove stale flannel CNI config from k3s CNI directories
+  ansible.builtin.file:
+    path: "{{ item.0 }}/10-flannel.conflist"
+    state: absent
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ([cilium_cni_conf_path, '/etc/cni/net.d'] | unique) | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Ensure cilium CNI binaries are discoverable in kubelet plugin directory
+  ansible.builtin.file:
+    path: "{{ cilium_kubelet_cni_bin_path }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+
+- name: Ensure cilium-cni is discoverable in kubelet plugin directory
+  ansible.builtin.file:
+    src: "{{ cilium_cni_bin_path }}/cilium-cni"
+    dest: "{{ cilium_kubelet_cni_bin_path }}/cilium-cni"
+    state: link
+    force: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
 
 - name: Add Cilium Helm repository
   kubernetes.core.helm_repository:
@@ -37,8 +95,10 @@
     create_namespace: false
     kubeconfig: /etc/rancher/k3s/k3s.yaml
     values: "{{ cilium_helm_values }}"
-    wait: true
-    wait_timeout: "300s"
+    # wait=false avoids Helm's internal context deadline during CNI bootstrap:
+    # Cilium IS the CNI, so pods may not be schedulable until Cilium itself is running.
+    # Readiness is verified by the explicit k8s_info poll below.
+    wait: false
   register: cilium_helm_install
 
 - name: Wait for Cilium DaemonSet to be ready
@@ -49,7 +109,7 @@
     namespace: "{{ cilium_namespace }}"
     kubeconfig: /etc/rancher/k3s/k3s.yaml
   register: cilium_ds
-  retries: 30
+  retries: 60
   delay: 10
   until: >-
     (cilium_ds.resources | default([]) | length) > 0 and
@@ -57,6 +117,32 @@
     (cilium_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
     (cilium_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
+
+- name: Restart multus DaemonSet to pick up Cilium primary CNI config
+  ansible.builtin.command:
+    cmd: kubectl rollout restart daemonset/kube-multus-ds -n kube-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: true
+  when: multus_enabled | default(false) | bool
+
+- name: Wait for multus DaemonSet to be ready after restart
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: kube-multus-ds
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_multus_ds_after_restart
+  retries: 30
+  delay: 10
+  until: >-
+    (cilium_multus_ds_after_restart.resources | default([]) | length) > 0 and
+    (cilium_multus_ds_after_restart.resources[0].status.numberReady | default(0) | int) ==
+    (cilium_multus_ds_after_restart.resources[0].status.desiredNumberScheduled | default(-1) | int) and
+    (cilium_multus_ds_after_restart.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
+  changed_when: false
+  when: multus_enabled | default(false) | bool
 
 # The CiliumEgressGatewayPolicy CRD is only registered once the Cilium Helm chart
 # above has installed successfully, so this MUST run after the DaemonSet-ready wait.

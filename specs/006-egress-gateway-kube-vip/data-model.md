@@ -122,6 +122,11 @@ Cilium CNI installed and managed by new Ansible role `ansible/roles/cilium`.
 | `cilium_version` | `defaults/main.yml` (new role) | string | Pinned Cilium version (e.g. `v1.16.x`). No default — must be set. |
 | `cilium_namespace` | `defaults/main.yml` (new role) | string | Install namespace. Default: `kube-system`. |
 | `cilium_helm_repo` | `defaults/main.yml` (new role) | string | Helm chart repo URL. Default: `https://helm.cilium.io/`. |
+| `cilium_helm_release_name` | `defaults/main.yml` (new role) | string | Helm release name. Default: `cilium`. |
+| `cilium_helm_values` | `defaults/main.yml` (new role) | dict | Additional/override Helm values. Default: `{}`. |
+| `cilium_cni_conf_path` | `defaults/main.yml` (new role) | string | k3s CNI config path used by kubelet/Multus. Default: `/var/lib/rancher/k3s/agent/etc/cni/net.d`. |
+| `cilium_cni_bin_path` | `defaults/main.yml` (new role) | string | k3s CNI binary install path used by Cilium. Default: `/var/lib/rancher/k3s/data/current/bin`. |
+| `cilium_kubelet_cni_bin_path` | `defaults/main.yml` (new role) | string | Stable kubelet CNI lookup path. Role maintains symlink to `cilium-cni` here. Default: `/var/lib/rancher/k3s/data/cni`. |
 | `cilium_egress_gateway_enabled` | `defaults/main.yml` (new role) | bool | Sets `egressGateway.enabled: true` in Helm values. Required for `CiliumEgressGatewayPolicy` datapath to be active. Auto-set `true` when `kube_vip_egress_enabled: true`. Default: `false`. |
 
 **k3s flags required** (assumption, must verify vs k3s docs):
@@ -148,11 +153,13 @@ A `CiliumEgressGatewayPolicy` custom resource that steers matching pod egress tr
 | `kube_vip_egress_policy_name` | `defaults/main.yml` | string | Name of the CiliumEgressGatewayPolicy CR. Default: `egress-gateway-policy`. |
 | `kube_vip_egress_pod_selector` | `defaults/main.yml` | dict | Kubernetes label selector matching pods whose egress is gated. Default: `{}` (match all — operator should restrict). |
 | `kube_vip_egress_namespace_selector` | `defaults/main.yml` | dict | Namespace selector for the policy. Default: `{}`. |
+| `kube_vip_egress_destination_cidrs` | `defaults/main.yml` | list[string] | Destination CIDRs routed through the egress gateway. Default: `["0.0.0.0/0"]`. |
 | `kube_vip_egress_gateway_node_selector` | `defaults/main.yml` | dict | Label selector for the **pool** of eligible gateway nodes. kube-vip `svc_election` elects the active VIP holder; Cilium detects the active node via ARP. Default: `{node-role.kubernetes.io/control-plane: "true"}`. |
 | `kube_vip_egress_gateway_interface` | `defaults/main.yml` | string | Network interface for egress on gateway node. Default: `{{ kube_vip_interface }}`. |
 
 **Validation rules**:
 - `kube_vip_egress_gateway_node_selector` MUST be non-empty when `kube_vip_egress_enabled: true`
+- `kube_vip_egress_destination_cidrs` MUST be non-empty when `kube_vip_egress_enabled: true`
 - SHOULD select ≥2 nodes in HA clusters to avoid single-node dependency
 
 ---

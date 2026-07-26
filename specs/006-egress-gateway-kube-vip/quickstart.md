@@ -177,6 +177,8 @@ kube_vip_egress_gateway_node_selector:
 kube_vip_egress_pod_selector:
   egress-gated: "true"
 kube_vip_egress_namespace_selector: {}
+kube_vip_egress_destination_cidrs:
+  - "0.0.0.0/0"
 ```
 
 ```bash

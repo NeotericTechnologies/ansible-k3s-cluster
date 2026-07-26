@@ -48,6 +48,8 @@ kube_vip_egress_namespace: "kube-system"
 kube_vip_egress_policy_name: "egress-gateway-policy"
 kube_vip_egress_pod_selector: {}
 kube_vip_egress_namespace_selector: {}
+kube_vip_egress_destination_cidrs:
+  - "0.0.0.0/0"
 kube_vip_egress_gateway_node_selector:
   node-role.kubernetes.io/control-plane: "true"
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
@@ -60,6 +62,9 @@ cilium_helm_repo: "https://helm.cilium.io/"
 cilium_helm_release_name: "cilium"
 cilium_helm_values: {}
 cilium_egress_gateway_enabled: false
+cilium_cni_conf_path: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+cilium_cni_bin_path: "/var/lib/rancher/k3s/data/current/bin"
+cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"
 
 # Add-ons enablement (deployed via cluster-addons.yml)
 cert_manager_enabled: false

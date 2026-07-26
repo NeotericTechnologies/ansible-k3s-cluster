@@ -20,6 +20,15 @@
       to select the gateway node pool
   when: kube_vip_egress_enabled | default(false) | bool
 
+- name: Assert kube_vip_egress_destination_cidrs is non-empty when egress gateway is enabled
+  ansible.builtin.assert:
+    that:
+      - kube_vip_egress_destination_cidrs | default([]) | length > 0
+    fail_msg: >-
+      kube_vip_egress_destination_cidrs must not be empty — specify at least one
+      destination CIDR (for example 0.0.0.0/0)
+  when: kube_vip_egress_enabled | default(false) | bool
+
 - name: Assert Cilium is enabled when egress gateway is enabled
   ansible.builtin.assert:
     that:

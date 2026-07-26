@@ -17,9 +17,11 @@ spec:
     nodeSelector:
       matchLabels: {{ kube_vip_egress_gateway_node_selector | to_json }}
     interface: "{{ kube_vip_egress_gateway_interface }}"
-  podSelector:
-    matchLabels: {{ kube_vip_egress_pod_selector | to_json }}
+  destinationCIDRs: {{ kube_vip_egress_destination_cidrs | default(['0.0.0.0/0']) | to_json }}
+  selectors:
+    - podSelector:
+        matchLabels: {{ kube_vip_egress_pod_selector | default({}) | to_json }}
 {% if kube_vip_egress_namespace_selector | default({}) | length > 0 %}
-  namespaceSelector:
-    matchLabels: {{ kube_vip_egress_namespace_selector | to_json }}
+      namespaceSelector:
+        matchLabels: {{ kube_vip_egress_namespace_selector | to_json }}
 {% endif %}
