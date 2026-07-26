@@ -13,10 +13,13 @@ metadata:
   name: {{ kube_vip_egress_policy_name }}
 spec:
   egressGateway:
+{% if kube_vip_egress_ip | default('') | length > 0 %}
     egressIP: "{{ kube_vip_egress_ip }}"
+{% else %}
+    interface: "{{ kube_vip_egress_gateway_interface }}"
+{% endif %}
     nodeSelector:
       matchLabels: {{ kube_vip_egress_gateway_node_selector | to_json }}
-    interface: "{{ kube_vip_egress_gateway_interface }}"
   destinationCIDRs: {{ kube_vip_egress_destination_cidrs | default(['0.0.0.0/0']) | to_json }}
   selectors:
     - podSelector:

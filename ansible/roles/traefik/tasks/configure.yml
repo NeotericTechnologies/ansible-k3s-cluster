@@ -3,6 +3,18 @@
 # Purpose: Configure Traefik ingress via Helm (k3s default Traefik disabled for kube-vip LB)
 # Reference: FR-009
 
+- name: Resolve Traefik replica target when not precomputed
+  ansible.builtin.set_fact:
+    traefik_replicas: >-
+      {{
+        (
+          traefik_ha_min_replicas
+          if ((groups['k3s_servers'] | default([]) | length) >= 3)
+          else traefik_non_ha_default_replicas
+        ) | int
+      }}
+  when: traefik_replicas is not defined
+
 - name: Generate Traefik Helm values
   ansible.builtin.template:
     src: traefik-values.yaml.j2
@@ -38,5 +50,5 @@
   delay: 10
   until: >-
     (traefik_deploy.resources | default([]) | length) > 0 and
-    (traefik_deploy.resources[0].status.availableReplicas | default(0) | int) >= 1
+    (traefik_deploy.resources[0].status.availableReplicas | default(0) | int) >= (traefik_replicas | int)
   changed_when: false

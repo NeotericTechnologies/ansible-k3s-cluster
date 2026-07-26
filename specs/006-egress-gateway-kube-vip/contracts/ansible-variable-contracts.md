@@ -17,7 +17,7 @@ This document defines the public variable interface for the modified/new Ansible
 kube_vip_egress_enabled: false  # bool — master enable flag
 
 # IP address for the egress VIP (independent of kube_vip_lb_ip_range)
-# REQUIRED when kube_vip_egress_enabled: true
+# Preferred policy target when set; if empty, policy falls back to interface target
 kube_vip_egress_ip: ""  # e.g. "192.168.1.245"
 
 # Hostname associated with egress VIP (DNS registration is out of scope)
@@ -58,6 +58,7 @@ kube_vip_egress_gateway_node_selector:
   node-role.kubernetes.io/control-plane: "true"
 
 # Network interface for egress on the gateway node
+# Used in CiliumEgressGatewayPolicy only when kube_vip_egress_ip is empty
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
 ```
 
@@ -65,7 +66,7 @@ kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
 - `kube_vip_svc_election_enabled` is forced `true` (required so kube-vip binds the egress VIP to the active gateway node)
 - Cilium presence is asserted; playbook fails if Cilium is not the active CNI
 
-**Design note**: The egress LoadBalancer Service is a standard kube-vip LB service — NO `kube-vip.io/egress-internal` annotation, NO `externalTrafficPolicy: Local`. kube-vip manages the VIP lifecycle only. Cilium `CiliumEgressGatewayPolicy` handles pod selection, traffic routing, and SNAT using `egressIP: {{ kube_vip_egress_ip }}`.
+**Design note**: The egress LoadBalancer Service is a standard kube-vip LB service — NO `kube-vip.io/egress-internal` annotation, NO `externalTrafficPolicy: Local`. kube-vip manages the VIP lifecycle only. Cilium `CiliumEgressGatewayPolicy` handles pod selection, traffic routing, and SNAT, and renders exactly one gateway target: `egressIP` when configured, otherwise `interface`.
 
 ---
 
@@ -151,7 +152,7 @@ cilium_egress_gateway_enabled: false  # bool
 |-----------|--------|
 | `kube_vip_lb_dhcp_enabled: true` AND `kube_vip_lb_ip_range` non-empty | Playbook fails with descriptive error |
 | `kube_vip_egress_enabled: true` AND `cilium_enabled: false` | Playbook fails: "Cilium CNI required for egress gateway" |
-| `kube_vip_egress_enabled: true` AND `kube_vip_egress_ip` empty | Playbook fails: "kube_vip_egress_ip required when kube_vip_egress_enabled" |
+| `kube_vip_egress_enabled: true` AND both `kube_vip_egress_ip` and `kube_vip_egress_gateway_interface` empty | Playbook fails: "Configure at least one egress gateway target for Cilium policy: kube_vip_egress_ip or kube_vip_egress_gateway_interface" |
 | `kube_vip_egress_enabled: true` AND `kube_vip_egress_gateway_node_selector` empty | Playbook fails: "kube_vip_egress_gateway_node_selector must not be empty — specify at least one label to select the gateway node pool" |
 | `kube_vip_egress_enabled: true` AND `kube_vip_egress_destination_cidrs` empty | Playbook fails: "kube_vip_egress_destination_cidrs must not be empty — specify at least one destination CIDR" |
 | `kube_vip_egress_gateway_node_selector` targets worker-only nodes | Silent failure at runtime — kube-vip DaemonSet is restricted to control-plane nodes; egressIP never bound on workers; Cilium finds no active gateway. Playbook cannot enforce this at apply time without cluster query. Operator responsibility. |

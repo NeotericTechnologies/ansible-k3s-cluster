@@ -3,12 +3,13 @@
 # Purpose: Pre-flight assertions for kube-vip feature-gated variables
 # Reference: FR-003b, FR-007, data-model.md
 
-- name: Assert kube_vip_egress_ip is set when egress gateway is enabled
+- name: Assert at least one egress gateway target is configured
   ansible.builtin.assert:
     that:
-      - kube_vip_egress_ip is defined
-      - kube_vip_egress_ip | length > 0
-    fail_msg: "kube_vip_egress_ip required when kube_vip_egress_enabled"
+      - (kube_vip_egress_ip | default('') | length > 0) or (kube_vip_egress_gateway_interface | default('') | length > 0)
+    fail_msg: >-
+      Configure at least one egress gateway target for Cilium policy:
+      kube_vip_egress_ip or kube_vip_egress_gateway_interface
   when: kube_vip_egress_enabled | default(false) | bool
 
 - name: Assert kube_vip_egress_gateway_node_selector is non-empty when egress gateway is enabled
@@ -28,6 +29,16 @@
       kube_vip_egress_destination_cidrs must not be empty — specify at least one
       destination CIDR (for example 0.0.0.0/0)
   when: kube_vip_egress_enabled | default(false) | bool
+
+# - name: Assert egress pod scope is not cluster-wide catch-all
+#   ansible.builtin.assert:
+#     that:
+#       - (kube_vip_egress_pod_selector | default({}) | length > 0) or (kube_vip_egress_namespace_selector | default({}) | length > 0)
+#     fail_msg: >-
+#       kube_vip_egress_pod_selector and kube_vip_egress_namespace_selector cannot both be empty
+#       when kube_vip_egress_enabled=true. A catch-all selector can hijack egress for ingress/system pods
+#       and break external access (for example Rancher/Traefik).
+#   when: kube_vip_egress_enabled | default(false) | bool
 
 - name: Assert Cilium is enabled when egress gateway is enabled
   ansible.builtin.assert:

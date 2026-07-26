@@ -60,6 +60,15 @@
   delegate_to: "{{ item.1 }}"
   loop: "{{ ([cilium_cni_conf_path, '/etc/cni/net.d'] | unique) | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
 
+- name: Remove stale flannel VXLAN interface from host network namespace
+  ansible.builtin.command:
+    cmd: ip link delete {{ item.0 }}
+  register: cilium_stale_iface_cleanup
+  changed_when: cilium_stale_iface_cleanup.rc == 0
+  failed_when: cilium_stale_iface_cleanup.rc != 0 and ('Cannot find device' not in (cilium_stale_iface_cleanup.stderr | default('')))
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ['flannel.1'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
 - name: Ensure cilium CNI binaries are discoverable in kubelet plugin directory
   ansible.builtin.file:
     path: "{{ cilium_kubelet_cni_bin_path }}"

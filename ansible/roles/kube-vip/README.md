@@ -85,7 +85,7 @@ runs after kube-vip in `cluster-core.yml`. See `ansible/roles/cilium/README.md`.
 
 ```yaml
 kube_vip_egress_enabled: false                # Master enable flag
-kube_vip_egress_ip: ""                        # REQUIRED when enabled — dedicated IP, independent of kube_vip_lb_ip_range
+kube_vip_egress_ip: ""                        # Preferred gateway target when set — dedicated IP, independent of kube_vip_lb_ip_range
 kube_vip_egress_hostname: ""                  # Documentation only — DNS registration is out of scope
 kube_vip_egress_namespace: "kube-system"
 kube_vip_egress_policy_name: "egress-gateway-policy"
@@ -95,8 +95,14 @@ kube_vip_egress_destination_cidrs:            # Destination CIDRs routed through
   - "0.0.0.0/0"
 kube_vip_egress_gateway_node_selector:
   node-role.kubernetes.io/control-plane: "true"
-kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
+kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"  # Used only when kube_vip_egress_ip is empty
 ```
+
+The cilium role renders **exactly one** egress gateway target field in `CiliumEgressGatewayPolicy`:
+- If `kube_vip_egress_ip` is non-empty, render `egressIP`.
+- Otherwise render `interface`.
+
+This avoids invalid Cilium policy objects where both fields are present.
 
 **`kube_vip_egress_gateway_node_selector` CONSTRAINT**: MUST only match nodes where the kube-vip
 DaemonSet actually runs (the DaemonSet is hard-affinitized to
