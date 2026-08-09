@@ -20,9 +20,9 @@ cilium_helm_repo: "https://helm.cilium.io/"
 cilium_helm_release_name: "cilium"
 cilium_helm_values: {}                       # Additional Helm values merged with role defaults
 cilium_egress_gateway_enabled: false         # Sets egressGateway.enabled in Helm values; auto-set true when kube_vip_egress_enabled: true
-cilium_cni_conf_path: "/var/lib/rancher/k3s/agent/etc/cni/net.d"  # Where Cilium writes CNI config for k3s kubelet/Multus
-cilium_cni_bin_path: "/var/lib/rancher/k3s/data/current/bin"       # Where Cilium installs CNI binaries on k3s
-cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"       # Stable kubelet plugin lookup path (symlink destination)
+cilium_cni_conf_path: "/var/lib/rancher/k3s/agent/etc/cni/net.d"  # k3s CNI config directory (source of truth)
+cilium_cni_bin_path: "/var/lib/rancher/k3s/data/current/bin"       # k3s CNI binary directory (source of truth)
+cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"       # Stable kubelet plugin lookup path
 ```
 
 ## Role Tasks
@@ -32,7 +32,8 @@ cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"       # Stable kube
 - Auto-enables `egressGateway.enabled` in Helm values when `kube_vip_egress_enabled: true` (kube-vip role)
 - Installs/upgrades the Cilium Helm release, pinned to `cilium_version` (the official chart is versioned 1:1 with the Cilium app version, without a leading "v" — the role strips it automatically when resolving the chart version, so either "v1.16.6" or "1.16.6" works)
 - Enforces k3s CNI paths via Helm values (`cni.confPath`, `cni.binPath`) for Cilium install and multus compatibility
-- Reconciles a symlink from `{{ cilium_kubelet_cni_bin_path }}/cilium-cni` to `{{ cilium_cni_bin_path }}/cilium-cni` so kubelet always finds the plugin in k3s's stable lookup directory
+- Reads runtime CRI CNI directories (`crictl info`) and, when they differ from k3s paths, bridges runtime lookups back to k3s artifacts via symlinks (single source of truth, no duplicated conflist files)
+- Reconciles a symlink from `{{ cilium_kubelet_cni_bin_path }}/cilium-cni` to `{{ cilium_cni_bin_path }}/cilium-cni` only when the two paths differ
 - Removes stale `10-flannel.conflist` files from common k3s CNI directories to avoid Multus auto-config selecting legacy Flannel bridge config after Cilium migration
 - Waits for the Cilium DaemonSet to report all pods ready
 - Restarts `kube-multus-ds` (when `multus_enabled: true`) so Multus re-autodetects the active primary CNI config

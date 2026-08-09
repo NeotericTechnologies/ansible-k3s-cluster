@@ -5,7 +5,7 @@ Deploys [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni) as a th
 ## Features
 
 - Thick plugin DaemonSet (no file copies or symlinks on nodes)
-- k3s-compatible path overrides for CNI conf/bin directories
+- k3s-compatible CNI conf/bin directories (`/var/lib/rancher/k3s/agent/etc/cni/net.d`, `/var/lib/rancher/k3s/data/current/bin`)
 - DHCP daemon DaemonSet for DHCP-based IPAM on secondary networks
 - NetworkAttachmentDefinitions with DHCP, host-local, or static IPAM
 - Idempotent convergence (safe to re-run)
@@ -174,7 +174,7 @@ spec:
       image: my-app:1.0.0
 ```
 
-The pod will receive its primary interface from the default CNI (flannel) and a secondary interface (`net1`) attached to the specified VLAN with an IP assigned via the configured IPAM method.
+The pod will receive its primary interface from the active primary CNI (Cilium in this cluster) and a secondary interface (`net1`) attached to the specified VLAN with an IP assigned via the configured IPAM method.
 
 ### Verify
 

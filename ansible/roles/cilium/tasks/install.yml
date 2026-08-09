@@ -10,6 +10,58 @@
       - cilium_version | length > 0
     fail_msg: "cilium_version must be set to a pinned Cilium version (e.g. 'v1.16.6') — no default is provided"
 
+- name: Read k3s service file on each node to verify flannel-backend
+  # Cilium and flannel both use VXLAN UDP/8472; k3s must disable flannel first.
+  ansible.builtin.slurp:
+    src: /etc/systemd/system/k3s.service
+  register: cilium_k3s_svc
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups.get('k3s_agents', []) }}"
+  loop_control:
+    label: "{{ item }}"
+  failed_when: false
+
+- name: Assert k3s is configured with --flannel-backend=none on all nodes
+  ansible.builtin.assert:
+    that:
+      - item.content is defined
+      - "'flannel-backend=none' in (item.content | b64decode)"
+    fail_msg: >-
+      k3s on {{ item.item }} still has flannel enabled (flannel-backend=none not found
+      in /etc/systemd/system/k3s.service). Re-run the k3s-server role with cilium_enabled=true
+      to update the service file before deploying Cilium, otherwise both CNIs will fight
+      over VXLAN UDP port 8472 and k3s will crash-loop.
+  loop: "{{ cilium_k3s_svc.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.content is defined
+
+- name: Read runtime CNI configuration on each node
+  ansible.builtin.command:
+    cmd: crictl info -o json
+  register: cilium_runtime_info
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups.get('k3s_agents', []) }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  failed_when: false
+
+- name: Assert runtime CNI metadata is readable on all nodes
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - item.stdout is defined
+      - item.stdout | length > 0
+      - "(item.stdout | from_json).cniconfig is defined"
+    fail_msg: >-
+      Unable to read runtime CNI metadata on {{ item.item }} via `crictl info -o json`.
+      Fix CRI availability on the node before deploying Cilium.
+  loop: "{{ cilium_runtime_info.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stdout is defined and item.stdout | length > 0
+
 - name: Auto-enable Cilium egress gateway datapath when kube-vip egress gateway is enabled
   ansible.builtin.set_fact:
     cilium_egress_gateway_enabled: true
@@ -60,22 +112,32 @@
   delegate_to: "{{ item.1 }}"
   loop: "{{ ([cilium_cni_conf_path, '/etc/cni/net.d'] | unique) | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
 
-- name: Remove stale flannel VXLAN interface from host network namespace
+- name: Remove stale VXLAN interfaces from host network namespace
   ansible.builtin.command:
     cmd: ip link delete {{ item.0 }}
   register: cilium_stale_iface_cleanup
   changed_when: cilium_stale_iface_cleanup.rc == 0
   failed_when: cilium_stale_iface_cleanup.rc != 0 and ('Cannot find device' not in (cilium_stale_iface_cleanup.stderr | default('')))
   delegate_to: "{{ item.1 }}"
-  loop: "{{ ['flannel.1'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+  # flannel.1: left by prior Flannel/k3s default CNI; cilium_vxlan: left by prior Cilium install
+  loop: "{{ ['flannel.1', 'cilium_vxlan'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
 
 - name: Ensure cilium CNI binaries are discoverable in kubelet plugin directory
+  ansible.builtin.file:
+    path: "{{ cilium_cni_bin_path }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+
+- name: Ensure kubelet plugin directory exists when different from Cilium bin path
   ansible.builtin.file:
     path: "{{ cilium_kubelet_cni_bin_path }}"
     state: directory
     mode: "0755"
   delegate_to: "{{ item }}"
   loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  when: cilium_kubelet_cni_bin_path != cilium_cni_bin_path
 
 - name: Ensure cilium-cni is discoverable in kubelet plugin directory
   ansible.builtin.file:
@@ -85,6 +147,42 @@
     force: true
   delegate_to: "{{ item }}"
   loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  when: cilium_kubelet_cni_bin_path != cilium_cni_bin_path
+
+- name: Check if cilium-secrets namespace exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: cilium-secrets
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_secrets_ns
+
+- name: Remove finalizers from cilium-secrets namespace if stuck terminating
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: cilium-secrets
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      metadata:
+        finalizers: []
+  when:
+    - cilium_secrets_ns.resources | length > 0
+    - cilium_secrets_ns.resources[0].status.phase == 'Terminating'
+
+- name: Wait for cilium-secrets namespace to be fully removed
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: cilium-secrets
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_secrets_ns_wait
+  retries: 30
+  delay: 5
+  until: cilium_secrets_ns_wait.resources | length == 0
+  when:
+    - cilium_secrets_ns.resources | length > 0
+    - cilium_secrets_ns.resources[0].status.phase == 'Terminating'
 
 - name: Add Cilium Helm repository
   kubernetes.core.helm_repository:
@@ -127,13 +225,146 @@
     (cilium_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
 
+- name: Ensure legacy k3s CNI directories exist for compatibility
+  ansible.builtin.file:
+    path: "{{ item.0 }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ['/var/lib/rancher/k3s/agent/etc/cni/net.d', '/var/lib/rancher/k3s/data/current/bin', '/var/lib/rancher/k3s/data/cni'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Ensure runtime CNI conf directory exists when different from k3s conf path
+  ansible.builtin.file:
+    path: "{{ (item.stdout | from_json).cniconfig.PluginConfDir | default('') }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item.item }}"
+  loop: "{{ cilium_runtime_info.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc == 0
+    - item.stdout is defined
+    - item.stdout | length > 0
+    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) | length > 0
+    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) != cilium_cni_conf_path
+
+- name: Point runtime CNI conflist to k3s Cilium conflist when paths differ
+  ansible.builtin.file:
+    src: "{{ cilium_cni_conf_path }}/05-cilium.conflist"
+    dest: "{{ (item.stdout | from_json).cniconfig.PluginConfDir }}/05-cilium.conflist"
+    state: link
+    force: true
+  delegate_to: "{{ item.item }}"
+  loop: "{{ cilium_runtime_info.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc == 0
+    - item.stdout is defined
+    - item.stdout | length > 0
+    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) | length > 0
+    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) != cilium_cni_conf_path
+
+- name: Ensure runtime CNI bin directory exists when different from k3s bin path
+  ansible.builtin.file:
+    path: "{{ ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item.item }}"
+  loop: "{{ cilium_runtime_info.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc == 0
+    - item.stdout is defined
+    - item.stdout | length > 0
+    - (((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) | length) > 0
+    - ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) != cilium_cni_bin_path
+
+- name: Point runtime cilium-cni binary to k3s Cilium binary when paths differ
+  ansible.builtin.file:
+    src: "{{ cilium_cni_bin_path }}/cilium-cni"
+    dest: "{{ ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first) }}/cilium-cni"
+    state: link
+    force: true
+  delegate_to: "{{ item.item }}"
+  loop: "{{ cilium_runtime_info.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.rc == 0
+    - item.stdout is defined
+    - item.stdout | length > 0
+    - (((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) | length) > 0
+    - ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) != cilium_cni_bin_path
+
+- name: Mirror cilium-cni binary into legacy k3s CNI bin path when runtime path differs
+  ansible.builtin.file:
+    src: "{{ cilium_cni_bin_path }}/cilium-cni"
+    dest: "/var/lib/rancher/k3s/data/current/bin/cilium-cni"
+    state: link
+    force: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  when: cilium_cni_bin_path != '/var/lib/rancher/k3s/data/current/bin'
+
+- name: Mirror cilium-cni binary into legacy kubelet plugin path
+  ansible.builtin.file:
+    src: "/var/lib/rancher/k3s/data/current/bin/cilium-cni"
+    dest: "/var/lib/rancher/k3s/data/cni/cilium-cni"
+    state: link
+    force: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+
+- name: Verify Cilium datapath is healthy on all nodes
+  # Pod readiness can pass while the vxlan tunnel device is still failing to initialize.
+  # This catches that split-brain by polling `cilium status` until the agent reports OK.
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium status --brief
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_datapath_status
+  retries: 30
+  delay: 10
+  until: >
+    cilium_datapath_status.rc == 0 and
+    'error' not in (cilium_datapath_status.stdout | lower)
+  changed_when: false
+  failed_when: false
+
+- name: Assert Cilium datapath is healthy before proceeding
+  ansible.builtin.assert:
+    that:
+      - cilium_datapath_status.rc == 0
+      - "'error' not in (cilium_datapath_status.stdout | lower)"
+    fail_msg: |
+      Cilium datapath failed to initialize after {{ 30 * 10 }}s.
+      Status output: {{ cilium_datapath_status.stdout }}
+      Check for stale network interfaces (cilium_vxlan, flannel.1) on the nodes.
+
+- name: Check whether multus DaemonSet is already deployed
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: kube-multus-ds
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_multus_ds_probe
+  when: multus_enabled | default(false) | bool
+
 - name: Restart multus DaemonSet to pick up Cilium primary CNI config
   ansible.builtin.command:
     cmd: kubectl rollout restart daemonset/kube-multus-ds -n kube-system
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   changed_when: true
-  when: multus_enabled | default(false) | bool
+  when:
+    - multus_enabled | default(false) | bool
+    - (cilium_multus_ds_probe.resources | default([]) | length) > 0
 
 - name: Wait for multus DaemonSet to be ready after restart
   kubernetes.core.k8s_info:
@@ -151,20 +382,10 @@
     (cilium_multus_ds_after_restart.resources[0].status.desiredNumberScheduled | default(-1) | int) and
     (cilium_multus_ds_after_restart.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
-  when: multus_enabled | default(false) | bool
-
-# The CiliumEgressGatewayPolicy CRD is only registered once the Cilium Helm chart
-# above has installed successfully, so this MUST run after the DaemonSet-ready wait.
-# kube_vip_egress_* variables are owned by the kube-vip role but mirrored in
-# ansible/group_vars/all.yml, making them available here regardless of role order.
-- name: Apply CiliumEgressGatewayPolicy for kube-vip egress gateway
-  kubernetes.core.k8s:
-    definition: "{{ item }}"
-    state: present
-    kubeconfig: /etc/rancher/k3s/k3s.yaml
-  loop: "{{ lookup('template', 'cilium-egress-gateway-policy.yaml.j2') | from_yaml_all | list }}"
-  loop_control:
-    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
   when:
-    - kube_vip_egress_enabled | default(false) | bool
-    - item is not none
+    - multus_enabled | default(false) | bool
+    - (cilium_multus_ds_probe.resources | default([]) | length) > 0
+
+# CRD is guaranteed present once the DaemonSet-ready wait above succeeds.
+- name: Reconcile CiliumEgressGatewayPolicy
+  ansible.builtin.include_tasks: reconcile.yml

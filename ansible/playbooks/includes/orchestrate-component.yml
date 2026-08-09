@@ -323,6 +323,16 @@
         - _curr_component == 'cilium'
         - _curr_action != 'none'
 
+    # Reconcile cilium policies even when the version is already at desired state
+    - name: Reconcile cilium policies (version unchanged)
+      ansible.builtin.include_role:
+        name: cilium
+        tasks_from: reconcile.yml
+      when:
+        - _curr_component == 'cilium'
+        - _curr_action == 'none'
+        - cilium_enabled | default(false) | bool
+
     # Rancher
     - name: "Execute rancher"
       block:

@@ -27,6 +27,29 @@
   ansible.builtin.set_fact:
     k3s_install_needed: "{{ not k3s_binary.stat.exists or k3s_version not in installed_k3s_version.stdout }}"
 
+- name: Read current k3s service file to detect arg drift
+  ansible.builtin.slurp:
+    src: /etc/systemd/system/k3s.service
+  register: k3s_service_file
+  when: k3s_binary.stat.exists
+  failed_when: false
+
+- name: Detect flannel-backend mismatch requiring service update
+  # Without INSTALL_K3S_FORCE the install script skips service-file writes when
+  # the binary version is unchanged; k3s_args_drifted signals that condition.
+  ansible.builtin.set_fact:
+    k3s_install_needed: true
+    k3s_args_drifted: true
+  when:
+    - not (k3s_install_needed | bool)
+    - k3s_binary.stat.exists
+    - k3s_service_file.content is defined
+    - >-
+        (cilium_enabled | default(false) | bool and
+         'flannel-backend=none' not in (k3s_service_file.content | b64decode)) or
+        (not (cilium_enabled | default(false) | bool) and
+         'flannel-backend=none' in (k3s_service_file.content | b64decode))
+
 - name: Determine if this is the first control-plane node
   ansible.builtin.set_fact:
     is_first_server: "{{ groups['k3s_servers'].index(k3s_target_host | default(inventory_hostname)) == 0 }}"
@@ -44,8 +67,7 @@
   environment:
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
     INSTALL_K3S_EXEC: "server --cluster-init --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
-  args:
-    creates: /etc/systemd/system/k3s.service
+    INSTALL_K3S_FORCE: "{{ 'true' if k3s_args_drifted | default(false) | bool else omit }}"
   when:
     - k3s_install_needed
     - is_first_server
@@ -80,8 +102,7 @@
     K3S_TOKEN: "{{ k3s_node_token }}"
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
     INSTALL_K3S_EXEC: "server --server https://{{ groups['k3s_servers'][0] }}:6443 --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
-  args:
-    creates: /etc/systemd/system/k3s.service
+    INSTALL_K3S_FORCE: "{{ 'true' if k3s_args_drifted | default(false) | bool else omit }}"
   when:
     - k3s_install_needed
     - not is_first_server
@@ -92,8 +113,7 @@
   environment:
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
     INSTALL_K3S_EXEC: "server --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
-  args:
-    creates: /etc/systemd/system/k3s.service
+    INSTALL_K3S_FORCE: "{{ 'true' if k3s_args_drifted | default(false) | bool else omit }}"
   when:
     - k3s_install_needed
     - ha_mode == 'single-node'

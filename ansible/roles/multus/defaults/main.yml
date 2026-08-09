@@ -8,9 +8,8 @@ multus_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 multus_image: "ghcr.io/k8snetworkplumbingwg/multus-cni"
 multus_version: "v4.2.4-thick"
 
-# k3s-compatible host path overrides
-# These override the default /etc/cni/net.d and /opt/cni/bin paths
-# for k3s which uses its own directory structure
+# k3s-compatible host path overrides.
+# Multus installs its own shim/config under the k3s-managed directory tree.
 multus_cni_conf_dir: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
 multus_cni_bin_dir: "/var/lib/rancher/k3s/data/current/bin"
 
