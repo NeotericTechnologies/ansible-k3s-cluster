@@ -32,10 +32,20 @@ spec:
               - key: node-role.kubernetes.io/control-plane
                 operator: Exists
       tolerations:
-      - effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
         operator: Exists
-      - effect: NoExecute
+        effect: NoSchedule
+      - key: node.kubernetes.io/not-ready
         operator: Exists
+        effect: NoExecute
+      - key: node.kubernetes.io/unreachable
+        operator: Exists
+        effect: NoExecute
+      - key: smoke.kube-vip.io/failover-test
+        operator: Equal
+        value: evict
+        effect: NoExecute
+        tolerationSeconds: 5
       containers:
       - name: kube-vip
         image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
