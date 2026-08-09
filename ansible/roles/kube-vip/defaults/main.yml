@@ -24,6 +24,8 @@ kube_vip_egress_pod_selector: {}
 kube_vip_egress_namespace_selector: {}
 kube_vip_egress_destination_cidrs:
   - "0.0.0.0/0"
+# Override to pin specific exclusions; empty = auto-detect pod pool + service CIDRs at apply time
+kube_vip_egress_excluded_cidrs: []
 kube_vip_egress_gateway_node_selector:
   node-role.kubernetes.io/control-plane: "true"
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"

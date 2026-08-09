@@ -21,6 +21,9 @@ spec:
     nodeSelector:
       matchLabels: {{ kube_vip_egress_gateway_node_selector | to_json }}
   destinationCIDRs: {{ kube_vip_egress_destination_cidrs | default(['0.0.0.0/0']) | to_json }}
+{% if _cilium_egress_excluded_cidrs_effective | default([]) | length > 0 %}
+  excludedCIDRs: {{ _cilium_egress_excluded_cidrs_effective | to_json }}
+{% endif %}
   selectors:
     - podSelector:
         matchLabels: {{ kube_vip_egress_pod_selector | default({}) | to_json }}

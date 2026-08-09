@@ -12,10 +12,6 @@ k3s_version: "v1.28.5+k3s1"
 k3s_server_ha_min_replicas: 3
 k3s_server_non_ha_default_replicas: 1
 
-# Cluster networking
-cluster_cidr: "10.42.0.0/16"
-service_cidr: "10.43.0.0/16"
-
 # Control-plane access (VIP managed by kube-vip)
 control_plane_vip: "192.168.1.100"
 api_port: 6443

@@ -12,7 +12,7 @@ cilium_version: ""
 cilium_namespace: "kube-system"
 cilium_helm_repo: "https://helm.cilium.io/"
 cilium_helm_release_name: "cilium"
-cilium_helm_values: {}
+cilium_helm_values: {}  # ipam.operator.clusterPoolIPv4PodCIDRList defaults to the detected k3s pod CIDR in install.yml
 cilium_egress_gateway_enabled: false
 
 # k3s-managed CNI paths. Runtime paths from `crictl info` are reconciled

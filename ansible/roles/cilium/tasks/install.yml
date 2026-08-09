@@ -67,6 +67,39 @@
     cilium_egress_gateway_enabled: true
   when: kube_vip_egress_enabled | default(false) | bool
 
+- name: Detect k3s pod CIDR from service file to align Cilium IPAM pool
+  # Reuses already-read service file; falls back to k3s built-in default when not explicitly set.
+  ansible.builtin.set_fact:
+    _k3s_cluster_cidr: >-
+      {{
+        (
+          cilium_k3s_svc.results
+          | selectattr('content', 'defined')
+          | map(attribute='content')
+          | map('b64decode')
+          | select
+          | list
+          | first
+          | default('')
+          | regex_search('(?<=--cluster-cidr=)[\d./]+')
+        ) | default('10.42.0.0/16', true)
+      }}
+
+- name: Merge auto-detected k3s pod CIDR into Cilium IPAM pool Helm values
+  # User-supplied cilium_helm_values.ipam overrides this default.
+  ansible.builtin.set_fact:
+    cilium_helm_values: >-
+      {{
+        {
+          'ipam': {
+            'operator': {
+              'clusterPoolIPv4PodCIDRList': [_k3s_cluster_cidr],
+              'clusterPoolIPv4MaskSize': 24
+            }
+          }
+        } | combine(cilium_helm_values, recursive=True)
+      }}
+
 - name: Merge egress gateway setting into Cilium Helm values
   ansible.builtin.set_fact:
     # egressGateway has cascading dependencies:
@@ -345,6 +378,152 @@
       Cilium datapath failed to initialize after {{ 30 * 10 }}s.
       Status output: {{ cilium_datapath_status.stdout }}
       Check for stale network interfaces (cilium_vxlan, flannel.1) on the nodes.
+
+# --- Cross-node overlay probe (self-healing) ---
+# cilium status --brief passes even when VXLAN BPF programs are stale and cross-node
+# pod traffic is silently dropped. This probe detects that split-brain by launching a
+# temporary pod on one server and pinging a pod on a different server via the overlay.
+# When it fails, the DaemonSet is restarted (reinitialises BPF programs) and re-probed.
+- name: Get CoreDNS pod placement for cross-node overlay probe
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get pod -n kube-system -l k8s-app=kube-dns
+      -o jsonpath='{.items[0].status.podIP}{"\t"}{.items[0].spec.nodeName}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_coredns_placement
+  changed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Set cross-node overlay probe source node
+  ansible.builtin.set_fact:
+    cilium_overlay_probe_target_ip: "{{ cilium_coredns_placement.stdout.split('\t') | first }}"
+    cilium_overlay_probe_target_node: "{{ cilium_coredns_placement.stdout.split('\t') | last }}"
+    cilium_overlay_probe_source_node: >-
+      {{
+        groups['k3s_servers']
+        | reject('equalto', cilium_coredns_placement.stdout.split('\t') | last)
+        | list
+        | first
+      }}
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Run cross-node overlay probe
+  when: (groups['k3s_servers'] | length) > 1
+  block:
+    - name: Deploy overlay probe pod on source node
+      ansible.builtin.command:
+        cmd: >-
+          kubectl run cilium-overlay-probe -n kube-system --restart=Never
+          --image=busybox:1.36.1
+          --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
+          -- sleep 30
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: true
+      failed_when: false
+
+    - name: Wait for overlay probe pod to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=30s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+
+    - name: Test ICMP cross-node pod overlay connectivity
+      ansible.builtin.command:
+        cmd: >-
+          kubectl exec -n kube-system cilium-overlay-probe
+          -- ping -c3 -W2 {{ cilium_overlay_probe_target_ip }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_probe_result
+      changed_when: false
+      failed_when: false
+
+  always:
+    - name: Remove overlay probe pod
+      ansible.builtin.command:
+        cmd: kubectl delete pod cilium-overlay-probe -n kube-system --ignore-not-found
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+      failed_when: false
+
+- name: Restart Cilium DaemonSet to reinitialise stale BPF programs
+  ansible.builtin.command:
+    cmd: kubectl rollout restart daemonset/cilium -n {{ cilium_namespace }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_bpf_restart
+  changed_when: true
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_overlay_probe_result.rc | default(0) != 0
+
+- name: Wait for Cilium DaemonSet rollout after BPF reinitialisation
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/cilium -n {{ cilium_namespace }} --timeout=180s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  when: cilium_bpf_restart is changed
+
+- name: Re-probe cross-node overlay after DaemonSet restart
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_bpf_restart is changed
+  block:
+    - name: Deploy overlay re-probe pod
+      ansible.builtin.command:
+        cmd: >-
+          kubectl run cilium-overlay-probe -n kube-system --restart=Never
+          --image=busybox:1.36.1
+          --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
+          -- sleep 30
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: true
+      failed_when: false
+
+    - name: Wait for overlay re-probe pod to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=30s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+
+    - name: Test cross-node overlay connectivity after DaemonSet restart
+      ansible.builtin.command:
+        cmd: >-
+          kubectl exec -n kube-system cilium-overlay-probe
+          -- ping -c3 -W2 {{ cilium_overlay_probe_target_ip }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_post_restart_result
+      changed_when: false
+
+  always:
+    - name: Remove overlay re-probe pod
+      ansible.builtin.command:
+        cmd: kubectl delete pod cilium-overlay-probe -n kube-system --ignore-not-found
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+      failed_when: false
+
+- name: Assert cross-node overlay connectivity
+  ansible.builtin.assert:
+    that:
+      - >-
+        (cilium_overlay_probe_result.rc | default(0) == 0)
+        or (cilium_overlay_post_restart_result.rc | default(0) == 0)
+    fail_msg: >-
+      Cross-node pod overlay (VXLAN) connectivity probe failed on both initial check and
+      after DaemonSet restart. Source={{ cilium_overlay_probe_source_node }},
+      Target={{ cilium_overlay_probe_target_ip }} ({{ cilium_overlay_probe_target_node }}).
+      Manual intervention required: check UDP 8472 between nodes and Cilium BPF program state.
+  when: (groups['k3s_servers'] | length) > 1
 
 - name: Check whether multus DaemonSet is already deployed
   kubernetes.core.k8s_info:
