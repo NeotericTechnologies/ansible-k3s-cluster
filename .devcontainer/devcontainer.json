@@ -13,7 +13,7 @@
         "vscode": {
             "extensions": [
                 "github.copilot-chat",
-                "continue.continue",
+                "saoudrizwan.claude-dev",
                 "redhat.vscode-yaml",
                 "redhat.ansible",
                 "yzhang.markdown-all-in-one",
