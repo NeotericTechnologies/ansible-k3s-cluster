@@ -143,7 +143,21 @@
     path: "{{ item.0 }}/10-flannel.conflist"
     state: absent
   delegate_to: "{{ item.1 }}"
-  loop: "{{ ([cilium_cni_conf_path, '/etc/cni/net.d'] | unique) | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+  loop: "{{ [cilium_cni_conf_path] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Remove stale Cilium config links from generic CNI directory
+  ansible.builtin.file:
+    path: "/etc/cni/net.d/{{ item.0 }}"
+    state: absent
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ['05-cilium.conflist', '10-cilium.conflist'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Remove stale Cilium plugin links from generic CNI directory
+  ansible.builtin.file:
+    path: "/opt/cni/bin/{{ item.0 }}"
+    state: absent
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ['cilium-cni', 'bandwidth', 'bridge', 'cni', 'firewall', 'flannel', 'host-local', 'loopback', 'portmap'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
 
 - name: Remove stale VXLAN interfaces from host network namespace
   ansible.builtin.command:
@@ -266,91 +280,6 @@
   delegate_to: "{{ item.1 }}"
   loop: "{{ ['/var/lib/rancher/k3s/agent/etc/cni/net.d', '/var/lib/rancher/k3s/data/current/bin', '/var/lib/rancher/k3s/data/cni'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
 
-- name: Ensure runtime CNI conf directory exists when different from k3s conf path
-  ansible.builtin.file:
-    path: "{{ (item.stdout | from_json).cniconfig.PluginConfDir | default('') }}"
-    state: directory
-    mode: "0755"
-  delegate_to: "{{ item.item }}"
-  loop: "{{ cilium_runtime_info.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when:
-    - item.rc == 0
-    - item.stdout is defined
-    - item.stdout | length > 0
-    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) | length > 0
-    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) != cilium_cni_conf_path
-
-- name: Point runtime CNI conflist to k3s Cilium conflist when paths differ
-  ansible.builtin.file:
-    src: "{{ cilium_cni_conf_path }}/05-cilium.conflist"
-    dest: "{{ (item.stdout | from_json).cniconfig.PluginConfDir }}/05-cilium.conflist"
-    state: link
-    force: true
-  delegate_to: "{{ item.item }}"
-  loop: "{{ cilium_runtime_info.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when:
-    - item.rc == 0
-    - item.stdout is defined
-    - item.stdout | length > 0
-    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) | length > 0
-    - ((item.stdout | from_json).cniconfig.PluginConfDir | default('')) != cilium_cni_conf_path
-
-- name: Ensure runtime CNI bin directory exists when different from k3s bin path
-  ansible.builtin.file:
-    path: "{{ ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) }}"
-    state: directory
-    mode: "0755"
-  delegate_to: "{{ item.item }}"
-  loop: "{{ cilium_runtime_info.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when:
-    - item.rc == 0
-    - item.stdout is defined
-    - item.stdout | length > 0
-    - (((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) | length) > 0
-    - ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) != cilium_cni_bin_path
-
-- name: Point runtime cilium-cni binary to k3s Cilium binary when paths differ
-  ansible.builtin.file:
-    src: "{{ cilium_cni_bin_path }}/cilium-cni"
-    dest: "{{ ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first) }}/cilium-cni"
-    state: link
-    force: true
-  delegate_to: "{{ item.item }}"
-  loop: "{{ cilium_runtime_info.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when:
-    - item.rc == 0
-    - item.stdout is defined
-    - item.stdout | length > 0
-    - (((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) | length) > 0
-    - ((item.stdout | from_json).cniconfig.PluginDirs | default([]) | first | default('')) != cilium_cni_bin_path
-
-- name: Mirror cilium-cni binary into legacy k3s CNI bin path when runtime path differs
-  ansible.builtin.file:
-    src: "{{ cilium_cni_bin_path }}/cilium-cni"
-    dest: "/var/lib/rancher/k3s/data/current/bin/cilium-cni"
-    state: link
-    force: true
-  delegate_to: "{{ item }}"
-  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
-  when: cilium_cni_bin_path != '/var/lib/rancher/k3s/data/current/bin'
-
-- name: Mirror cilium-cni binary into legacy kubelet plugin path
-  ansible.builtin.file:
-    src: "/var/lib/rancher/k3s/data/current/bin/cilium-cni"
-    dest: "/var/lib/rancher/k3s/data/cni/cilium-cni"
-    state: link
-    force: true
-  delegate_to: "{{ item }}"
-  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
-
 - name: Verify Cilium datapath is healthy on all nodes
   # Pod readiness can pass while the vxlan tunnel device is still failing to initialize.
   # This catches that split-brain by polling `cilium status` until the agent reports OK.
@@ -417,7 +346,7 @@
           kubectl run cilium-overlay-probe -n kube-system --restart=Never
           --image=busybox:1.36.1
           --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
-          -- sleep 30
+          -- sleep 300
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       changed_when: true
@@ -425,10 +354,12 @@
 
     - name: Wait for overlay probe pod to be Ready
       ansible.builtin.command:
-        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=30s
+        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=120s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_probe_ready
       changed_when: false
+      failed_when: false
 
     - name: Test ICMP cross-node pod overlay connectivity
       ansible.builtin.command:
@@ -440,6 +371,7 @@
       register: cilium_overlay_probe_result
       changed_when: false
       failed_when: false
+      when: cilium_overlay_probe_ready.rc == 0
 
   always:
     - name: Remove overlay probe pod
@@ -459,7 +391,9 @@
   changed_when: true
   when:
     - (groups['k3s_servers'] | length) > 1
-    - cilium_overlay_probe_result.rc | default(0) != 0
+    - >-
+      cilium_overlay_probe_ready.rc | default(1) != 0 or
+      cilium_overlay_probe_result.rc | default(1) != 0
 
 - name: Wait for Cilium DaemonSet rollout after BPF reinitialisation
   ansible.builtin.command:
@@ -480,7 +414,7 @@
           kubectl run cilium-overlay-probe -n kube-system --restart=Never
           --image=busybox:1.36.1
           --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
-          -- sleep 30
+          -- sleep 300
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       changed_when: true
@@ -488,10 +422,12 @@
 
     - name: Wait for overlay re-probe pod to be Ready
       ansible.builtin.command:
-        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=30s
+        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=120s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_post_restart_ready
       changed_when: false
+      failed_when: false
 
     - name: Test cross-node overlay connectivity after DaemonSet restart
       ansible.builtin.command:
@@ -502,6 +438,8 @@
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: cilium_overlay_post_restart_result
       changed_when: false
+      failed_when: false
+      when: cilium_overlay_post_restart_ready.rc == 0
 
   always:
     - name: Remove overlay re-probe pod

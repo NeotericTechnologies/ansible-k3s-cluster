@@ -66,11 +66,16 @@
   ansible.builtin.command: helm plugin install https://github.com/databus23/helm-diff --version v3.9.12
   when: not (helm_plugin_list.stdout is search('(?m)^diff\s'))
 
-- name: Create containerd CNI PluginDirs config fragment
-  # k3s generates containerd config.toml with auto-import from config-v3.toml.d/*.toml.
-  # Create a discrete fragment to extend plugin_dirs with /var/lib/rancher/k3s/data/cni
-  # so pod sandbox creation can find standard CNI plugins (loopback, host-local, bridge, bandwidth).
-  # This prevents "failed to find plugin" errors regardless of CNI implementation (Flannel or Cilium).
+- name: Ensure k3s containerd config fragment directory exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.d
+    state: directory
+    mode: "0755"
+
+- name: Create containerd CNI paths config fragment
+  # k3s imports config-v3.toml.d/*.toml into its generated containerd config.
+  # Keep containerd on k3s-managed CNI paths; do not create a second CNI installation
+  # in the generic /etc/cni/net.d or /opt/cni/bin locations.
   ansible.builtin.copy:
     dest: "/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.d/cni-plugin-dirs.toml"
     mode: "0644"
@@ -78,6 +83,19 @@
       # k3s CNI plugin directory configuration
       # Source: ansible/roles/k3s-common/tasks/dependencies.yml
       [plugins.'io.containerd.cri.v1.runtime'.cni]
-        plugin_dirs = ["/opt/cni/bin", "/var/lib/rancher/k3s/data/cni"]
+        conf_dir = "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+        bin_dirs = ["/var/lib/rancher/k3s/data/cni"]
   register: containerd_cni_config
-  failed_when: false
+
+- name: Check whether k3s is installed before reloading containerd configuration
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary_for_cni_config
+
+- name: Reload k3s after changing native containerd CNI paths
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+  when:
+    - containerd_cni_config is changed
+    - k3s_binary_for_cni_config.stat.exists
