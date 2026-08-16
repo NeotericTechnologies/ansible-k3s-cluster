@@ -243,6 +243,63 @@
       failed_when: egress_policy.rc != 0
       when: smoke_kube_vip_egress_enabled | bool
 
+    - name: Deploy internal source-IP echo server on host network
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: egress-smoke-echo-server
+            namespace: kube-system
+          spec:
+            hostNetwork: true
+            tolerations:
+              - operator: Exists
+            containers:
+              - name: echo
+                image: python:3-alpine
+                command:
+                  - python3
+                  - -c
+                  - |
+                    from http.server import HTTPServer, BaseHTTPRequestHandler
+                    class H(BaseHTTPRequestHandler):
+                        def do_GET(self):
+                            b = self.client_address[0].encode()
+                            self.send_response(200)
+                            self.send_header('Content-Length', str(len(b)))
+                            self.end_headers()
+                            self.wfile.write(b)
+                        def log_message(self, *a): pass
+                    HTTPServer(('', 18888), H).serve_forever()
+                ports:
+                  - containerPort: 18888
+                    hostPort: 18888
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Wait for internal echo server to become Ready
+      ansible.builtin.command: >-
+        kubectl wait -n kube-system --for=condition=Ready pod/egress-smoke-echo-server --timeout=90s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: echo_server_ready
+      changed_when: false
+      retries: 5
+      delay: 5
+      until: echo_server_ready.rc == 0
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Get internal echo server node host IP
+      ansible.builtin.command: >-
+        kubectl get pod egress-smoke-echo-server -n kube-system -o jsonpath='{.status.hostIP}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: echo_server_host_ip
+      changed_when: false
+      when: smoke_kube_vip_egress_enabled | bool
+
     - name: Launch test pod for egress source-IP verification
       kubernetes.core.k8s:
         state: present
@@ -273,19 +330,10 @@
       until: egress_test_pod_ready.rc == 0
       when: smoke_kube_vip_egress_enabled | bool
 
-    - name: Check outbound source IP from test pod (SC-001)
+    - name: Check outbound source IP from test pod via internal echo server (SC-001)
       ansible.builtin.shell: |
-        set -e
-        kubectl exec -n default egress-gateway-smoke-test -- sh -c '
-          for url in {{ (egress_source_ip_check_urls | default([egress_source_ip_check_url | default("https://ifconfig.me"), "https://api.ipify.org", "https://ifconfig.io/ip"])) | map("quote") | join(" ") }}; do
-            out=$(curl -fsS --max-time 10 "$url" 2>/dev/null || true)
-            if [ -n "$out" ]; then
-              echo "$out"
-              exit 0
-            fi
-          done
-          exit 6
-        '
+        kubectl exec -n default egress-gateway-smoke-test -- \
+          curl -fsS --max-time 10 "http://{{ echo_server_host_ip.stdout }}:18888/"
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: egress_source_ip
@@ -310,7 +358,7 @@
     - name: Explain non-strict egress probe failure
       ansible.builtin.debug:
         msg: >-
-          Egress source-IP probe could not reach external check endpoints (rc={{ egress_source_ip.rc | default('n/a') }}).
+          Egress source-IP probe via internal echo server failed (rc={{ egress_source_ip.rc | default('n/a') }}).
           Continuing because egress_source_ip_strict=false.
           stdout={{ egress_source_ip.stdout | default('') }} stderr={{ egress_source_ip.stderr | default('') }}
       when:
@@ -327,27 +375,6 @@
             else '<unavailable>'
           }}
       when: smoke_kube_vip_egress_enabled | bool
-
-    - name: Classify expected/observed egress IP context
-      ansible.builtin.set_fact:
-        smoke_expected_ip_is_private: >-
-          {{ (smoke_expected_egress_ip | default('')) is match('^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)') }}
-        smoke_observed_ip_is_private: >-
-          {{ (egress_source_ip.stdout | trim | default('')) is match('^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)') }}
-      when:
-        - smoke_kube_vip_egress_enabled | bool
-        - egress_source_ip.rc == 0
-
-    - name: Explain NAT-aware SC-001 interpretation
-      ansible.builtin.debug:
-        msg: >-
-          Observed public egress IP {{ egress_source_ip.stdout | trim }} while expected VIP {{ smoke_expected_egress_ip }} is private.
-          This is valid when upstream NAT rewrites private VIP egress. Strict equality is skipped for SC-001 in this network path.
-      when:
-        - smoke_kube_vip_egress_enabled | bool
-        - egress_source_ip.rc == 0
-        - smoke_expected_ip_is_private | bool
-        - not (smoke_observed_ip_is_private | bool)
 
     - name: Assert observed egress source IP is non-empty
       ansible.builtin.assert:
@@ -366,7 +393,7 @@
       when:
         - smoke_kube_vip_egress_enabled | bool
         - egress_source_ip.rc == 0
-        - not (smoke_expected_ip_is_private | bool and not (smoke_observed_ip_is_private | bool))
+        - kube_vip_egress_ip is defined
 
     - name: Clean up egress gateway test pod
       kubernetes.core.k8s:
@@ -376,6 +403,16 @@
         kind: Pod
         name: egress-gateway-smoke-test
         namespace: default
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Clean up internal echo server pod
+      kubernetes.core.k8s:
+        state: absent
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        api_version: v1
+        kind: Pod
+        name: egress-smoke-echo-server
+        namespace: kube-system
       when: smoke_kube_vip_egress_enabled | bool
 
     # --- Egress gateway failover (FR-003, SC-002) ---
@@ -550,6 +587,33 @@
             ((egress_failover_state.stdout.split('|') | last | default('0') | int) > (egress_lease_transitions_before | default(0) | int))
           ignore_errors: true
 
+        - name: Wait for Kubernetes API recovery and capture final failover state
+          ansible.builtin.shell: |
+            set -euo pipefail
+            vip_host=$(kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o jsonpath="{.metadata.annotations['kube-vip.io/vipHost']}")
+            lease_holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
+            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}')
+            [[ -n "${vip_host}${lease_holder}" ]]
+            [[ -n "${lease_holder}" ]]
+            [[ -n "${transitions}" ]]
+            echo "${vip_host}|${lease_holder}|${transitions}"
+          args:
+            executable: /bin/bash
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_failover_state_recovered
+          changed_when: false
+          failed_when: false
+          retries: 30
+          delay: 1
+          until:
+            - egress_failover_state_recovered.rc == 0
+            - egress_failover_state_recovered.stdout | default('') | trim | length > 0
+
+        - name: Select recovered failover state when the initial wait saw an API outage
+          ansible.builtin.set_fact:
+            egress_failover_state: "{{ egress_failover_state_recovered if (egress_failover_state_recovered.rc | default(1) | int) == 0 else egress_failover_state }}"
+
         - name: Parse final failover state fields
           ansible.builtin.set_fact:
             egress_vip_host_after: >-
@@ -634,6 +698,10 @@
             KUBECONFIG: /etc/rancher/k3s/k3s.yaml
           changed_when: true
           failed_when: false
+          register: egress_cleanup_taint_noexecute
+          retries: 30
+          delay: 1
+          until: egress_cleanup_taint_noexecute.rc | default(1) | int == 0
           when: egress_vip_host_before | default('') | length > 0
 
         - name: Remove test-only failover NoSchedule taint from previous holder node
@@ -643,6 +711,10 @@
             KUBECONFIG: /etc/rancher/k3s/k3s.yaml
           changed_when: true
           failed_when: false
+          register: egress_cleanup_taint_noschedule
+          retries: 30
+          delay: 1
+          until: egress_cleanup_taint_noschedule.rc | default(1) | int == 0
           when: egress_vip_host_before | default('') | length > 0
 
         - name: Uncordon previous holder node
@@ -651,6 +723,10 @@
             KUBECONFIG: /etc/rancher/k3s/k3s.yaml
           changed_when: true
           failed_when: false
+          register: egress_cleanup_uncordon
+          retries: 30
+          delay: 1
+          until: egress_cleanup_uncordon.rc | default(1) | int == 0
           when: egress_vip_host_before | default('') | length > 0
       when:
         - smoke_kube_vip_egress_enabled | bool
@@ -881,7 +957,7 @@
           - Egress source-IP probe: {{ 'RUN (rc=' ~ (egress_source_ip.rc | default('n/a') | string) ~ ')' if (smoke_kube_vip_egress_enabled | bool) else 'SKIP (egress checks skipped)' }}
             - Expected egress IP: {{ smoke_expected_egress_ip | default('<unset>') }}
             - Observed egress IP: {{ smoke_observed_egress_ip | default('<not-collected>') }}
-          - Strict expected-vs-observed IP assertion: {{ 'RUN (pass)' if (smoke_kube_vip_egress_enabled | bool and (kube_vip_egress_ip is defined) and not (smoke_expected_ip_is_private | default(false) | bool and not (smoke_observed_ip_is_private | default(false) | bool))) else 'SKIP (expected IP unset or NAT-aware bypass)' }}
+          - Strict expected-vs-observed IP assertion: {{ 'RUN (pass)' if (smoke_kube_vip_egress_enabled | bool and (kube_vip_egress_ip is defined)) else 'SKIP (kube_vip_egress_ip not set)' }}
           - Egress failover test (SC-002): {{ smoke_failover_result | default('SKIP (egress_run_failover_test=false)') }}
             - Failover holder before: {{ egress_vip_host_before | default('<not-run>') }}
             - Failover holder after: {{ egress_vip_host_after | default('<not-run>') }}
