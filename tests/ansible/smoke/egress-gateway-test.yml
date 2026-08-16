@@ -363,7 +363,8 @@
             set -euo pipefail
             vip_host=$(kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o jsonpath="{.metadata.annotations['kube-vip.io/vipHost']}")
             lease_holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
-            echo "${vip_host}|${lease_holder}"
+            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}')
+            echo "${vip_host}|${lease_holder}|${transitions}"
           environment:
             KUBECONFIG: /etc/rancher/k3s/k3s.yaml
           register: egress_vip_state_before
@@ -372,12 +373,13 @@
         - name: Normalize egress holder baseline values
           ansible.builtin.set_fact:
             egress_service_vip_host_before: "{{ (egress_vip_state_before.stdout.split('|') | first | default('')) | trim }}"
-            egress_lease_holder_before: "{{ (egress_vip_state_before.stdout.split('|') | last | default('')) | trim }}"
+            egress_lease_holder_before: "{{ (egress_vip_state_before.stdout.split('|'))[1] | default('') | trim }}"
+            egress_lease_transitions_before: "{{ (egress_vip_state_before.stdout.split('|') | last | default('0')) | int }}"
             egress_vip_host_before: >-
               {{
                 ((egress_vip_state_before.stdout.split('|') | first | default('')) | trim)
                 if (((egress_vip_state_before.stdout.split('|') | first | default('')) | trim | length) > 0)
-                else ((egress_vip_state_before.stdout.split('|') | last | default('')) | trim)
+                else ((egress_vip_state_before.stdout.split('|'))[1] | default('') | trim)
               }}
 
         - name: Assert failover precondition has a current VIP host
@@ -459,22 +461,6 @@
         - name: Record whether taint alone evacuated holder kube-vip pod
           ansible.builtin.set_fact:
             egress_taint_evicted_kube_vip: "{{ (egress_holder_kube_vip_pod_after_taint.stdout | default('') | trim | length) == 0 }}"
-
-        - name: Get initial lease holder and transition count for egress VIP
-          ansible.builtin.shell: |
-            set -euo pipefail
-            holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
-            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}')
-            echo "${holder}|${transitions}"
-          environment:
-            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-          register: egress_lease_state_before
-          changed_when: false
-
-        - name: Normalize initial lease holder and transition count
-          ansible.builtin.set_fact:
-            egress_lease_holder_before: "{{ egress_lease_state_before.stdout.split('|') | first | default('') }}"
-            egress_lease_transitions_before: "{{ egress_lease_state_before.stdout.split('|') | last | default('0') | int }}"
 
         - name: Identify kube-vip pod on the current holder node after taint check
           ansible.builtin.command: >-
