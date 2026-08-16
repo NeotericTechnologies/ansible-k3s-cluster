@@ -8,7 +8,11 @@ Deploy and configure kube-vip for:
 
 ## Version
 
-This role supports **kube-vip v1.1.2** and compatible cloud-provider versions. See [Migration Notes](#migration-notes) for upgrading from v0.6.4.
+This role supports **kube-vip v1.1.2+** and compatible cloud-provider versions. **v1.2.3+ is required**
+when `kube_vip_egress_enabled: true` — the per-Service leader labeling used by
+`kube_vip_egress_gateway_node_selector` was not present before v1.2.1, and v1.2.1/v1.2.2 have a leader-election
+deadlock for backend-less (zero-endpoint) LoadBalancer Services such as `egress-gateway-svc` (fixed in v1.2.3,
+see kube-vip#1668, #1650). See [Migration Notes](#migration-notes) for upgrading from v0.6.4.
 
 ## Requirements
 
@@ -72,6 +76,17 @@ This role supports **kube-vip v1.1.2** and compatible cloud-provider versions. S
 - Lease timing is controlled via `vip_leaseduration` (default `15`s), `vip_renewdeadline`
   (default `10`s), and `vip_retryperiod` (default `2`s).
 
+### Node Labeling (`kube_vip_enable_node_labeling`)
+
+- `kube_vip_enable_node_labeling: true` enables kube-vip's built-in leader-election node
+  labeling: whichever node currently wins ARP leader election for a given VIP gets labeled
+  `service-provided.kube-vip.io/<service>.<namespace>=<address>`; the label is removed when that
+  node loses leadership.
+- Automatically forced `true` when `kube_vip_egress_enabled: true` — required so
+  `kube_vip_egress_gateway_node_selector` (see below) always resolves to the real VIP holder.
+- Requires no extra RBAC — the consolidated `kube-vip` ClusterRole already grants
+  `update`/`patch` on `nodes`.
+
 ### Load-Balanced Egress Gateway (FR-001–FR-003a)
 
 Combines a kube-vip HA LoadBalancer VIP with a Cilium `CiliumEgressGatewayPolicy` so all
@@ -94,7 +109,7 @@ kube_vip_egress_namespace_selector: {}
 kube_vip_egress_destination_cidrs:            # Destination CIDRs routed through egress gateway
   - "0.0.0.0/0"
 kube_vip_egress_gateway_node_selector:
-  node-role.kubernetes.io/control-plane: "true"
+  service-provided.kube-vip.io/egress-gateway-svc.kube-system: "{{ kube_vip_egress_ip }}"
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"  # Used only when kube_vip_egress_ip is empty
 ```
 
@@ -104,16 +119,24 @@ The cilium role renders **exactly one** egress gateway target field in `CiliumEg
 
 This avoids invalid Cilium policy objects where both fields are present.
 
-**`kube_vip_egress_gateway_node_selector` CONSTRAINT**: MUST only match nodes where the kube-vip
-DaemonSet actually runs (the DaemonSet is hard-affinitized to
-`node-role.kubernetes.io/control-plane`). Targeting worker-only nodes means the egress IP is
-never bound and Cilium finds no active gateway — egress silently breaks. Select a subset of
-control-plane nodes; use ≥2 nodes in HA clusters to avoid a single point of failure.
+**`kube_vip_egress_gateway_node_selector` CONSTRAINT**: MUST match *exactly one* node — the
+current VIP holder — not a broad pool. Cilium's egress gateway selects a gateway node by
+iterating its (globally sorted) node list and picking the **first** one whose labels match this
+selector; it is a static, deterministic pick, not "whichever node currently has the address". If
+the selector matches multiple nodes (e.g. `node-role.kubernetes.io/control-plane: "true"` on a
+3-node control-plane), Cilium always designates the same node regardless of where kube-vip's ARP
+leader election actually put the VIP — on failover, egress silently breaks until the VIP fails
+back. `kube_vip_enable_node_labeling: true` (auto-enabled when `kube_vip_egress_enabled: true`)
+is what keeps the selector resolving to exactly one node: kube-vip labels the current Service
+leader with `service-provided.kube-vip.io/<service>.<namespace>=<address>` in real time (added/removed inside its own leader-election
+callbacks, `pkg/cluster/clusterLeaderElection.go`), and label changes on `CiliumNode` are one of
+the few things that actually make Cilium re-evaluate its gateway selection.
 
 **Failover behavior**: kube-vip `svc_election` (auto-enabled) binds the egress VIP to the
 current leader node within the pool selected by `kube_vip_egress_gateway_node_selector`. On
-node failure, kube-vip migrates the VIP via ARP within `vip_leaseduration` (default 15s);
-Cilium detects the new binding automatically and reroutes matching pod egress — no manual
+node failure, kube-vip migrates the VIP via ARP within `vip_leaseduration` (default 15s) and
+moves the Service-specific label to the new holder; Cilium reacts to that label change and
+reroutes matching pod egress — no manual
 coordination required.
 
 ## Role Variables
@@ -130,7 +153,7 @@ kube_vip_interface: "eth0"
 ### Optional
 
 ```yaml
-kube_vip_version: "v1.1.2"
+kube_vip_version: "v1.2.3"
 kube_vip_cloud_provider_version: "v0.0.12"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"

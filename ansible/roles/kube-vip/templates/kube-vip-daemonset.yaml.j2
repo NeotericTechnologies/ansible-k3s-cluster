@@ -87,6 +87,10 @@ spec:
         - name: svc_election
           value: "true"
 {% endif %}
+{% if kube_vip_enable_node_labeling | default(false) %}
+        - name: enable_node_labeling
+          value: "true"
+{% endif %}
 {% if kube_vip_lb_enable | default(false) %}
         - name: svc_enable
           value: "true"

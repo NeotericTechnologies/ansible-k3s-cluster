@@ -11,8 +11,12 @@ metadata:
   namespace: {{ kube_vip_egress_namespace }}
   labels:
     app.kubernetes.io/name: kube-vip-egress-gateway
-{% if kube_vip_egress_hostname | default('') | length > 0 %}
   annotations:
+    # Required since kube-vip v1.2.x: this Service's selector never matches a real pod
+    # (backend-less by design), so kube-vip skips leader election/node-labeling for it
+    # unless explicitly opted in (kube-vip pkg/endpoints/endpoints.go shouldAllowReconcileWithoutEndpoints).
+    kube-vip.io/allow-reconcile-without-endpoints: "true"
+{% if kube_vip_egress_hostname | default('') | length > 0 %}
     kube-vip.io/egress-hostname: "{{ kube_vip_egress_hostname }}"
 {% endif %}
 spec:

@@ -15,6 +15,10 @@ vip_leaseduration: 15
 vip_renewdeadline: 10
 vip_retryperiod: 2
 
+# Labels the current VIP-holding node for kube-vip-managed services on leader election
+# (auto-enabled when kube_vip_egress_enabled: true — see kube_vip_egress_gateway_node_selector)
+kube_vip_enable_node_labeling: false
+
 kube_vip_egress_enabled: false
 kube_vip_egress_ip: ""
 kube_vip_egress_hostname: ""
@@ -26,6 +30,10 @@ kube_vip_egress_destination_cidrs:
   - "0.0.0.0/0"
 # Override to pin specific exclusions; empty = auto-detect pod pool + service CIDRs at apply time
 kube_vip_egress_excluded_cidrs: []
+# Matches only the node kube-vip currently elected leader for egress-gateway-svc (requires
+# kube_vip_enable_node_labeling: true). A broad selector like node-role.kubernetes.io/control-plane
+# would match every control-plane node, and Cilium deterministically picks the first one by name
+# regardless of which node actually holds the VIP — breaking egress on failover.
 kube_vip_egress_gateway_node_selector:
-  node-role.kubernetes.io/control-plane: "true"
+  service-provided.kube-vip.io/egress-gateway-svc.kube-system: "{{ kube_vip_egress_ip }}"
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"

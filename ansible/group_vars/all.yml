@@ -21,7 +21,11 @@ ha_mode: "embedded-etcd-ha"
 
 # kube-vip configuration for control-plane VIP and service load balancing
 kube_vip_enabled: true
-kube_vip_version: "v1.1.2"
+# v1.1.2 lacks kube-vip's per-Service leader node labeling feature
+# (required by kube_vip_egress_gateway_node_selector) -- v1.2.1+ required when kube_vip_egress_enabled: true
+# v1.2.3 fixes a leader-election deadlock for backend-less (zero-endpoint) LoadBalancer
+# Services such as egress-gateway-svc (kube-vip#1668, #1650)
+kube_vip_version: "v1.2.3"
 kube_vip_cloud_provider_version: "v0.0.12"
 kube_vip_ha_min_replicas: 2
 kube_vip_non_ha_default_replicas: 1
@@ -36,6 +40,10 @@ vip_leaseduration: 15
 vip_renewdeadline: 10
 vip_retryperiod: 2
 
+# Labels the current VIP-holding node for kube-vip-managed services (auto-enabled when
+# kube_vip_egress_enabled: true — see kube_vip_egress_gateway_node_selector)
+kube_vip_enable_node_labeling: false
+
 # kube-vip egress gateway (combined with Cilium CiliumEgressGatewayPolicy)
 kube_vip_egress_enabled: false
 kube_vip_egress_ip: ""
@@ -46,8 +54,10 @@ kube_vip_egress_pod_selector: {}
 kube_vip_egress_namespace_selector: {}
 kube_vip_egress_destination_cidrs:
   - "0.0.0.0/0"
+# Matches only the node kube-vip currently elected leader for egress-gateway-svc (requires
+# kube_vip_enable_node_labeling: true) — see ansible/roles/kube-vip/README.md
 kube_vip_egress_gateway_node_selector:
-  node-role.kubernetes.io/control-plane: "true"
+  service-provided.kube-vip.io/egress-gateway-svc.kube-system: "{{ kube_vip_egress_ip }}"
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
 
 # Cilium CNI configuration (replaces Flannel when enabled)

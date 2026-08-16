@@ -243,63 +243,13 @@
       failed_when: egress_policy.rc != 0
       when: smoke_kube_vip_egress_enabled | bool
 
-    - name: Deploy internal source-IP echo server on host network
-      kubernetes.core.k8s:
-        state: present
-        kubeconfig: /etc/rancher/k3s/k3s.yaml
-        definition:
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: egress-smoke-echo-server
-            namespace: kube-system
-          spec:
-            hostNetwork: true
-            tolerations:
-              - operator: Exists
-            containers:
-              - name: echo
-                image: python:3-alpine
-                command:
-                  - python3
-                  - -c
-                  - |
-                    from http.server import HTTPServer, BaseHTTPRequestHandler
-                    class H(BaseHTTPRequestHandler):
-                        def do_GET(self):
-                            b = self.client_address[0].encode()
-                            self.send_response(200)
-                            self.send_header('Content-Length', str(len(b)))
-                            self.end_headers()
-                            self.wfile.write(b)
-                        def log_message(self, *a): pass
-                    HTTPServer(('', 18888), H).serve_forever()
-                ports:
-                  - containerPort: 18888
-                    hostPort: 18888
-      when: smoke_kube_vip_egress_enabled | bool
-
-    - name: Wait for internal echo server to become Ready
-      ansible.builtin.command: >-
-        kubectl wait -n kube-system --for=condition=Ready pod/egress-smoke-echo-server --timeout=90s
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-      register: echo_server_ready
-      changed_when: false
-      retries: 5
-      delay: 5
-      until: echo_server_ready.rc == 0
-      when: smoke_kube_vip_egress_enabled | bool
-
-    - name: Get internal echo server node host IP
-      ansible.builtin.command: >-
-        kubectl get pod egress-smoke-echo-server -n kube-system -o jsonpath='{.status.hostIP}'
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-      register: echo_server_host_ip
-      changed_when: false
-      when: smoke_kube_vip_egress_enabled | bool
-
+    # NOTE: The source-IP probe MUST target a genuinely cluster-external destination.
+    # Cilium excludes any destination IP that is also an internal cluster IP (pod, node,
+    # or API server) from egress gateway SNAT logic, so an in-cluster hostNetwork echo
+    # server (bound to a node IP) would never show the egress VIP as source — it would
+    # always show the pod's own IP, regardless of correct configuration. See
+    # https://docs.cilium.io/en/stable/network/egress-gateway/egress-gateway/ and
+    # specs/006-egress-gateway-kube-vip/spec.md (Independent Test) / quickstart.md (Step 7).
     - name: Launch test pod for egress source-IP verification
       kubernetes.core.k8s:
         state: present
@@ -330,10 +280,10 @@
       until: egress_test_pod_ready.rc == 0
       when: smoke_kube_vip_egress_enabled | bool
 
-    - name: Check outbound source IP from test pod via internal echo server (SC-001)
+    - name: Check outbound source IP from test pod via external echo service (SC-001)
       ansible.builtin.shell: |
         kubectl exec -n default egress-gateway-smoke-test -- \
-          curl -fsS --max-time 10 "http://{{ echo_server_host_ip.stdout }}:18888/"
+          curl -fsS --max-time 10 "{{ egress_smoke_external_echo_url | default('https://ifconfig.me') }}"
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: egress_source_ip
@@ -358,7 +308,7 @@
     - name: Explain non-strict egress probe failure
       ansible.builtin.debug:
         msg: >-
-          Egress source-IP probe via internal echo server failed (rc={{ egress_source_ip.rc | default('n/a') }}).
+          Egress source-IP probe via external echo service failed (rc={{ egress_source_ip.rc | default('n/a') }}).
           Continuing because egress_source_ip_strict=false.
           stdout={{ egress_source_ip.stdout | default('') }} stderr={{ egress_source_ip.stderr | default('') }}
       when:
@@ -403,16 +353,6 @@
         kind: Pod
         name: egress-gateway-smoke-test
         namespace: default
-      when: smoke_kube_vip_egress_enabled | bool
-
-    - name: Clean up internal echo server pod
-      kubernetes.core.k8s:
-        state: absent
-        kubeconfig: /etc/rancher/k3s/k3s.yaml
-        api_version: v1
-        kind: Pod
-        name: egress-smoke-echo-server
-        namespace: kube-system
       when: smoke_kube_vip_egress_enabled | bool
 
     # --- Egress gateway failover (FR-003, SC-002) ---
