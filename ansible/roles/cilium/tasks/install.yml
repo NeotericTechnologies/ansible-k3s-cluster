@@ -159,15 +159,15 @@
   delegate_to: "{{ item.1 }}"
   loop: "{{ ['cilium-cni', 'bandwidth', 'bridge', 'cni', 'firewall', 'flannel', 'host-local', 'loopback', 'portmap'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
 
-- name: Remove stale VXLAN interfaces from host network namespace
+- name: Remove stale Flannel VXLAN interfaces from host network namespace
   ansible.builtin.command:
     cmd: ip link delete {{ item.0 }}
   register: cilium_stale_iface_cleanup
   changed_when: cilium_stale_iface_cleanup.rc == 0
   failed_when: cilium_stale_iface_cleanup.rc != 0 and ('Cannot find device' not in (cilium_stale_iface_cleanup.stderr | default('')))
   delegate_to: "{{ item.1 }}"
-  # flannel.1: left by prior Flannel/k3s default CNI; cilium_vxlan: left by prior Cilium install
-  loop: "{{ ['flannel.1', 'cilium_vxlan'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+  # cilium_vxlan is the active Cilium datapath device during idempotent runs and must not be deleted.
+  loop: "{{ ['flannel.1'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
 
 - name: Ensure cilium CNI binaries are discoverable in kubelet plugin directory
   ansible.builtin.file:
@@ -308,6 +308,25 @@
       Status output: {{ cilium_datapath_status.stdout }}
       Check for stale network interfaces (cilium_vxlan, flannel.1) on the nodes.
 
+- name: Check Cilium cross-node health before overlay probe
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_cluster_health
+  retries: 12
+  delay: 5
+  until: >-
+    cilium_cluster_health.rc == 0 and
+    'Cluster health:' in cilium_cluster_health.stdout and
+    '0/' not in cilium_cluster_health.stdout and
+    'Connection timed out' not in cilium_cluster_health.stdout
+  changed_when: false
+  failed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
 # --- Cross-node overlay probe (self-healing) ---
 # cilium status --brief passes even when VXLAN BPF programs are stale and cross-node
 # pod traffic is silently dropped. This probe detects that split-brain by launching a
@@ -322,6 +341,7 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: cilium_coredns_placement
   changed_when: false
+  failed_when: false
   when: (groups['k3s_servers'] | length) > 1
 
 - name: Set cross-node overlay probe source node
@@ -391,7 +411,12 @@
   changed_when: true
   when:
     - (groups['k3s_servers'] | length) > 1
+    - cilium_coredns_placement.rc | default(1) == 0
+    - cilium_coredns_placement.stdout | default('') is search('\t')
     - >-
+      cilium_cluster_health.rc | default(1) != 0 or
+      '0/' in (cilium_cluster_health.stdout | default('')) or
+      'Connection timed out' in (cilium_cluster_health.stdout | default('')) or
       cilium_overlay_probe_ready.rc | default(1) != 0 or
       cilium_overlay_probe_result.rc | default(1) != 0
 
@@ -450,12 +475,40 @@
       changed_when: false
       failed_when: false
 
+- name: Re-check Cilium cross-node health after recovery
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_cluster_health_after_restart
+  retries: 24
+  delay: 5
+  until: >-
+    cilium_cluster_health_after_restart.rc == 0 and
+    'Cluster health:' in cilium_cluster_health_after_restart.stdout and
+    '0/' not in cilium_cluster_health_after_restart.stdout and
+    'Connection timed out' not in cilium_cluster_health_after_restart.stdout
+  changed_when: false
+  failed_when: false
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_bpf_restart is changed
+
 - name: Assert cross-node overlay connectivity
   ansible.builtin.assert:
     that:
       - >-
         (cilium_overlay_probe_result.rc | default(0) == 0)
         or (cilium_overlay_post_restart_result.rc | default(0) == 0)
+      - >-
+        (cilium_cluster_health.rc | default(0) == 0 and
+        '0/' not in (cilium_cluster_health.stdout | default('')) and
+        'Connection timed out' not in (cilium_cluster_health.stdout | default(''))) or
+        (cilium_cluster_health_after_restart.rc | default(0) == 0 and
+        '0/' not in (cilium_cluster_health_after_restart.stdout | default('')) and
+        'Connection timed out' not in (cilium_cluster_health_after_restart.stdout | default('')))
     fail_msg: >-
       Cross-node pod overlay (VXLAN) connectivity probe failed on both initial check and
       after DaemonSet restart. Source={{ cilium_overlay_probe_source_node }},
@@ -482,6 +535,8 @@
   when:
     - multus_enabled | default(false) | bool
     - (cilium_multus_ds_probe.resources | default([]) | length) > 0
+    - cilium_helm_install is changed or cilium_bpf_restart is changed
+  register: cilium_multus_restart
 
 - name: Wait for multus DaemonSet to be ready after restart
   kubernetes.core.k8s_info:
@@ -502,6 +557,80 @@
   when:
     - multus_enabled | default(false) | bool
     - (cilium_multus_ds_probe.resources | default([]) | length) > 0
+    - cilium_multus_restart is changed
+
+- name: Check Cilium health after Multus reconciliation
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_health_after_multus
+  retries: 12
+  delay: 5
+  until: >-
+    cilium_health_after_multus.rc == 0 and
+    'Cluster health:' in cilium_health_after_multus.stdout and
+    '0/' not in cilium_health_after_multus.stdout and
+    'Connection timed out' not in cilium_health_after_multus.stdout
+  changed_when: false
+  failed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Restart Cilium after Multus-induced overlay degradation
+  ansible.builtin.command:
+    cmd: kubectl rollout restart daemonset/cilium -n {{ cilium_namespace }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_post_multus_restart
+  changed_when: true
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_multus_restart is changed
+    - cilium_health_after_multus.rc | default(1) != 0 or
+      '0/' in (cilium_health_after_multus.stdout | default('')) or
+      'Connection timed out' in (cilium_health_after_multus.stdout | default(''))
+
+- name: Wait for Cilium after Multus-induced recovery
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/cilium -n {{ cilium_namespace }} --timeout=180s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  when: cilium_post_multus_restart is changed
+
+- name: Verify final Cilium health before completing the role
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_final_health
+  retries: 24
+  delay: 5
+  until: >-
+    cilium_final_health.rc == 0 and
+    'Cluster health:' in cilium_final_health.stdout and
+    '0/' not in cilium_final_health.stdout and
+    'Connection timed out' not in cilium_final_health.stdout
+  changed_when: false
+  failed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Assert final Cilium cross-node health
+  ansible.builtin.assert:
+    that:
+      - cilium_final_health.rc == 0
+      - "'Cluster health:' in cilium_final_health.stdout"
+      - "'0/' not in cilium_final_health.stdout"
+      - "'Connection timed out' not in cilium_final_health.stdout"
+    fail_msg: >-
+      Cilium is not healthy after Cilium/Multus reconciliation. The playbook will not
+      report success while cross-node pod connectivity is degraded. Health output:
+      {{ cilium_final_health.stdout | default('') }}
+  when: (groups['k3s_servers'] | length) > 1
 
 # CRD is guaranteed present once the DaemonSet-ready wait above succeeds.
 - name: Reconcile CiliumEgressGatewayPolicy
