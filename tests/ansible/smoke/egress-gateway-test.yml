@@ -243,10 +243,10 @@
       failed_when: egress_policy.rc != 0
       when: smoke_kube_vip_egress_enabled | bool
 
-    # NOTE: The source-IP probe MUST target a genuinely cluster-external destination.
+    # NOTE: The reachability probe MUST target a genuinely cluster-external destination.
     # Cilium excludes any destination IP that is also an internal cluster IP (pod, node,
     # or API server) from egress gateway SNAT logic, so an in-cluster hostNetwork echo
-    # server (bound to a node IP) would never show the egress VIP as source — it would
+    # server (bound to a node IP) would never use the egress VIP as source — it would
     # always show the pod's own IP, regardless of correct configuration. See
     # https://docs.cilium.io/en/stable/network/egress-gateway/egress-gateway/ and
     # specs/006-egress-gateway-kube-vip/spec.md (Independent Test) / quickstart.md (Step 7).
@@ -280,7 +280,7 @@
       until: egress_test_pod_ready.rc == 0
       when: smoke_kube_vip_egress_enabled | bool
 
-    - name: Check outbound source IP from test pod via external echo service (SC-001)
+    - name: Verify outbound reachability from test pod via external echo service (SC-001)
       ansible.builtin.shell: |
         kubectl exec -n default egress-gateway-smoke-test -- \
           curl -fsS --max-time 10 "{{ egress_smoke_external_echo_url | default('https://ifconfig.me') }}"
@@ -316,9 +316,9 @@
         - not (egress_source_ip_strict | default(false) | bool)
         - egress_source_ip.rc != 0
 
-    - name: Normalize observed egress IP for summary output
+    - name: Normalize observed external IP for summary output
       ansible.builtin.set_fact:
-        smoke_observed_egress_ip: >-
+        smoke_observed_external_ip: >-
           {{
             (egress_source_ip.stdout | default('') | trim)
             if ((egress_source_ip.stdout | default('') | trim | length) > 0)
@@ -326,24 +326,65 @@
           }}
       when: smoke_kube_vip_egress_enabled | bool
 
-    - name: Assert observed egress source IP is non-empty
+    - name: Assert external echo service returned an observed source IP
       ansible.builtin.assert:
         that:
           - (egress_source_ip.stdout | trim | length) > 0
-        fail_msg: "Could not determine outbound source IP from smoke test pod"
+        fail_msg: "External echo service returned no observed source IP for the smoke test pod"
       when:
         - smoke_kube_vip_egress_enabled | bool
         - egress_source_ip.rc == 0
 
-    - name: Assert observed egress source IP matches kube_vip_egress_ip (FR-013, SC-001)
-      ansible.builtin.assert:
-        that:
-          - egress_source_ip.stdout | trim == smoke_expected_egress_ip
-        fail_msg: "Observed egress source IP '{{ egress_source_ip.stdout }}' does not match expected egress IP '{{ smoke_expected_egress_ip }}'"
+    - name: Inspect Cilium egress SNAT map for smoke test pod
+      ansible.builtin.shell: |
+        set -euo pipefail
+        pod_ip=$(kubectl get pod -n default egress-gateway-smoke-test -o jsonpath='{.status.podIP}')
+        vip_host=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
+        cilium_pod=$(kubectl get pod -n kube-system -l k8s-app=cilium --field-selector "spec.nodeName=${vip_host}" -o jsonpath='{.items[0].metadata.name}')
+        [[ -n "${pod_ip}" ]]
+        [[ -n "${vip_host}" ]]
+        [[ -n "${cilium_pod}" ]]
+        entry=$(kubectl exec -n kube-system "${cilium_pod}" -- cilium bpf egress list | awk \
+          -v pod_ip="${pod_ip}" \
+          '$1 == pod_ip && $2 == "0.0.0.0/0" { print $1 "|" $4 "|" $3; found=1; exit } END { if (!found) exit 1 }')
+        echo "${entry}"
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_cilium_snat
+      changed_when: false
+      failed_when: false
+      retries: 15
+      delay: 2
+      until: egress_cilium_snat.rc == 0
       when:
         - smoke_kube_vip_egress_enabled | bool
         - egress_source_ip.rc == 0
-        - kube_vip_egress_ip is defined
+
+    - name: Normalize observed Cilium egress IPs for summary output
+      ansible.builtin.set_fact:
+        smoke_observed_pod_ip: "{{ egress_cilium_snat.stdout.split('|') | first | default('<unavailable>') | trim }}"
+        smoke_observed_node_ip: "{{ (egress_cilium_snat.stdout.split('|'))[1] | default('<unavailable>') | trim }}"
+        smoke_observed_egress_ip: "{{ egress_cilium_snat.stdout.split('|') | last | default('<unavailable>') | trim }}"
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_source_ip.rc == 0
+        - egress_cilium_snat.rc == 0
+
+    - name: Assert Cilium SNAT map routes smoke pod through expected egress VIP (FR-013, SC-001)
+      ansible.builtin.assert:
+        that:
+          - egress_cilium_snat.rc == 0
+          - smoke_observed_egress_ip == smoke_expected_egress_ip
+        fail_msg: >-
+          Cilium egress SNAT map did not route the smoke pod through the expected egress IP.
+          expected={{ smoke_expected_egress_ip }}, observed={{ smoke_observed_egress_ip | default('<unavailable>') }}.
+          stdout={{ egress_cilium_snat.stdout | default('') }}
+          stderr={{ egress_cilium_snat.stderr | default('') }}
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_source_ip.rc == 0
 
     - name: Clean up egress gateway test pod
       kubernetes.core.k8s:
@@ -880,10 +921,12 @@
             - <not-run>
           {% endif %}
           - Egress service/policy checks: {{ 'RUN (pass)' if (smoke_kube_vip_egress_enabled | bool) else 'SKIP (egress gateway not enabled/detected)' }}
-          - Egress source-IP probe: {{ 'RUN (rc=' ~ (egress_source_ip.rc | default('n/a') | string) ~ ')' if (smoke_kube_vip_egress_enabled | bool) else 'SKIP (egress checks skipped)' }}
+          - Egress source-IP probe: {{ 'RUN (pass)' if (smoke_observed_egress_ip | default('') == smoke_expected_egress_ip | default('')) else 'RUN (fail)' if (egress_cilium_snat.rc | default(1) == 0) else 'SKIP (external reachability probe did not succeed)' }}
             - Expected egress IP: {{ smoke_expected_egress_ip | default('<unset>') }}
-            - Observed egress IP: {{ smoke_observed_egress_ip | default('<not-collected>') }}
-          - Strict expected-vs-observed IP assertion: {{ 'RUN (pass)' if (smoke_kube_vip_egress_enabled | bool and (kube_vip_egress_ip is defined)) else 'SKIP (kube_vip_egress_ip not set)' }}
+            - Observed egress IP (SNAT): {{ smoke_observed_egress_ip | default('<not-collected>') }}
+            - Observed pod IP: {{ smoke_observed_pod_ip | default('<not-collected>') }}
+            - Observed node IP: {{ smoke_observed_node_ip | default('<not-collected>') }}
+            - Observed external IP: {{ smoke_observed_external_ip | default('<not-collected>') }} (may be upstream firewall NAT)
           - Egress failover test (SC-002): {{ smoke_failover_result | default('SKIP (egress_run_failover_test=false)') }}
             - Failover holder before: {{ egress_vip_host_before | default('<not-run>') }}
             - Failover holder after: {{ egress_vip_host_after | default('<not-run>') }}
