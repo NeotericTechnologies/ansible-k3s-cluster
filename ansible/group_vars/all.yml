@@ -210,12 +210,13 @@ critical_component_subset:
   - k3s-control-plane
   - traefik
 
+# The control-plane VIP and Traefik LoadBalancer endpoints are resolved dynamically during disruption tests.
 critical_component_probes:
   k3s-control-plane:
-    url: "https://{{ control_plane_vip }}:{{ api_port }}/healthz"
+    url: ""
     insecure: true
   traefik:
-    url: "http://{{ kube_vip_lb_ip_range.split('-') | first }}"
+    url: ""
     insecure: false
 
 # =============================================================================

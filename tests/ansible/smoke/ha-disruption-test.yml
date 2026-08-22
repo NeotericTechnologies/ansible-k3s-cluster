@@ -39,12 +39,58 @@
       ansible.builtin.set_fact:
         total_probes_per_component: "{{ disruption_window_seconds * probe_rps }}"
 
+    - name: Resolve control-plane VIP from kube-vip
+      ansible.builtin.command: >-
+        kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
+        -n kube-system get daemonset kube-vip
+        -o json
+      register: control_plane_daemonset
+      changed_when: false
+      when: "'k3s-control-plane' in smoke_defaults.critical_component_subset"
+
+    - name: Extract control-plane VIP from kube-vip configuration
+      ansible.builtin.set_fact:
+        control_plane_probe_address: >-
+          {{ ((control_plane_daemonset.stdout | from_json).spec.template.spec.containers[0].env
+              | selectattr('name', 'equalto', 'address')
+              | map(attribute='value') | first | default('')) }}
+      when: "'k3s-control-plane' in smoke_defaults.critical_component_subset"
+
+    - name: Ensure control-plane VIP probe endpoint is available
+      ansible.builtin.assert:
+        that:
+          - control_plane_probe_address | default('') | length > 0
+        fail_msg: "kube-vip has no configured control-plane VIP for disruption probing"
+      when: "'k3s-control-plane' in smoke_defaults.critical_component_subset"
+
+    - name: Resolve Traefik LoadBalancer probe endpoint
+      ansible.builtin.command: >-
+        kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
+        -n kube-system get service traefik
+        -o jsonpath={.status.loadBalancer.ingress[0].ip}
+      register: traefik_probe_address
+      changed_when: false
+      when: "'traefik' in smoke_defaults.critical_component_subset"
+
+    - name: Ensure Traefik LoadBalancer probe endpoint is available
+      ansible.builtin.assert:
+        that:
+          - traefik_probe_address.stdout | default('') | length > 0
+        fail_msg: "Traefik LoadBalancer service has no external IP for disruption probing"
+      when: "'traefik' in smoke_defaults.critical_component_subset"
+
     - name: Execute probe loop per critical component
       ansible.builtin.shell: |
         set -eu
         success=0
         total={{ total_probes_per_component }}
         url="{{ smoke_defaults.critical_component_probes[item].url }}"
+        if [[ "{{ item }}" == "k3s-control-plane" ]]; then
+          url="https://{{ control_plane_probe_address }}:{{ api_port | default(6443) }}/healthz"
+        fi
+        if [[ "{{ item }}" == "traefik" ]]; then
+          url="http://{{ traefik_probe_address.stdout }}"
+        fi
         insecure="{{ smoke_defaults.critical_component_probes[item].insecure | default(false) | bool }}"
         for _ in $(seq 1 "$total"); do
           if [[ "$insecure" == "True" ]]; then
