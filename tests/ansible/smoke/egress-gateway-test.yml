@@ -397,6 +397,20 @@
       when: smoke_kube_vip_egress_enabled | bool
 
     # --- Egress gateway failover (FR-003, SC-002) ---
+    - name: Verify cluster and Multus are ready before failover test
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl wait --for=condition=Ready nodes --all --timeout=60s
+        kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=60s
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_run_failover_test | default(false) | bool
+
     - name: Run egress VIP failover scenario
       block:
         - name: Identify current egress vipHost and lease holder
@@ -695,6 +709,21 @@
           delay: 1
           until: egress_cleanup_uncordon.rc | default(1) | int == 0
           when: egress_vip_host_before | default('') | length > 0
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_run_failover_test | default(false) | bool
+
+    - name: Verify cluster and Multus recovered after failover test
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl wait --for=condition=Ready nodes --all --timeout=120s
+        kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=120s
+        test -z "$(kubectl get pods -A --no-headers | awk '$3 ~ /CrashLoopBackOff|ContainerCreating|Terminating/ {print}')"
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
       when:
         - smoke_kube_vip_egress_enabled | bool
         - egress_run_failover_test | default(false) | bool
