@@ -273,35 +273,6 @@
     (cilium_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
 
-- name: Check for Multus configuration preserved by Cilium
-  ansible.builtin.stat:
-    path: "{{ cilium_cni_conf_path }}/00-multus.conf.cilium_bak"
-  delegate_to: "{{ item }}"
-  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
-  register: cilium_preserved_multus_config
-  when: multus_enabled | default(false) | bool
-
-- name: Restart Cilium after changing CNI coexistence configuration
-  ansible.builtin.command:
-    cmd: kubectl rollout restart daemonset/cilium -n {{ cilium_namespace }}
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: cilium_cni_config_restart
-  changed_when: true
-  when:
-    - multus_enabled | default(false) | bool
-    - cilium_helm_install is changed or
-      cilium_preserved_multus_config.results | default([]) |
-      selectattr('stat.exists', 'defined') | selectattr('stat.exists') | list | length > 0
-
-- name: Wait for Cilium after changing CNI coexistence configuration
-  ansible.builtin.command:
-    cmd: kubectl rollout status daemonset/cilium -n {{ cilium_namespace }} --timeout=180s
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: false
-  when: cilium_cni_config_restart is changed
-
 - name: Ensure legacy k3s CNI directories exist for compatibility
   ansible.builtin.file:
     path: "{{ item.0 }}"
@@ -565,7 +536,7 @@
   when:
     - multus_enabled | default(false) | bool
     - (cilium_multus_ds_probe.resources | default([]) | length) > 0
-    - cilium_helm_install is changed or cilium_cni_config_restart is changed or cilium_bpf_restart is changed
+    - cilium_helm_install is changed or cilium_bpf_restart is changed
   register: cilium_multus_restart
 
 - name: Wait for multus DaemonSet to be ready after restart
