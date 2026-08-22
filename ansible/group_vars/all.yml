@@ -92,7 +92,7 @@ cert_manager_production_issuer: "letsencrypt-production"
 
 # multus CNI configuration (when enabled)
 # See ansible/roles/multus/README.md for full variable reference
-multus_version: "v4.2.4-thick"
+multus_version: "v4.3.0-thick"
 multus_ha_min_replicas: 2
 multus_non_ha_default_replicas: 1
 multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based IPAM

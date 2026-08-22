@@ -16,6 +16,10 @@
   kubernetes.core.k8s:
     definition: "{{ item }}"
     state: present
+    apply: true
+    server_side_apply:
+      field_manager: ansible-multus
+      force_conflicts: true
     kubeconfig: "{{ multus_kubeconfig }}"
   loop: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') | from_yaml_all | list }}"
   loop_control:

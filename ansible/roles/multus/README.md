@@ -23,7 +23,7 @@ Deploys [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni) as a th
 | `multus_namespace` | `kube-system` | Namespace for multus DaemonSets and RBAC |
 | `multus_kubeconfig` | `/etc/rancher/k3s/k3s.yaml` | Path to kubeconfig for kubectl commands |
 | `multus_image` | `ghcr.io/k8snetworkplumbingwg/multus-cni` | Multus thick plugin container image |
-| `multus_version` | `v4.2.4-thick` | Multus image tag (thick plugin variant) |
+| `multus_version` | `v4.3.0-thick` | Multus image tag (thick plugin variant) |
 | `multus_cni_conf_dir` | `/var/lib/rancher/k3s/agent/etc/cni/net.d` | k3s CNI config directory |
 | `multus_cni_bin_dir` | `/var/lib/rancher/k3s/data/current/bin` | k3s CNI binary directory |
 | `multus_log_level` | `error` | Multus log verbosity |

@@ -6,7 +6,7 @@ multus_kubeconfig: "/etc/rancher/k3s/k3s.yaml"
 # Multus image (thick plugin variant — used for both multus DaemonSet and DHCP daemon)
 # Reference: https://github.com/k8snetworkplumbingwg/multus-cni/blob/master/deployments/multus-daemonset-thick.yml
 multus_image: "ghcr.io/k8snetworkplumbingwg/multus-cni"
-multus_version: "v4.2.4-thick"
+multus_version: "v4.3.0-thick"
 
 # k3s-compatible host path overrides.
 # Multus installs its own shim/config under the k3s-managed directory tree.
