@@ -67,10 +67,9 @@ Expected outcome:
 
 ## 6) Validate Critical Subset Resilience
 
-1. On HA topology, execute a single-node disruption test window.
+1. On HA topology, start a single-node disruption separately, then execute the probe window. `ha-disruption-test.yml` only measures availability; it does not stop, reboot, evict, or otherwise disrupt a node.
 2. Measure request availability for critical subset:
    - k3s control plane server service
-   - kube-vip
    - Traefik
 
 Expected outcome:

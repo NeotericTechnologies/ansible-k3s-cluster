@@ -85,8 +85,8 @@ This document defines the operational contracts that enforce topology-aware HA b
 - **Action**: Execute disruption validation for explicit critical subset.
 - **Critical Subset**:
   - `k3s control plane server service`
-  - `kube-vip`
   - `Traefik`
+- kube-vip is covered by dedicated HA policy and failover validation; it is not duplicated as a second probe of the same control-plane VIP path.
 - **Success Condition**:
   - Each critical component remains available for >=99% of requests over the defined test window.
 - **Failure Conditions**:

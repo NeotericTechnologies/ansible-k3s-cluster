@@ -1,6 +1,8 @@
 ---
 # HA disruption resilience test for critical component subset.
 # Measures success ratio using external probes and enforces SC-003 threshold.
+# This playbook does not stop, reboot, evict, or otherwise disrupt a node.
+# Start the intended single-node disruption separately while this probe window runs.
 
 - name: HA Disruption Resilience Test
   hosts: k3s_servers[0]
@@ -46,9 +48,12 @@
         insecure="{{ smoke_defaults.critical_component_probes[item].insecure | default(false) | bool }}"
         for _ in $(seq 1 "$total"); do
           if [[ "$insecure" == "True" ]]; then
-            curl -ksf --max-time 2 "$url" >/dev/null 2>&1 && success=$((success+1)) || true
+            status=$(curl -ksS --max-time 2 -o /dev/null -w "%{http_code}" "$url" 2>/dev/null) || status=000
           else
-            curl -sf --max-time 2 "$url" >/dev/null 2>&1 && success=$((success+1)) || true
+            status=$(curl -sS --max-time 2 -o /dev/null -w "%{http_code}" "$url" 2>/dev/null) || status=000
+          fi
+          if [[ "$status" -ge 200 && "$status" -lt 500 ]]; then
+            success=$((success+1))
           fi
           sleep 1
         done

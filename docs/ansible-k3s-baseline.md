@@ -153,17 +153,19 @@ Topology-aware HA targets are defined alongside corresponding component versions
 Critical subset used for resilience validation:
 
 - `k3s-control-plane`
-- `kube-vip`
 - `traefik`
 
 Validation workflow:
 
 1. Ensure HA topology (`k3s_servers` count >= 3).
-2. Run `tests/ansible/smoke/ha-disruption-test.yml`.
-3. Use external probes from `critical_component_probes`.
-4. Execute probe loop for the configured disruption window (default 10 minutes).
-5. Calculate availability per component as successful requests / total requests.
-6. Fail when any critical subset component falls below `ha_probe_min_availability_percent` (default 99.0).
+2. Start the intended single-node disruption separately, such as stopping or rebooting one server. The smoke playbook does not cause the disruption.
+3. Run `tests/ansible/smoke/ha-disruption-test.yml` during that disruption window.
+4. Use external probes from `critical_component_probes`.
+5. Execute probe loop for the configured disruption window (default 10 minutes).
+6. Calculate availability per component as successful requests / total requests.
+7. Fail when any critical subset component falls below `ha_probe_min_availability_percent` (default 99.0).
+
+The test is observational: it measures service availability while an operator or a separate automation step performs the disruption. kube-vip is covered by dedicated HA policy and failover validation rather than a duplicate API-through-VIP probe.
 
 ## Explicit Non-Goals
 

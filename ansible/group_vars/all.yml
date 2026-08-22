@@ -208,18 +208,14 @@ ha_probe_min_availability_percent: 99.0
 
 critical_component_subset:
   - k3s-control-plane
-  - kube-vip
   - traefik
 
 critical_component_probes:
   k3s-control-plane:
     url: "https://{{ control_plane_vip }}:{{ api_port }}/healthz"
     insecure: true
-  kube-vip:
-    url: "https://{{ control_plane_vip }}:{{ api_port }}/livez"
-    insecure: true
   traefik:
-    url: "http://{{ control_plane_vip }}"
+    url: "http://{{ kube_vip_lb_ip_range.split('-') | first }}"
     insecure: false
 
 # =============================================================================
