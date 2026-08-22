@@ -4,7 +4,12 @@
 # Reference: FR-003c
 
 - name: Include cilium installation tasks
-  ansible.builtin.include_tasks: install.yml
+  ansible.builtin.include_tasks:
+    file: install.yml
+    apply:
+      tags:
+        - install
+        - cilium
   when: cilium_enabled | default(false)
   tags:
     - install

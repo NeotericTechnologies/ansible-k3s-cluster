@@ -12,6 +12,26 @@
   delegate_to: "{{ item }}"
   loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
 
+- name: Find Multus config preserved by a previous exclusive CNI configuration
+  ansible.builtin.stat:
+    path: "{{ multus_cni_conf_dir }}/00-multus.conf.cilium_bak"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  register: multus_preserved_config
+
+- name: Restore preserved Multus CNI configuration
+  ansible.builtin.command:
+    cmd: >-
+      sh -c 'if test ! -e "{{ multus_cni_conf_dir }}/00-multus.conf"; then
+      cp "{{ multus_cni_conf_dir }}/00-multus.conf.cilium_bak"
+      "{{ multus_cni_conf_dir }}/00-multus.conf" && chmod 0600
+      "{{ multus_cni_conf_dir }}/00-multus.conf" && echo restored; fi'
+  delegate_to: "{{ item.item }}"
+  loop: "{{ multus_preserved_config.results }}"
+  when: item.stat.exists
+  changed_when: false
+  register: multus_restore_config
+
 - name: Deploy multus thick plugin DaemonSet and RBAC
   kubernetes.core.k8s:
     definition: "{{ item }}"
@@ -22,6 +42,16 @@
     label: "{{ (item.kind | default('Resource')) ~ '/' ~ (item.metadata.name | default('unnamed')) }}"
   when: item is not none
   register: multus_deploy_result
+
+- name: Restart Multus after restoring its active CNI configuration
+  ansible.builtin.command:
+    cmd: kubectl rollout restart daemonset/kube-multus-ds -n {{ multus_namespace }}
+  environment:
+    KUBECONFIG: "{{ multus_kubeconfig }}"
+  changed_when: true
+  when: >-
+    multus_restore_config.results | default([]) |
+    selectattr('stdout', 'search', 'restored') | list | length > 0
 
 - name: Wait for multus DaemonSet to be ready
   kubernetes.core.k8s_info:
@@ -39,7 +69,9 @@
     (multus_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
     (multus_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
-  when: multus_deploy_result is defined and multus_deploy_result.changed
+  when: multus_deploy_result is defined and multus_deploy_result.changed or
+    multus_restore_config.results | default([]) |
+    selectattr('stdout', 'search', 'restored') | list | length > 0
 
 - name: Validate DHCP daemon is enabled when VLAN networks require DHCP IPAM
   ansible.builtin.assert:
