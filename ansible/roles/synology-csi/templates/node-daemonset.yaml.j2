@@ -26,6 +26,9 @@ spec:
             - --endpoint=unix:///csi/csi.sock
             - --client-info=/etc/synology/client-info.yml
             - --log-level=info
+            # The image does not bundle iscsiadm/open-iscsi — the driver chroots into the
+            # host-root mount below to exec the host's iscsiadm for iSCSI logins.
+            - --chroot-dir=/host
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
@@ -55,6 +58,8 @@ spec:
               mountPath: /run/udev
             - name: iscsi-lib
               mountPath: /etc/iscsi
+            - name: host-root
+              mountPath: /host
         - name: csi-node-driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.3
           args:
@@ -98,3 +103,7 @@ spec:
           hostPath:
             path: /etc/iscsi
             type: DirectoryOrCreate
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory

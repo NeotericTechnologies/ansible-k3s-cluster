@@ -142,6 +142,18 @@
       tags: ['monitoring', 'observability']
       when: rancher_monitoring_enabled | default(false)
 
+- name: Ensure iSCSI initiator prerequisites on all nodes
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Include Synology CSI iSCSI host prerequisites
+      ansible.builtin.include_role:
+        name: synology-csi
+        tasks_from: host-prerequisites.yml
+      when: synology_csi_enabled | default(false)
+      tags: ['storage', 'synology']
+
 - name: Deploy Synology CSI
   hosts: k3s_servers[0]
   become: true
