@@ -19,6 +19,16 @@ vip_retryperiod: 2
 # (auto-enabled when kube_vip_egress_enabled: true — see kube_vip_egress_gateway_node_selector)
 kube_vip_enable_node_labeling: false
 
+# Periodic reconciliation of service-provided.kube-vip.io/<svc>.<ns> node labels against each
+# service's actual coordination.k8s.io Lease holderIdentity. Self-heals stale/duplicate labels
+# left behind when kube-vip's own leadership-loss label removal PATCH fails during a transient
+# apiserver outage — kube-vip logs the error but does not retry (see README.md "Label
+# Reconciliation"). Only meaningful when kube_vip_enable_node_labeling is true.
+kube_vip_label_reconciler_enabled: true
+kube_vip_label_reconciler_schedule: "*/5 * * * *"
+kube_vip_label_reconciler_image: "alpine/kubectl:{{ kube_vip_label_reconciler_kubectl_version | default('1.36.4') }}"
+kube_vip_label_reconciler_history_limit: 3
+
 kube_vip_egress_enabled: false
 kube_vip_egress_ip: ""
 kube_vip_egress_hostname: ""

@@ -27,6 +27,11 @@ kube_vip_enabled: true
 # Services such as egress-gateway-svc (kube-vip#1668, #1650)
 kube_vip_version: "v1.2.3"
 kube_vip_cloud_provider_version: "v0.0.12"
+# kubectl image (alpine/kubectl) used only by the label-reconciler CronJob
+# (ansible/roles/kube-vip) — independent of k3s_version. Only issues simple/stable verbs
+# (get nodes, get lease, label node) so it is kept on a recent kubectl release rather than
+# pinned to the apiserver's minor version.
+kube_vip_label_reconciler_kubectl_version: "1.36.4"
 kube_vip_ha_min_replicas: 2
 kube_vip_non_ha_default_replicas: 1
 kube_vip_interface: "eth0"

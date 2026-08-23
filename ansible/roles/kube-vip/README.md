@@ -139,6 +139,42 @@ moves the Service-specific label to the new holder; Cilium reacts to that label 
 reroutes matching pod egress — no manual
 coordination required.
 
+### Label Reconciliation (`kube_vip_label_reconciler_enabled`)
+
+kube-vip only adds/removes its leader-election node labels from inside its own leader-election
+callbacks (`OnStartedLeading`/`OnStoppedLeading`) — this applies both to the control-plane VIP
+label (`kube-vip.io/has-ip`, driven by the `plndr-cp-lock` Lease) and to per-service labels
+(`service-provided.kube-vip.io/<svc>.<ns>`, driven by each service's `kubevip-<svc>` Lease); both
+share the same node-label manager and the same `kube_vip_enable_node_labeling` toggle. If the
+label-removal PATCH fails during the same transient apiserver outage that caused the leadership
+loss — observed in production as `connection reset by peer` / `the server rejected our request` —
+kube-vip logs the error and restarts *without retrying*, leaving the old leader's label orphaned
+while the new leader adds its own. The result is stale/duplicate labels across nodes, which
+silently breaks `kube_vip_egress_gateway_node_selector` (see constraint above) since it no longer
+resolves to exactly one node. Each kube-vip pod can only patch its own node's labels by design, so
+it can never clean up a label left behind on a node it no longer runs the election for — only an
+external, cluster-wide reconciler can.
+
+- `kube_vip_label_reconciler_enabled: true` deploys a `CronJob` (`kube-vip-label-reconciler`,
+  `kube-system` namespace) that, on `kube_vip_label_reconciler_schedule` (default every 5
+  minutes):
+  1. Reconciles `kube-vip.io/has-ip` against the `plndr-cp-lock` Lease holder and
+     `control_plane_vip`.
+  2. Lists all `LoadBalancer` Services, reads each one's `kubevip-<svc>` Lease `holderIdentity`,
+     and reconciles its `service-provided.kube-vip.io/<svc>.<ns>` label.
+  For each managed label: adds/fixes it on the current lease holder, removes it from every other
+  node that still carries it.
+- Every run logs a summary (`labels_checked`/`fixed`/`removed`/`skipped` counts) and the final
+  reconciled state — holder node, expected value, and which node (if any) carries the label —
+  for every managed label; view with `kubectl logs -n kube-system job/<job-name>`.
+- Only meaningful when `kube_vip_enable_node_labeling: true` — the CronJob is not applied
+  otherwise.
+- Runs as a dedicated `kube-vip-label-reconciler` ServiceAccount bound to the same consolidated
+  `kube-vip` ClusterRole (no additional RBAC required — `get`/`list` on `services`/`nodes`/`leases`
+  and `patch` on `nodes` are already granted).
+- Manual one-off run: `kubectl create job --from=cronjob/kube-vip-label-reconciler
+  -n kube-system label-reconciler-manual-$(date +%s)`.
+
 ## Role Variables
 
 ### Required (from group_vars/all.yml)
@@ -157,6 +193,12 @@ kube_vip_version: "v1.2.3"
 kube_vip_cloud_provider_version: "v0.0.12"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+
+# Label reconciliation (see "Label Reconciliation" above)
+kube_vip_label_reconciler_enabled: true
+kube_vip_label_reconciler_schedule: "*/5 * * * *"
+kube_vip_label_reconciler_image: "alpine/kubectl:1.36.4"
+kube_vip_label_reconciler_history_limit: 3
 ```
 
 ## Dependencies

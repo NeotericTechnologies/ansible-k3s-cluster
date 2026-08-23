@@ -1,0 +1,177 @@
+---
+# ansible/roles/kube-vip/templates/kube-vip-label-reconciler-cronjob.yaml.j2
+# Purpose: Periodically reconcile kube-vip's leader-election node labels — both the
+# control-plane VIP label (kube-vip.io/has-ip, from the plndr-cp-lock Lease) and each
+# service's service-provided.kube-vip.io/<svc>.<ns> label (from its per-service
+# kubevip-<svc> Lease) — against the Lease's actual holderIdentity.
+#
+# Why this exists: kube-vip only adds/removes these labels from in-process leader-election
+# callbacks (OnStartedLeading/OnStoppedLeading) — the control-plane VIP label and per-service
+# labels share the same node-label manager and toggle (kube_vip_enable_node_labeling), so both
+# are subject to the same failure mode. If the label-removal PATCH fails during the same
+# transient apiserver outage that caused the leadership loss (observed in production —
+# "connection reset by peer" / "server rejected our request"), kube-vip logs the error and
+# restarts without retrying, leaving the old leader's label orphaned while the new leader adds
+# its own — producing stale/duplicate labels across nodes. See README.md "Label Reconciliation".
+#
+# Only applied when kube_vip_enable_node_labeling is true — this is what
+# kube_vip_egress_gateway_node_selector (and any other consumer of these labels) relies on to
+# resolve to exactly one node.
+#
+# Each run logs a summary: labels_checked/fixed/removed/skipped counts and the final
+# reconciled state (holder + labeled node) for every managed label.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-vip-label-reconciler-script
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: kube-vip-label-reconciler
+data:
+  reconcile.sh: |
+{% raw %}
+    #!/bin/sh
+    set -u
+
+    LEASE_NAMESPACE="kube-system"
+    CP_LABEL_KEY="kube-vip.io/has-ip"
+    CP_LEASE_NAME="plndr-cp-lock"
+    CP_VALUE="${CONTROL_PLANE_VIP:-}"
+
+    log() { echo "[kube-vip-label-reconciler] $*"; }
+
+    NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
+
+    CHECKED=0
+    FIXED=0
+    REMOVED=0
+    SKIPPED=0
+    FINAL_STATE=""
+
+    # reconcile_label <label_key> <lease_namespace> <lease_name> <desired_value>
+    # Adds/fixes <label_key>=<desired_value> on the node currently holding <lease_name>,
+    # and removes <label_key> from every other node that still carries it.
+    reconcile_label() {
+      label_key="$1"
+      lease_ns="$2"
+      lease_name="$3"
+      desired_value="$4"
+
+      holder=$(kubectl get lease -n "${lease_ns}" "${lease_name}" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null)
+      if [ -z "${holder}" ]; then
+        log "skip ${label_key}: no Lease ${lease_ns}/${lease_name} (leader election not active for this label)"
+        SKIPPED=$((SKIPPED + 1))
+        return
+      fi
+      if [ -z "${desired_value}" ]; then
+        log "skip ${label_key}: no target value resolved (Lease ${lease_ns}/${lease_name} holder=${holder})"
+        SKIPPED=$((SKIPPED + 1))
+        return
+      fi
+
+      CHECKED=$((CHECKED + 1))
+      labeled_node="<none>"
+      # kubectl jsonpath does not resolve quoted bracket map keys (e.g. ['a.b/c']) for keys
+      # containing dots — it parses without error but silently returns nothing. Dots in the
+      # plain dotted path must instead be individually backslash-escaped.
+      label_key_jsonpath=$(echo "${label_key}" | sed 's/\./\\./g')
+      for node in ${NODES}; do
+        current=$(kubectl get node "${node}" -o jsonpath="{.metadata.labels.${label_key_jsonpath}}" 2>/dev/null)
+        if [ "${node}" = "${holder}" ]; then
+          if [ "${current}" != "${desired_value}" ]; then
+            log "FIX ${node}: setting ${label_key}=${desired_value} (current lease holder, was '${current}')"
+            kubectl label node "${node}" "${label_key}=${desired_value}" --overwrite
+            FIXED=$((FIXED + 1))
+          fi
+          labeled_node="${node}"
+        else
+          if [ -n "${current}" ]; then
+            log "FIX ${node}: removing stale ${label_key} (was '${current}', holder is ${holder})"
+            kubectl label node "${node}" "${label_key}-"
+            REMOVED=$((REMOVED + 1))
+          fi
+        fi
+      done
+      FINAL_STATE="${FINAL_STATE}${label_key} -> holder=${holder} value=${desired_value} labeled_node=${labeled_node}
+    "
+    }
+
+    log "$(date -u +%FT%TZ) starting reconciliation"
+
+    # Control-plane VIP label — shares the same OnStartedLeading/OnStoppedLeading label
+    # manager as per-service labels below, so it is subject to the same stale-label race.
+    reconcile_label "${CP_LABEL_KEY}" "${LEASE_NAMESPACE}" "${CP_LEASE_NAME}" "${CP_VALUE}"
+
+    # Per-service labels: one per LoadBalancer Service with per-service leader election active.
+    SVC_REFS=$(kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}')
+    for ref in ${SVC_REFS}; do
+      ns="${ref%%/*}"
+      name="${ref##*/}"
+      label_key="service-provided.kube-vip.io/${name}.${ns}"
+      lease_name="kubevip-${name}"
+
+      value=$(kubectl get svc -n "${ns}" "${name}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+      if [ -z "${value}" ]; then
+        value=$(kubectl get svc -n "${ns}" "${name}" -o jsonpath='{.spec.loadBalancerIP}' 2>/dev/null)
+      fi
+
+      reconcile_label "${label_key}" "${LEASE_NAMESPACE}" "${lease_name}" "${value}"
+    done
+
+    log "$(date -u +%FT%TZ) reconciliation complete"
+    log "summary: labels_checked=${CHECKED} fixed=${FIXED} removed=${REMOVED} skipped=${SKIPPED}"
+    log "current reconciled state:"
+    if [ -z "${FINAL_STATE}" ]; then
+      log "  (no managed labels found — leader election not yet active for any tracked Lease)"
+    else
+      printf '%s\n' "${FINAL_STATE}" | while IFS= read -r line; do
+        [ -n "${line}" ] && log "  ${line}"
+      done
+    fi
+
+    if [ "${FIXED}" -gt 0 ] || [ "${REMOVED}" -gt 0 ]; then
+      log "result: DRIFT CORRECTED (fixed=${FIXED} removed=${REMOVED})"
+    else
+      log "result: NO DRIFT (all managed labels already correct)"
+    fi
+{% endraw %}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kube-vip-label-reconciler
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: kube-vip-label-reconciler
+spec:
+  schedule: "{{ kube_vip_label_reconciler_schedule }}"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ kube_vip_label_reconciler_history_limit }}
+  failedJobsHistoryLimit: {{ kube_vip_label_reconciler_history_limit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: kube-vip-label-reconciler
+        spec:
+          serviceAccountName: kube-vip-label-reconciler
+          restartPolicy: OnFailure
+          containers:
+            - name: reconcile
+              image: "{{ kube_vip_label_reconciler_image }}"
+              command: ["/bin/sh", "/scripts/reconcile.sh"]
+              env:
+                - name: CONTROL_PLANE_VIP
+                  value: "{{ control_plane_vip }}"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: kube-vip-label-reconciler-script
+                defaultMode: 0555
