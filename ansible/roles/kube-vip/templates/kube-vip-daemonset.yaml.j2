@@ -51,7 +51,9 @@ spec:
         operator: Equal
         value: evict
         effect: NoExecute
-        tolerationSeconds: 5
+        # > vip_renewdeadline + vip_retryperiod so kube-vip has a chance to release
+        # its lease/labels (OnStoppedLeading) before eviction forces a hard kill.
+        tolerationSeconds: 20
       containers:
       - name: kube-vip
         image: ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
