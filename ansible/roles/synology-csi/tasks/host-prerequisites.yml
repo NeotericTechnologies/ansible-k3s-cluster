@@ -31,3 +31,45 @@
     enabled: true
     state: started
   when: synology_csi_iscsi_in_use
+
+- name: Gather service facts to detect multipathd
+  ansible.builtin.service_facts:
+  when: synology_csi_iscsi_in_use
+
+# When multipath-tools is present (common on default Ubuntu Server images), multipathd
+# auto-claims the Synology iSCSI LUNs as dm devices. The CSI node plugin then tries to
+# mkfs the raw /dev/disk/by-path/... device directly, which multipathd is still holding
+# open, causing: "format of disk ... failed ... ERROR: unable to open ...: Resource busy".
+# These LUNs are single-portal/single-session per PV, not intended for OS-level MPIO, so
+# blacklist them from multipath-tools entirely rather than configure multipath for them.
+- name: Blacklist Synology iSCSI LUNs from multipath-tools (avoids mkfs "Resource busy" from multipathd holding the device open)
+  ansible.builtin.blockinfile:
+    path: /etc/multipath.conf
+    create: true
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - synology-csi blacklist"
+    block: |
+      blacklist {
+          device {
+              vendor  "SYNOLOGY"
+              product ".*"
+          }
+      }
+  register: synology_csi_multipath_conf
+  when:
+    - synology_csi_iscsi_in_use
+    - "'multipathd.service' in ansible_facts.services"
+
+- name: Restart multipathd to apply the updated blacklist
+  ansible.builtin.systemd:
+    name: multipathd
+    state: restarted
+  when:
+    - synology_csi_iscsi_in_use
+    - synology_csi_multipath_conf is changed
+
+- name: Flush stale multipath maps left over from before the blacklist took effect
+  ansible.builtin.command: multipath -F
+  changed_when: false
+  when:
+    - synology_csi_iscsi_in_use
+    - "'multipathd.service' in ansible_facts.services"

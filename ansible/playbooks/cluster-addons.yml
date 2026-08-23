@@ -151,6 +151,8 @@
       ansible.builtin.include_role:
         name: synology-csi
         tasks_from: host-prerequisites.yml
+        apply:
+          tags: ['storage', 'synology']
       when: synology_csi_enabled | default(false)
       tags: ['storage', 'synology']
 
