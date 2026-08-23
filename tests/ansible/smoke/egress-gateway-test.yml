@@ -608,36 +608,43 @@
 
         - name: Classify failover observation
           ansible.builtin.set_fact:
+            egress_service_holder_changed: >-
+              {{
+                ((egress_vip_host_after | default('')) | trim | length > 0)
+                and
+                ((egress_vip_host_after | default('') | trim) != (egress_vip_host_before | default('') | trim))
+              }}
+            egress_lease_holder_changed: >-
+              {{
+                ((egress_lease_holder_after | default('')) | trim | length > 0)
+                and
+                ((egress_lease_holder_after | default('') | trim) != (egress_lease_holder_before | default('') | trim))
+              }}
+            egress_failover_transition_increased: >-
+              {{
+                (egress_lease_transitions_after | default(0) | int)
+                >
+                (egress_lease_transitions_before | default(0) | int)
+              }}
+
+        - name: Derive failover result from holder-change classification
+          ansible.builtin.set_fact:
             smoke_failover_observed: >-
               {{
-                (((egress_vip_host_after | default('')) | trim | length > 0)
-                and
-                ((egress_vip_host_after | default('') | trim) != (egress_vip_host_before | default('') | trim)))
+                (egress_service_holder_changed | default(false) | bool)
                 or
-                (
-                  ((egress_lease_holder_after | default('')) | trim | length > 0)
-                  and
-                  ((egress_lease_holder_after | default('') | trim) != (egress_lease_holder_before | default('') | trim))
-                  or
-                  ((egress_lease_transitions_after | default(0) | int) > (egress_lease_transitions_before | default(0) | int))
-                )
+                (egress_lease_holder_changed | default(false) | bool)
               }}
             smoke_failover_result: >-
               {{
                 'RUN (pass)'
                 if (
-                  (((egress_vip_host_after | default('')) | trim | length > 0)
-                  and
-                  ((egress_vip_host_after | default('') | trim) != (egress_vip_host_before | default('') | trim)))
+                  (egress_service_holder_changed | default(false) | bool)
                   or
-                  (
-                    ((egress_lease_holder_after | default('')) | trim | length > 0)
-                    and
-                    ((egress_lease_holder_after | default('') | trim) != (egress_lease_holder_before | default('') | trim))
-                    or
-                    ((egress_lease_transitions_after | default(0) | int) > (egress_lease_transitions_before | default(0) | int))
-                  )
+                  (egress_lease_holder_changed | default(false) | bool)
                 )
+                else 'RUN (fail: lease transitioned but holder unchanged)'
+                if (egress_failover_transition_increased | default(false) | bool)
                 else 'RUN (no migration/re-election observed)'
               }}
 
@@ -842,32 +849,43 @@
 
         - name: Classify real-reboot failover observation
           ansible.builtin.set_fact:
+            real_egress_service_holder_changed: >-
+              {{
+                ((real_egress_vip_host_after | default('')) | length > 0)
+                and
+                ((real_egress_vip_host_after | default('')) != (real_egress_vip_host_before | default('')))
+              }}
+            real_egress_lease_holder_changed: >-
+              {{
+                ((real_egress_lease_holder_after | default('')) | length > 0)
+                and
+                ((real_egress_lease_holder_after | default('')) != (real_egress_lease_holder_before | default('')))
+              }}
+            real_egress_failover_transition_increased: >-
+              {{
+                (real_egress_lease_transitions_after | default(0) | int)
+                >
+                (real_egress_lease_transitions_before | default(0) | int)
+              }}
+
+        - name: Derive real-reboot failover result from holder-change classification
+          ansible.builtin.set_fact:
             smoke_real_failover_observed: >-
               {{
-                (((real_egress_vip_host_after | default('')) | length > 0)
-                and
-                ((real_egress_vip_host_after | default('')) != (real_egress_vip_host_before | default(''))))
+                (real_egress_service_holder_changed | default(false) | bool)
                 or
-                (
-                  ((real_egress_lease_holder_after | default('')) | length > 0)
-                  and
-                  ((real_egress_lease_transitions_after | default(0) | int) > (real_egress_lease_transitions_before | default(0) | int))
-                )
+                (real_egress_lease_holder_changed | default(false) | bool)
               }}
             smoke_real_failover_result: >-
               {{
                 'RUN (pass)'
                 if (
-                  (((real_egress_vip_host_after | default('')) | length > 0)
-                  and
-                  ((real_egress_vip_host_after | default('')) != (real_egress_vip_host_before | default(''))))
+                  (real_egress_service_holder_changed | default(false) | bool)
                   or
-                  (
-                    ((real_egress_lease_holder_after | default('')) | length > 0)
-                    and
-                    ((real_egress_lease_transitions_after | default(0) | int) > (real_egress_lease_transitions_before | default(0) | int))
-                  )
+                  (real_egress_lease_holder_changed | default(false) | bool)
                 )
+                else 'RUN (fail: lease transitioned but holder unchanged)'
+                if (real_egress_failover_transition_increased | default(false) | bool)
                 else 'RUN (no migration/re-election observed)'
               }}
 
