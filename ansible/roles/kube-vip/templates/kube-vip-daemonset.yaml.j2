@@ -108,3 +108,10 @@ spec:
             add:
             - NET_ADMIN
             - NET_RAW
+        resources:
+          requests:
+            cpu: "{{ kube_vip_requests_cpu | default('50m') }}"
+            memory: "{{ kube_vip_requests_memory | default('64Mi') }}"
+          limits:
+            cpu: "{{ kube_vip_limits_cpu | default('200m') }}"
+            memory: "{{ kube_vip_limits_memory | default('128Mi') }}"

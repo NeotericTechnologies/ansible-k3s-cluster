@@ -139,6 +139,38 @@
         )
       }}
 
+- name: Merge default resource requests/limits into Cilium Helm values
+  # Reduces contention on control-plane nodes under pod-churn events; user-supplied
+  # cilium_helm_values.resources / operator.resources override these defaults.
+  ansible.builtin.set_fact:
+    cilium_helm_values: >-
+      {{
+        {
+          'resources': {
+            'requests': {
+              'cpu': cilium_agent_requests_cpu | default('100m'),
+              'memory': cilium_agent_requests_memory | default('256Mi')
+            },
+            'limits': {
+              'cpu': cilium_agent_limits_cpu | default('500m'),
+              'memory': cilium_agent_limits_memory | default('512Mi')
+            }
+          },
+          'operator': {
+            'resources': {
+              'requests': {
+                'cpu': cilium_operator_requests_cpu | default('50m'),
+                'memory': cilium_operator_requests_memory | default('64Mi')
+              },
+              'limits': {
+                'cpu': cilium_operator_limits_cpu | default('200m'),
+                'memory': cilium_operator_limits_memory | default('128Mi')
+              }
+            }
+          }
+        } | combine(cilium_helm_values, recursive=True)
+      }}
+
 - name: Remove stale flannel CNI config from k3s CNI directories
   ansible.builtin.file:
     path: "{{ item.0 }}/10-flannel.conflist"

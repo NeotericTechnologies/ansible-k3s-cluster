@@ -33,6 +33,13 @@ spec:
                   fieldPath: spec.nodeName
           securityContext:
             privileged: true
+          resources:
+            requests:
+              cpu: {{ synology_csi_driver_requests_cpu | default('25m') }}
+              memory: {{ synology_csi_driver_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_driver_limits_cpu | default('100m') }}
+              memory: {{ synology_csi_driver_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
@@ -53,6 +60,13 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.san.synology.com/csi.sock
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi

@@ -27,6 +27,13 @@ spec:
             - --endpoint=unix:///csi/csi.sock
             - --client-info=/etc/synology/client-info.yml
             - --log-level=info
+          resources:
+            requests:
+              cpu: {{ synology_csi_driver_requests_cpu | default('25m') }}
+              memory: {{ synology_csi_driver_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_driver_limits_cpu | default('100m') }}
+              memory: {{ synology_csi_driver_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -39,6 +46,13 @@ spec:
             - --csi-address=/csi/csi.sock
             - --timeout=60s
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -47,6 +61,13 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -55,6 +76,13 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -64,6 +92,13 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
