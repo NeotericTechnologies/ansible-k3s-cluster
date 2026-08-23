@@ -349,8 +349,8 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: cilium_cluster_health
-  retries: 12
-  delay: 5
+  retries: 30
+  delay: 10
   until: >-
     cilium_cluster_health.rc == 0 and
     'Cluster health:' in cilium_cluster_health.stdout and
@@ -516,8 +516,8 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: cilium_cluster_health_after_restart
-  retries: 24
-  delay: 5
+  retries: 30
+  delay: 10
   until: >-
     cilium_cluster_health_after_restart.rc == 0 and
     'Cluster health:' in cilium_cluster_health_after_restart.stdout and
@@ -600,7 +600,7 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: cilium_health_after_multus
-  retries: 12
+  retries: 30
   delay: 5
   until: >-
     cilium_health_after_multus.rc == 0 and
@@ -641,7 +641,7 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: cilium_final_health
-  retries: 24
+  retries: 30
   delay: 5
   until: >-
     cilium_final_health.rc == 0 and
