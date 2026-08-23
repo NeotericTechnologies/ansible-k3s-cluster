@@ -95,13 +95,65 @@
     k3s_node_token: "{{ k3s_node_token_encoded.content | b64decode | trim }}"
   when: not is_first_server
 
+- name: Preflight DNS check for first control-plane short hostname
+  ansible.builtin.command:
+    argv:
+      - getent
+      - ahosts
+      - "{{ groups['k3s_servers'][0] }}"
+  register: first_server_shortname_dns
+  changed_when: false
+  when:
+    - k3s_install_needed
+    - not is_first_server
+    - ha_mode == 'embedded-etcd-ha'
+
+- name: Preflight DNS check for first control-plane FQDN
+  ansible.builtin.command:
+    argv:
+      - getent
+      - ahosts
+      - "{{ hostvars[groups['k3s_servers'][0]].ansible_fqdn | default(groups['k3s_servers'][0]) }}"
+  register: first_server_fqdn_dns
+  changed_when: false
+  when:
+    - k3s_install_needed
+    - not is_first_server
+    - ha_mode == 'embedded-etcd-ha'
+
+- name: Assert DNS prerequisites for additional control-plane join
+  ansible.builtin.assert:
+    that:
+      - first_server_shortname_dns.rc == 0
+      - first_server_fqdn_dns.rc == 0
+    fail_msg: >-
+      DNS preflight failed on {{ k3s_target_host | default(inventory_hostname) }}.
+      Ensure '{{ groups['k3s_servers'][0] }}' and
+      '{{ hostvars[groups['k3s_servers'][0]].ansible_fqdn | default(groups['k3s_servers'][0]) }}'
+      resolve before joining additional control-plane nodes.
+    success_msg: DNS preflight checks passed for additional control-plane join.
+  when:
+    - k3s_install_needed
+    - not is_first_server
+    - ha_mode == 'embedded-etcd-ha'
+
+- name: Wait for first control-plane API endpoint to accept connections
+  ansible.builtin.wait_for:
+    host: "{{ groups['k3s_servers'][0] }}"
+    port: "{{ api_port }}"
+    timeout: 300
+  when:
+    - k3s_install_needed
+    - not is_first_server
+    - ha_mode == 'embedded-etcd-ha'
+
 - name: Install k3s on additional control-plane nodes
   ansible.builtin.command: /tmp/get_k3s.sh
   environment:
-    K3S_URL: "https://{{ groups['k3s_servers'][0] }}:6443"
+    K3S_URL: "https://{{ groups['k3s_servers'][0] }}:{{ api_port }}"
     K3S_TOKEN: "{{ k3s_node_token }}"
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
-    INSTALL_K3S_EXEC: "server --server https://{{ groups['k3s_servers'][0] }}:6443 --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
+    INSTALL_K3S_EXEC: "server --server https://{{ groups['k3s_servers'][0] }}:{{ api_port }} --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
     INSTALL_K3S_FORCE: "{{ 'true' if k3s_args_drifted | default(false) | bool else omit }}"
   when:
     - k3s_install_needed
