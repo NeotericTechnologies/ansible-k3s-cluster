@@ -246,3 +246,23 @@
     (synology_csi_replicas | default(1) | int)
   retries: 30
   delay: 10
+
+- name: Wait for stable DSM API connectivity from CSI controller pod
+  # Fresh installs can have transient CNI/egress-gateway datapath flakiness that manifests as
+  # intermittent "connection reset by peer" from the DSM webapi even once the pod is Ready.
+  # Require several consecutive successful probes before returning, so StorageClass/PVC
+  # provisioning doesn't race against a network path that hasn't settled yet.
+  ansible.builtin.shell: >-
+    set -e; for i in $(seq 1 {{ synology_csi_dsm_ready_check_count }}); do
+    kubectl exec -n {{ synology_csi_namespace }} statefulset/synology-csi-controller -c csi-driver --
+    wget -q -O /dev/null --no-check-certificate --timeout=5
+    'https://{{ synology_csi_endpoint }}:{{ synology_csi_port }}/webapi/query.cgi?api=SYNO.API.Info&method=query&version=1'
+    || exit 1; sleep 2; done
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: synology_csi_dsm_ready
+  until: synology_csi_dsm_ready.rc == 0
+  retries: "{{ synology_csi_dsm_ready_retries }}"
+  delay: "{{ synology_csi_dsm_ready_delay }}"
+  changed_when: false
+  when: synology_csi_dsm_ready_check_enabled | bool

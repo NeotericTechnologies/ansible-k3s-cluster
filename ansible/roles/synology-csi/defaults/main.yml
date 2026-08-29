@@ -21,6 +21,15 @@ synology_csi_tls_verify: false
 synology_csi_username: ""
 synology_csi_password: ""
 
+# Post-deploy readiness gate: probe the DSM API from the controller pod and require
+# several consecutive successes before the role returns (see synology_csi_dsm_ready_*
+# task in tasks/install.yml). Guards against transient fresh-install network flakiness
+# racing against StorageClass/PVC provisioning.
+synology_csi_dsm_ready_check_enabled: true
+synology_csi_dsm_ready_check_count: 5    # consecutive successful probes required
+synology_csi_dsm_ready_retries: 20       # ansible-level retries if the streak is broken
+synology_csi_dsm_ready_delay: 15         # seconds between ansible-level retries
+
 # Snapshot support
 synology_csi_snapshots_enabled: false
 synology_csi_snapshotter_version: "v8.5.0"
