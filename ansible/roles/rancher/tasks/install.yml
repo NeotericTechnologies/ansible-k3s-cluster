@@ -232,11 +232,13 @@
     (rancher_replicas | default(1) | int)
   changed_when: false
 
-- name: Check rancher-turtles controller pod status
-  # Rancher auto-installs the bundled rancher-turtles (embedded Cluster API) app; on a fresh
-  # install its controller can crash-loop if it starts before the companion CAPI Operator has
-  # finished provisioning core Cluster API CRDs (cluster.x-k8s.io). This is Rancher-managed,
-  # not deployed by this role — see README.md "Out of Scope" (CAPI).
+- name: Wait for rancher-turtles controller pod to be created by Rancher's async installer
+  # Rancher auto-installs the bundled rancher-turtles (embedded Cluster API) app via its own
+  # internal helm-operation controller — this typically starts several minutes *after* the
+  # main Rancher Deployment is Ready, not synchronously with it. A single snapshot check here
+  # would almost always see "no pod yet" and wrongly conclude there's nothing to recover, so
+  # poll with a generous budget for the pod to even show up before judging its health.
+  # This is Rancher-managed, not deployed by this role — see README.md "Out of Scope" (CAPI).
   kubernetes.core.k8s_info:
     api_version: v1
     kind: Pod
@@ -245,9 +247,43 @@
       - "control-plane=controller-manager"
     kubeconfig: /etc/rancher/k3s/k3s.yaml
   register: rancher_turtles_pods
+  until: (rancher_turtles_pods.resources | default([]) | length) > 0
+  retries: "{{ rancher_turtles_appearance_retries | int }}"
+  delay: "{{ rancher_turtles_appearance_delay | int }}"
   failed_when: false
   changed_when: false
   when: rancher_turtles_auto_recover_enabled | bool
+
+- name: Wait for rancher-turtles controller to reach a stable Ready or crash-looping state
+  # Once the pod exists, give it time to settle: it either becomes Ready on its own (the CAPI
+  # Operator finished provisioning CRDs in the meantime), or it accumulates enough restarts to
+  # be confidently judged as crash-looping. CrashLoopBackOff's exponential backoff means hitting
+  # the restart threshold can itself take several minutes, so this needs its own generous budget.
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ rancher_turtles_namespace }}"
+    label_selectors:
+      - "control-plane=controller-manager"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: rancher_turtles_pods
+  until: >-
+    (rancher_turtles_pods.resources | default([]) | length) == 0 or
+    (
+      (rancher_turtles_pods.resources[0].status.containerStatuses
+        | default([{'ready': false, 'restartCount': 0}]))[0].ready | default(false)
+    ) or
+    (
+      (rancher_turtles_pods.resources[0].status.containerStatuses
+        | default([{'restartCount': 0}]))[0].restartCount | default(0) | int
+    ) >= (rancher_turtles_crashloop_restart_threshold | int)
+  retries: "{{ rancher_turtles_stabilize_retries | int }}"
+  delay: "{{ rancher_turtles_stabilize_delay | int }}"
+  failed_when: false
+  changed_when: false
+  when:
+    - rancher_turtles_auto_recover_enabled | bool
+    - (rancher_turtles_pods.resources | default([]) | length) > 0
 
 - name: Detect rancher-turtles crash-looping on the CAPI CRD bootstrap race
   ansible.builtin.set_fact:

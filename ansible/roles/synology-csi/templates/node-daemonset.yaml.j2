@@ -43,6 +43,22 @@ spec:
             limits:
               cpu: {{ synology_csi_driver_limits_cpu | default('100m') }}
               memory: {{ synology_csi_driver_limits_memory | default('64Mi') }}
+{% if synology_csi_liveness_probe_enabled %}
+          # See controller.yaml.j2 — the node plugin runs the same one-shot DSM login at
+          # startup as the controller, so it's equally exposed to the same failure mode.
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  wget -q -O /dev/null --no-check-certificate --timeout=5
+                  'https://{{ synology_csi_endpoint }}:{{ synology_csi_port }}/webapi/query.cgi?api=SYNO.API.Info&method=query&version=1'
+            initialDelaySeconds: {{ synology_csi_liveness_probe_initial_delay }}
+            periodSeconds: {{ synology_csi_liveness_probe_period }}
+            timeoutSeconds: {{ synology_csi_liveness_probe_timeout }}
+            failureThreshold: {{ synology_csi_liveness_probe_failure_threshold }}
+{% endif %}
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet

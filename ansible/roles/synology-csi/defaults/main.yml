@@ -17,6 +17,18 @@ synology_csi_endpoint: ""
 synology_csi_port: 8443
 synology_csi_tls_verify: false
 
+# Liveness probe on the csi-driver container(s) checking DSM reachability. This only reacts to
+# *sustained* future outages (kubelet restarts the container after failureThreshold consecutive
+# failures) — it cannot detect a one-shot startup login that already failed and then the network
+# recovered, since the probe only reflects current reachability. The dsm-login-reconciler
+# CronJob (see tasks/install.yml) is what catches that specific case; this probe is a faster-
+# reacting complement for genuine ongoing connectivity loss, not a replacement for it.
+synology_csi_liveness_probe_enabled: true
+synology_csi_liveness_probe_initial_delay: 30
+synology_csi_liveness_probe_period: 30
+synology_csi_liveness_probe_timeout: 10
+synology_csi_liveness_probe_failure_threshold: 3
+
 # Credentials — store in Ansible Vault
 synology_csi_username: ""
 synology_csi_password: ""
@@ -28,7 +40,26 @@ synology_csi_password: ""
 synology_csi_dsm_ready_check_enabled: true
 synology_csi_dsm_ready_check_count: 5    # consecutive successful probes required
 synology_csi_dsm_ready_retries: 20       # ansible-level retries if the streak is broken
+
+# synok8scsiplugin logs in to each configured DSM exactly once at process startup and never
+# retries for the life of the pod. If that one-shot login failed (e.g. the network path wasn't
+# stable yet), CreateVolume then permanently fails with "Couldn't find any host available to
+# create Volume" no matter how healthy the network becomes afterward — the pod must be
+# restarted to force a fresh login attempt. See tasks/install.yml.
+synology_csi_dsm_login_retry_attempts: 3
+synology_csi_dsm_login_retry_wait: 120   # seconds to wait for the StatefulSet rollout after a restart
 synology_csi_dsm_ready_delay: 15         # seconds between ansible-level retries
+
+# Ongoing in-cluster reconciliation for the same one-shot DSM login failure (see above), since
+# it can recur any time the controller pod restarts during normal operation (node drain/
+# eviction, node failure, rolling upgrade) — not just on a fresh install — and nothing else
+# triggers a reconciliation until someone next runs this ansible playbook. Deploys a CronJob
+# (see templates/synology-csi-dsm-login-reconciler-cronjob.yaml.j2) that periodically checks
+# for and self-heals the same failure signature independently of ansible runs.
+synology_csi_dsm_login_reconciler_enabled: true
+synology_csi_dsm_login_reconciler_schedule: "*/5 * * * *"
+synology_csi_dsm_login_reconciler_image: "alpine/kubectl:1.36.4"
+synology_csi_dsm_login_reconciler_history_limit: 3
 
 # Snapshot support
 synology_csi_snapshots_enabled: false

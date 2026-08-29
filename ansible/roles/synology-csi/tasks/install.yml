@@ -266,3 +266,60 @@
   delay: "{{ synology_csi_dsm_ready_delay }}"
   changed_when: false
   when: synology_csi_dsm_ready_check_enabled | bool
+
+- name: Ensure the CSI controller's one-shot DSM login actually succeeded, restarting it if not
+  # synok8scsiplugin logs in to each configured DSM exactly once at process startup
+  # ("Failed to add DSM: <host>" in the csi-driver container log) and never retries for the
+  # life of the pod. The connectivity probe above confirms the *network path* is stable now,
+  # but a pod that started before the network settled still has zero DSM hosts registered in
+  # memory and will fail every CreateVolume with "Couldn't find any host available to create
+  # Volume" forever. Detect that startup failure signature and restart the pod(s) to force a
+  # fresh login attempt now that connectivity is confirmed.
+  ansible.builtin.shell: |
+    set -eu
+    # No pipefail: `grep -q` exits on first match, SIGPIPE-ing the still-writing `kubectl logs`
+    # upstream — under pipefail that 141 would become the pipe's status instead of grep's own,
+    # masking a real match as "not found".
+    ns="{{ synology_csi_namespace }}"
+    for attempt in $(seq 1 {{ synology_csi_dsm_login_retry_attempts }}); do
+      bad_pods=""
+      for pod in $(kubectl get pods -n "$ns" -o name | grep '^pod/synology-csi-controller-' | sed 's#pod/##'); do
+        if kubectl logs "$pod" -n "$ns" -c csi-driver 2>/dev/null | grep -q 'Failed to add DSM'; then
+          bad_pods="$bad_pods $pod"
+        fi
+      done
+      if [ -z "$bad_pods" ]; then
+        echo "All CSI controller pods have a clean DSM login"
+        exit 0
+      fi
+      echo "Restarting pods with failed DSM login (attempt $attempt):$bad_pods"
+      for pod in $bad_pods; do
+        kubectl delete pod "$pod" -n "$ns" --wait=true --timeout=120s
+      done
+      kubectl rollout status statefulset/synology-csi-controller -n "$ns" \
+        --timeout={{ synology_csi_dsm_login_retry_wait }}s
+      sleep 5
+    done
+    echo "DSM login still failing on one or more controller pods after {{ synology_csi_dsm_login_retry_attempts }} restart(s)"
+    exit 1
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: synology_csi_dsm_login_check
+  changed_when: "'Restarting pods' in synology_csi_dsm_login_check.stdout"
+  when: synology_csi_dsm_ready_check_enabled | bool
+
+- name: Apply synology-csi DSM login reconciler CronJob
+  # Ongoing self-heal for the same one-shot DSM login failure, since it can recur any time the
+  # controller pod restarts during normal operation (node drain/eviction/upgrade), not just on
+  # a fresh install — this covers the gap between ansible runs. See templates/
+  # synology-csi-dsm-login-reconciler-cronjob.yaml.j2 for the detection/recovery logic.
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ lookup('template', 'synology-csi-dsm-login-reconciler-cronjob.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - synology_csi_dsm_login_reconciler_enabled | bool
+    - item is not none
