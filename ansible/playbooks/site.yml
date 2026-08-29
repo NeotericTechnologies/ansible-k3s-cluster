@@ -153,6 +153,34 @@
         - not (auto_approve_plan | default(false) | bool)
 
 # =============================================================================
+# Play 2b: Synology CSI host prerequisites (all nodes)
+#
+# The dynamic per-component orchestration below (Play 3) runs entirely on
+# hosts: k3s_servers[0] via the generic includes/upgrade-addon.yml -> include_role
+# path, which only executes the synology-csi role's tasks/main.yml (install.yml +
+# csi-driver-nfs.yml). It never reaches tasks/host-prerequisites.yml (open-iscsi
+# package, iscsid.socket, multipath-tools blacklist for Synology LUNs), which must
+# run on every node in k3s_cluster (any node may schedule a PVC-using pod), not
+# just the first control-plane node. cluster-addons.yml calls this out as its own
+# dedicated play for the same reason — mirrored here so `site.yml` doesn't silently
+# skip it (observed: PVC-using pods stuck in ContainerCreating with mkfs "Resource
+# busy" from multipathd still holding the LUN device open).
+# =============================================================================
+- name: Ensure Synology CSI iSCSI host prerequisites on all nodes
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Include Synology CSI iSCSI host prerequisites
+      ansible.builtin.include_role:
+        name: synology-csi
+        tasks_from: host-prerequisites.yml
+        apply:
+          tags: ['storage', 'synology']
+      when: synology_csi_enabled | default(false)
+      tags: ['storage', 'synology']
+
+# =============================================================================
 # Play 3: Dynamic Component Orchestration (T037-T039)
 #
 # Single unified orchestration loop that executes ALL components in priority order

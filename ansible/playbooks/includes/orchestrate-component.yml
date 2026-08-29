@@ -244,6 +244,24 @@
               ├─ Desired: {{ component_plan[_curr_component].desired_version }}
               └─ Executing on {{ groups['k3s_agents'] | length }} nodes (serial: 1)
 
+        - name: Fresh install prerequisites on k3s_agents
+          # Mirrors the equivalent k3s_servers step above — without this, agent nodes
+          # provisioned via site.yml silently skip the OS/CPU/memory/port/network fail-fast
+          # checks that cluster-core.yml's "Validate host prerequisites for all nodes" play
+          # (hosts: k3s_cluster) runs for every node, servers and agents alike.
+          ansible.builtin.include_role:
+            name: k3s-common
+            tasks_from: main.yml
+            apply:
+              delegate_to: "{{ agent_node }}"
+          vars:
+            k3s_target_host: "{{ agent_node }}"
+          loop: "{{ groups['k3s_agents'] }}"
+          loop_control:
+            loop_var: agent_node
+            label: "{{ agent_node }} - prereqs"
+          when: _curr_action == 'install' and is_fresh_install | default(false) | bool
+
         - name: Deploy k3s agents (serial 1)
           ansible.builtin.include_role:
             name: k3s-agent
