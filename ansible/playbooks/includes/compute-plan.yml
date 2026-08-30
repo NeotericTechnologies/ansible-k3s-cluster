@@ -87,27 +87,24 @@
   when: constraint_violations | length > 0
 
 # --- Compute final upgrade plan with context-aware ordering ---
-# For fresh installs: use fresh_install_priority from component registry
-# For upgrades: use upgrade_priority from component registry
+# Lifecycle choice: if there are NO upgrades (only installs/no-change), use fresh-install priorities
+# If partial install (core component missing), also use fresh-install priorities
+# Otherwise if any upgrades, use upgrade priorities
 - name: Determine install context (fresh or partial-fresh)
   ansible.builtin.set_fact:
+    # Fresh install if: is_fresh_install OR is_partial_install OR no upgrades happening
     execution_is_fresh_install: >-
       {{
         (is_fresh_install | default(false) | bool)
         or
+        (is_partial_install | default(false) | bool)
+        or
         (
-          (component_plan.k3s_servers is defined)
-          and (component_plan.k3s_servers.live_version != 'not_installed')
-          and (_enabled_non_k3s_installed | length == 0)
+          (component_plan | dict2items
+           | selectattr('value.action', 'in', ['upgrade', 'downgrade'])
+           | list | length) == 0
         )
       }}
-  vars:
-    _enabled_non_k3s_installed: >-
-      {{ component_plan | dict2items
-         | selectattr('value.enabled', 'equalto', true)
-         | rejectattr('key', 'in', ['k3s_servers', 'k3s_agents'])
-         | rejectattr('value.live_version', 'equalto', 'not_installed')
-         | list }}
 
 - name: Build priority map from component registry for fresh installs
   ansible.builtin.set_fact:

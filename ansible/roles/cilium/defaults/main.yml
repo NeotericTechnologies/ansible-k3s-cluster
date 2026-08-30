@@ -1,0 +1,22 @@
+---
+# ansible/roles/cilium/defaults/main.yml
+# Purpose: Default variables for cilium role
+# Reference: FR-003c, contracts/ansible-variable-contracts.md
+
+cilium_enabled: false
+# Pinned Cilium version (the actual Cilium app version, e.g. "v1.16.6" or "1.16.6").
+# REQUIRED when cilium_enabled is true — no default is provided. The official Helm chart
+# is versioned 1:1 with the app version (without a "v" prefix); install.yml strips a
+# leading "v" automatically when resolving the chart version, so either form works here.
+cilium_version: ""
+cilium_namespace: "kube-system"
+cilium_helm_repo: "https://helm.cilium.io/"
+cilium_helm_release_name: "cilium"
+cilium_helm_values: {}  # ipam.operator.clusterPoolIPv4PodCIDRList defaults to the detected k3s pod CIDR in install.yml
+cilium_egress_gateway_enabled: false
+
+# k3s-managed CNI paths. Runtime paths from `crictl info` are reconciled
+# via symlinks in install.yml so kubelet/containerd can resolve cilium-cni.
+cilium_cni_conf_path: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+cilium_cni_bin_path: "/var/lib/rancher/k3s/data/current/bin"
+cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"

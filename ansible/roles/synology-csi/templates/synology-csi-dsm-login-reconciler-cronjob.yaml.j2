@@ -1,0 +1,132 @@
+---
+# ansible/roles/synology-csi/templates/synology-csi-dsm-login-reconciler-cronjob.yaml.j2
+# Purpose: Periodically detect and self-heal a synology-csi-controller pod whose one-shot
+# DSM login failed at startup.
+#
+# Why this exists: synok8scsiplugin logs in to each configured DSM exactly once at process
+# startup (main.go: `for _, client := range info.Clients { dsmService.AddDsm(client) }`) and
+# only logs an error on failure — it never retries for the life of the pod. This can happen
+# not just on a fresh install, but any time the controller pod restarts while the DSM path is
+# briefly unreachable (node drain/eviction, node failure, rolling image upgrade, k3s node
+# upgrade cordon/drain, transient network blip). Once that happens, every CreateVolume call
+# fails forever with "Couldn't find any host available to create Volume" until the pod is
+# restarted — kubelet has no way to detect this on its own (the driver's CSI Probe RPC
+# succeeds regardless of DSM login state, so a standard liveness probe can't catch it).
+# This CronJob greps each controller pod's own logs for the "Failed to add DSM" startup
+# failure signature and deletes affected pods to force a fresh login attempt, so recovery
+# doesn't depend on someone noticing and manually re-running the ansible playbook.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: synology-csi-dsm-login-reconciler
+  namespace: {{ synology_csi_namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: synology-csi-dsm-login-reconciler
+  namespace: {{ synology_csi_namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: synology-csi-dsm-login-reconciler
+  namespace: {{ synology_csi_namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: synology-csi-dsm-login-reconciler
+subjects:
+  - kind: ServiceAccount
+    name: synology-csi-dsm-login-reconciler
+    namespace: {{ synology_csi_namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synology-csi-dsm-login-reconciler-script
+  namespace: {{ synology_csi_namespace }}
+  labels:
+    app.kubernetes.io/name: synology-csi-dsm-login-reconciler
+data:
+  reconcile.sh: |
+{% raw %}
+    #!/bin/sh
+    set -eu
+
+    NS="${NAMESPACE:-synology-csi}"
+    log() { echo "[synology-csi-dsm-login-reconciler] $*"; }
+
+    log "$(date -u +%FT%TZ) checking synology-csi controller and node pods for failed one-shot DSM login"
+
+    FIXED=0
+    # Both the controller StatefulSet and node DaemonSet run the same driver binary, which
+    # performs the identical one-shot DSM login at startup — check both prefixes.
+    for pod in $(kubectl get pods -n "${NS}" -o name | grep -E '^pod/synology-csi-(controller|node)-' | sed 's#pod/##'); do
+      # No pipefail: grep -q exits on first match, SIGPIPE-ing the still-writing `kubectl
+      # logs` upstream — under pipefail that would become the pipe's status instead of
+      # grep's own, masking a real match as "not found".
+      if kubectl logs "${pod}" -n "${NS}" -c csi-driver 2>/dev/null | grep -q 'Failed to add DSM'; then
+        log "FIX ${pod}: one-shot DSM login failed at startup — restarting to retry"
+        kubectl delete pod "${pod}" -n "${NS}" --wait=true --timeout=120s
+        FIXED=$((FIXED + 1))
+      fi
+    done
+
+    if [ "${FIXED}" -gt 0 ]; then
+      kubectl rollout status statefulset/synology-csi-controller -n "${NS}" --timeout=180s
+      log "result: RESTARTED ${FIXED} pod(s) with failed DSM login"
+    else
+      log "result: NO ISSUE (all controller pods have a clean DSM login)"
+    fi
+{% endraw %}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: synology-csi-dsm-login-reconciler
+  namespace: {{ synology_csi_namespace }}
+  labels:
+    app.kubernetes.io/name: synology-csi-dsm-login-reconciler
+spec:
+  schedule: "{{ synology_csi_dsm_login_reconciler_schedule }}"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ synology_csi_dsm_login_reconciler_history_limit }}
+  failedJobsHistoryLimit: {{ synology_csi_dsm_login_reconciler_history_limit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: synology-csi-dsm-login-reconciler
+        spec:
+          serviceAccountName: synology-csi-dsm-login-reconciler
+          restartPolicy: OnFailure
+          containers:
+            - name: reconcile
+              image: "{{ synology_csi_dsm_login_reconciler_image }}"
+              command: ["/bin/sh", "/scripts/reconcile.sh"]
+              env:
+                - name: NAMESPACE
+                  value: "{{ synology_csi_namespace }}"
+              volumeMounts:
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: script
+              configMap:
+                name: synology-csi-dsm-login-reconciler-script
+                defaultMode: 0555

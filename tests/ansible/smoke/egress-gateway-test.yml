@@ -1,0 +1,994 @@
+---
+# tests/ansible/smoke/egress-gateway-test.yml
+# Purpose: Smoke tests for Egress Gateway and Kube-VIP Enhancements (006-egress-gateway-kube-vip)
+# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/egress-gateway-test.yml
+# Reference: FR-013, SC-001, SC-002, SC-003, SC-004
+
+- name: Egress Gateway and Kube-VIP Enhancements Smoke Tests
+  hosts: k3s_servers[0]
+  gather_facts: false
+  tasks:
+    # --- User Story 4: Consolidated RBAC ---
+    - name: Get consolidated kube-vip ClusterRole
+      ansible.builtin.command: kubectl get clusterrole kube-vip -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_clusterrole
+      changed_when: false
+
+    - name: Assert single consolidated ClusterRole kube-vip exists
+      ansible.builtin.assert:
+        that:
+          - kube_vip_clusterrole.rc == 0
+        fail_msg: "Consolidated ClusterRole 'kube-vip' not found"
+
+    - name: Get kube-vip ClusterRoleBinding roleRef
+      ansible.builtin.command: kubectl get clusterrolebinding kube-vip -o jsonpath='{.roleRef.name}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_crb_ref
+      changed_when: false
+
+    - name: Get kube-vip-cloud-controller ClusterRoleBinding roleRef
+      ansible.builtin.command: kubectl get clusterrolebinding kube-vip-cloud-controller -o jsonpath='{.roleRef.name}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_cc_crb_ref
+      changed_when: false
+
+    - name: Assert both ClusterRoleBindings reference the consolidated ClusterRole
+      ansible.builtin.assert:
+        that:
+          - kube_vip_crb_ref.stdout == "kube-vip"
+          - kube_vip_cc_crb_ref.stdout == "kube-vip"
+        fail_msg: "kube-vip and kube-vip-cloud-controller ClusterRoleBindings must both reference roleRef.name: kube-vip"
+
+    - name: Check kube-vip pod logs for recent RBAC authorization failures
+      ansible.builtin.shell: >-
+        kubectl logs -n kube-system -l app.kubernetes.io/name=kube-vip
+        --since={{ smoke_rbac_log_since | default('10m') }} 2>/dev/null
+        | grep -iE 'is forbidden:|User ".*" cannot|rbac:.*denied' || true
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_rbac_errors
+      changed_when: false
+
+    - name: Check kube-vip-cloud-controller pod logs for recent RBAC authorization failures
+      ansible.builtin.shell: >-
+        kubectl logs -n kube-system -l app.kubernetes.io/name=kube-vip-cloud-controller
+        --since={{ smoke_rbac_log_since | default('10m') }} 2>/dev/null
+        | grep -iE 'is forbidden:|User ".*" cannot|rbac:.*denied' || true
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_cc_rbac_errors
+      changed_when: false
+
+    - name: Assert zero RBAC-denied log lines (SC-004)
+      ansible.builtin.assert:
+        that:
+          - kube_vip_rbac_errors.stdout | length == 0
+          - kube_vip_cc_rbac_errors.stdout | length == 0
+        fail_msg: >-
+          RBAC authorization failures observed in recent logs (window={{ smoke_rbac_log_since | default('10m') }}).
+          kube-vip lines={{ kube_vip_rbac_errors.stdout_lines | default([]) }};
+          kube-vip-cloud-controller lines={{ kube_vip_cc_rbac_errors.stdout_lines | default([]) }}
+
+    # --- User Story 2: Service Election ---
+    - name: Get kube-vip DaemonSet env vars
+      ansible.builtin.command: >-
+        kubectl get daemonset kube-vip -n kube-system -o jsonpath='{.spec.template.spec.containers[0].env}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_ds_env
+      changed_when: false
+
+    - name: Detect service election test gate from deployed kube-vip configuration
+      ansible.builtin.set_fact:
+        smoke_kube_vip_svc_election_enabled: >-
+          {{
+            (kube_vip_svc_election_enabled | default(false) | bool)
+            or ('svc_election' in (kube_vip_ds_env.stdout | default('')))
+          }}
+
+    - name: Probe egress gateway Service presence
+      ansible.builtin.command: >-
+        kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_svc
+      changed_when: false
+      failed_when: false
+
+    - name: Detect egress smoke test gate from vars or deployed Service
+      ansible.builtin.set_fact:
+        smoke_kube_vip_egress_enabled: >-
+          {{
+            (kube_vip_egress_enabled | default(false) | bool)
+            or (egress_svc.rc | default(1) == 0)
+          }}
+
+    - name: Show smoke test feature gates
+      ansible.builtin.debug:
+        msg:
+          - "service_election_checks_enabled={{ smoke_kube_vip_svc_election_enabled | bool }}"
+          - "egress_checks_enabled={{ smoke_kube_vip_egress_enabled | bool }}"
+          - "failover_test_enabled={{ egress_run_failover_test | default(false) | bool }}"
+          - "dhcp_conflict_test_enabled={{ dhcp_run_mutual_exclusion_test | default(false) | bool }}"
+          - "dhcp_mode_assert_enabled={{ kube_vip_lb_dhcp_enabled | default(false) | bool }}"
+
+    - name: Assert svc_election env var present when service election is enabled
+      ansible.builtin.assert:
+        that:
+          - "'svc_election' in kube_vip_ds_env.stdout"
+        fail_msg: "svc_election env var not found in kube-vip DaemonSet pod spec"
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    - name: Get service VIP leases in kube-system
+      ansible.builtin.command: kubectl get leases -n kube-system -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_leases
+      changed_when: false
+      retries: "{{ smoke_kubectl_read_retries | default(8) }}"
+      delay: "{{ smoke_kubectl_read_delay | default(3) }}"
+      until: kube_vip_leases.rc == 0
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    - name: Get kube-system Services for lease VIP context
+      ansible.builtin.command: kubectl get svc -n kube-system -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_system_services
+      changed_when: false
+      retries: "{{ smoke_kubectl_read_retries | default(8) }}"
+      delay: "{{ smoke_kubectl_read_delay | default(3) }}"
+      until: kube_system_services.rc == 0
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    - name: Build kube-vip service lease summary
+      ansible.builtin.set_fact:
+        kube_vip_lease_items: "{{ (kube_vip_leases.stdout | from_json)['items'] | default([]) }}"
+        kube_system_service_items: "{{ (kube_system_services.stdout | from_json)['items'] | default([]) }}"
+        kube_vip_service_lease_items: >-
+          {{
+            ((kube_vip_leases.stdout | from_json)['items'] | default([])
+            | selectattr('metadata.name', 'match', '^kubevip-')
+            | list)
+          }}
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    - name: Initialize kube-vip service lease detail fields
+      ansible.builtin.set_fact:
+        kube_vip_service_lease_summary_lines: []
+        kube_vip_service_leases_without_holder: []
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    - name: Build kube-vip service lease detail fields
+      ansible.builtin.set_fact:
+        kube_vip_service_lease_summary_lines: >-
+          {{ kube_vip_service_lease_summary_lines + [smoke_lease_line] }}
+        kube_vip_service_leases_without_holder: >-
+          {{ kube_vip_service_leases_without_holder + ([] if smoke_holder_ok else [item.metadata.name]) }}
+      vars:
+        smoke_service_name: "{{ item.metadata.name | regex_replace('^kubevip-', '') }}"
+        smoke_service_obj: >-
+          {{ (kube_system_service_items | selectattr('metadata.name', 'equalto', smoke_service_name) | list | first) | default({}) }}
+        smoke_service_vip: >-
+          {{
+            smoke_service_obj.spec.loadBalancerIP
+            | default((((smoke_service_obj.status.loadBalancer.ingress | default([])) | first | default({})).ip | default('<none>')))
+          }}
+        smoke_holder_identity: "{{ item.spec.holderIdentity | default('<none>') }}"
+        smoke_holder_ok: "{{ (item.spec.holderIdentity | default('') | length) > 0 }}"
+        smoke_lease_line: "{{ item.metadata.name }}: holder={{ smoke_holder_identity }}, vip={{ smoke_service_vip }}"
+      loop: "{{ kube_vip_service_lease_items | default([]) }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    - name: Show kube-vip service lease holder summary
+      ansible.builtin.debug:
+        msg: |
+          kube-vip service lease holders in kube-system ({{ kube_vip_service_lease_items | default([]) | length }}):
+          {% for line in (kube_vip_service_lease_summary_lines | default([])) %}
+          - {{ line }}
+          {% endfor %}
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    - name: Assert each service VIP lease has exactly one holder
+      ansible.builtin.assert:
+        that:
+          - (kube_vip_service_lease_items | default([]) | length) > 0
+          - (kube_vip_service_leases_without_holder | default([]) | length) == 0
+        fail_msg: >-
+          kube-vip service leases missing holderIdentity: {{ (kube_vip_service_leases_without_holder | default([])) | join(', ') }}
+      when: smoke_kube_vip_svc_election_enabled | bool
+
+    # --- User Story 1: Load-Balanced Egress Gateway ---
+    - name: Assert egress gateway Service exists when egress checks are enabled
+      ansible.builtin.assert:
+        that:
+          - egress_svc.rc == 0
+        fail_msg: "Egress checks enabled, but egress-gateway-svc is missing in namespace {{ kube_vip_egress_namespace | default('kube-system') }}"
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Derive expected egress IP for smoke assertions
+      ansible.builtin.set_fact:
+        smoke_expected_egress_ip: >-
+          {{ kube_vip_egress_ip | default((egress_svc.stdout | from_json).spec.loadBalancerIP | default('')) }}
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Assert egress Service advertises a loadBalancerIP
+      ansible.builtin.assert:
+        that:
+          - ((egress_svc.stdout | from_json).spec.loadBalancerIP | default('')) | length > 0
+        fail_msg: "Egress gateway Service exists but has no spec.loadBalancerIP"
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Assert egress Service loadBalancerIP matches kube_vip_egress_ip (FR-013, SC-001)
+      ansible.builtin.assert:
+        that:
+          - (egress_svc.stdout | from_json).spec.loadBalancerIP == kube_vip_egress_ip
+        fail_msg: "Egress gateway Service loadBalancerIP does not match kube_vip_egress_ip"
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - kube_vip_egress_ip is defined
+
+    - name: Assert CiliumEgressGatewayPolicy exists
+      ansible.builtin.command: kubectl get ciliumegressgatewaypolicy {{ kube_vip_egress_policy_name | default('egress-gateway-policy') }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_policy
+      changed_when: false
+      failed_when: egress_policy.rc != 0
+      when: smoke_kube_vip_egress_enabled | bool
+
+    # NOTE: The reachability probe MUST target a genuinely cluster-external destination.
+    # Cilium excludes any destination IP that is also an internal cluster IP (pod, node,
+    # or API server) from egress gateway SNAT logic, so an in-cluster hostNetwork echo
+    # server (bound to a node IP) would never use the egress VIP as source — it would
+    # always show the pod's own IP, regardless of correct configuration. See
+    # https://docs.cilium.io/en/stable/network/egress-gateway/egress-gateway/ and
+    # specs/006-egress-gateway-kube-vip/spec.md (Independent Test) / quickstart.md (Step 7).
+    - name: Launch test pod for egress source-IP verification
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: egress-gateway-smoke-test
+            namespace: default
+            labels: "{{ kube_vip_egress_pod_selector | default({}) }}"
+          spec:
+            containers:
+              - name: curl
+                image: curlimages/curl:latest
+                command: ["sleep", "120"]
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Wait for test pod to become Ready
+      ansible.builtin.command: >-
+        kubectl wait -n default --for=condition=Ready pod/egress-gateway-smoke-test --timeout=15s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_test_pod_ready
+      changed_when: false
+      retries: 10
+      delay: 3
+      until: egress_test_pod_ready.rc == 0
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Verify outbound reachability from test pod via external echo service (SC-001)
+      ansible.builtin.shell: |
+        kubectl exec -n default egress-gateway-smoke-test -- \
+          curl -fsS --max-time 10 "{{ egress_smoke_external_echo_url | default('https://ifconfig.me') }}"
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_source_ip
+      changed_when: false
+      failed_when: false
+      retries: 3
+      delay: 5
+      until: egress_source_ip.rc == 0
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Assert egress source-IP probe command succeeded (strict mode)
+      ansible.builtin.assert:
+        that:
+          - egress_source_ip.rc == 0
+        fail_msg: >-
+          Egress source-IP probe failed (rc={{ egress_source_ip.rc | default('n/a') }}).
+          stdout={{ egress_source_ip.stdout | default('') }} stderr={{ egress_source_ip.stderr | default('') }}
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_source_ip_strict | default(false) | bool
+
+    - name: Explain non-strict egress probe failure
+      ansible.builtin.debug:
+        msg: >-
+          Egress source-IP probe via external echo service failed (rc={{ egress_source_ip.rc | default('n/a') }}).
+          Continuing because egress_source_ip_strict=false.
+          stdout={{ egress_source_ip.stdout | default('') }} stderr={{ egress_source_ip.stderr | default('') }}
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - not (egress_source_ip_strict | default(false) | bool)
+        - egress_source_ip.rc != 0
+
+    - name: Normalize observed external IP for summary output
+      ansible.builtin.set_fact:
+        smoke_observed_external_ip: >-
+          {{
+            (egress_source_ip.stdout | default('') | trim)
+            if ((egress_source_ip.stdout | default('') | trim | length) > 0)
+            else '<unavailable>'
+          }}
+      when: smoke_kube_vip_egress_enabled | bool
+
+    - name: Assert external echo service returned an observed source IP
+      ansible.builtin.assert:
+        that:
+          - (egress_source_ip.stdout | trim | length) > 0
+        fail_msg: "External echo service returned no observed source IP for the smoke test pod"
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_source_ip.rc == 0
+
+    - name: Inspect Cilium egress SNAT map for smoke test pod
+      ansible.builtin.shell: |
+        set -euo pipefail
+        pod_ip=$(kubectl get pod -n default egress-gateway-smoke-test -o jsonpath='{.status.podIP}')
+        vip_host=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
+        cilium_pod=$(kubectl get pod -n kube-system -l k8s-app=cilium --field-selector "spec.nodeName=${vip_host}" -o jsonpath='{.items[0].metadata.name}')
+        [[ -n "${pod_ip}" ]]
+        [[ -n "${vip_host}" ]]
+        [[ -n "${cilium_pod}" ]]
+        entry=$(kubectl exec -n kube-system "${cilium_pod}" -- cilium bpf egress list | awk \
+          -v pod_ip="${pod_ip}" \
+          '$1 == pod_ip && $2 == "0.0.0.0/0" { print $1 "|" $4 "|" $3; found=1; exit } END { if (!found) exit 1 }')
+        echo "${entry}"
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: egress_cilium_snat
+      changed_when: false
+      failed_when: false
+      retries: 15
+      delay: 2
+      until: egress_cilium_snat.rc == 0
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_source_ip.rc == 0
+
+    - name: Normalize observed Cilium egress IPs for summary output
+      ansible.builtin.set_fact:
+        smoke_observed_pod_ip: "{{ egress_cilium_snat.stdout.split('|') | first | default('<unavailable>') | trim }}"
+        smoke_observed_node_ip: "{{ (egress_cilium_snat.stdout.split('|'))[1] | default('<unavailable>') | trim }}"
+        smoke_observed_egress_ip: "{{ egress_cilium_snat.stdout.split('|') | last | default('<unavailable>') | trim }}"
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_source_ip.rc == 0
+        - egress_cilium_snat.rc == 0
+
+    - name: Assert Cilium SNAT map routes smoke pod through expected egress VIP (FR-013, SC-001)
+      ansible.builtin.assert:
+        that:
+          - egress_cilium_snat.rc == 0
+          - smoke_observed_egress_ip == smoke_expected_egress_ip
+        fail_msg: >-
+          Cilium egress SNAT map did not route the smoke pod through the expected egress IP.
+          expected={{ smoke_expected_egress_ip }}, observed={{ smoke_observed_egress_ip | default('<unavailable>') }}.
+          stdout={{ egress_cilium_snat.stdout | default('') }}
+          stderr={{ egress_cilium_snat.stderr | default('') }}
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_source_ip.rc == 0
+
+    - name: Clean up egress gateway test pod
+      kubernetes.core.k8s:
+        state: absent
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        api_version: v1
+        kind: Pod
+        name: egress-gateway-smoke-test
+        namespace: default
+      when: smoke_kube_vip_egress_enabled | bool
+
+    # --- Egress gateway failover (FR-003, SC-002) ---
+    - name: Verify cluster and Multus are ready before failover test
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl wait --for=condition=Ready nodes --all --timeout=60s
+        kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=60s
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_run_failover_test | default(false) | bool
+
+    - name: Run egress VIP failover scenario
+      block:
+        - name: Identify current egress vipHost and lease holder
+          ansible.builtin.shell: |
+            set -euo pipefail
+            vip_host=$(kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o jsonpath="{.metadata.annotations['kube-vip.io/vipHost']}")
+            lease_holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
+            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}')
+            echo "${vip_host}|${lease_holder}|${transitions}"
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_vip_state_before
+          changed_when: false
+
+        - name: Normalize egress holder baseline values
+          ansible.builtin.set_fact:
+            egress_service_vip_host_before: "{{ (egress_vip_state_before.stdout.split('|') | first | default('')) | trim }}"
+            egress_lease_holder_before: "{{ (egress_vip_state_before.stdout.split('|'))[1] | default('') | trim }}"
+            egress_lease_transitions_before: "{{ (egress_vip_state_before.stdout.split('|') | last | default('0')) | int }}"
+            egress_vip_host_before: >-
+              {{
+                ((egress_vip_state_before.stdout.split('|') | first | default('')) | trim)
+                if (((egress_vip_state_before.stdout.split('|') | first | default('')) | trim | length) > 0)
+                else ((egress_vip_state_before.stdout.split('|'))[1] | default('') | trim)
+              }}
+
+        - name: Assert failover precondition has a current VIP host
+          ansible.builtin.assert:
+            that:
+              - egress_vip_host_before | default('') | length > 0
+            fail_msg: "Could not determine current egress VIP holder"
+
+        - name: Record failover trigger semantics
+          ansible.builtin.set_fact:
+            egress_failover_trigger_note: >-
+              Primary trigger uses paired taints on smoke.kube-vip.io/failover-test:
+              NoExecute for timed eviction and NoSchedule to block immediate re-placement on the holder node.
+              Holder pod restart remains a safety fallback if eviction timing is delayed.
+
+        - name: Cordon node holding the egress VIP
+          ansible.builtin.command: kubectl cordon {{ egress_vip_host_before }}
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          changed_when: true
+
+        - name: Apply test-only failover NoExecute taint to holder node
+          ansible.builtin.command: >-
+            kubectl taint node {{ egress_vip_host_before }} smoke.kube-vip.io/failover-test=evict:NoExecute --overwrite
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_taint_apply
+          changed_when: true
+
+        - name: Apply test-only failover NoSchedule taint to holder node
+          ansible.builtin.command: >-
+            kubectl taint node {{ egress_vip_host_before }} smoke.kube-vip.io/failover-test=evict:NoSchedule --overwrite
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_taint_apply_noschedule
+          changed_when: true
+
+        - name: Verify test-only failover taint is visible on the holder node
+          ansible.builtin.command: >-
+            kubectl get node {{ egress_vip_host_before }}
+            -o jsonpath='{.spec.taints[?(@.key=="smoke.kube-vip.io/failover-test")].effect}'
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_holder_failover_test_taint
+          changed_when: false
+
+        - name: Assert test-only failover NoExecute and NoSchedule taints are present on the holder node
+          ansible.builtin.assert:
+            that:
+              - "'NoExecute' in (egress_holder_failover_test_taint.stdout | default(''))"
+              - "'NoSchedule' in (egress_holder_failover_test_taint.stdout | default(''))"
+            fail_msg: >-
+              Node {{ egress_vip_host_before }} did not report both expected test-only failover taint effects.
+              stdout={{ egress_holder_failover_test_taint.stdout | default('') }}
+
+        - name: Capture holder node taints after applying test-only failover taint
+          ansible.builtin.command: >-
+            kubectl get node {{ egress_vip_host_before }}
+            -o jsonpath='{range .spec.taints[*]}{.key}={.value}:{.effect}{"\n"}{end}'
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_holder_taints_after_apply
+          changed_when: false
+
+        - name: Wait briefly for taint-driven kube-vip evacuation on holder
+          ansible.builtin.command: >-
+            kubectl get pod -n kube-system -l app.kubernetes.io/name=kube-vip
+            --field-selector spec.nodeName={{ egress_vip_host_before }}
+            -o jsonpath='{.items[0].metadata.name}'
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_holder_kube_vip_pod_after_taint
+          changed_when: false
+          failed_when: false
+          retries: 15
+          delay: 1
+          until: (egress_holder_kube_vip_pod_after_taint.stdout | default('') | trim | length) == 0
+
+        - name: Record whether taint alone evacuated holder kube-vip pod
+          ansible.builtin.set_fact:
+            egress_taint_evicted_kube_vip: "{{ (egress_holder_kube_vip_pod_after_taint.stdout | default('') | trim | length) == 0 }}"
+
+        - name: Identify kube-vip pod on the current holder node after taint check
+          ansible.builtin.command: >-
+            kubectl get pod -n kube-system -l app.kubernetes.io/name=kube-vip
+            --field-selector spec.nodeName={{ egress_vip_host_before }}
+            -o jsonpath='{.items[0].metadata.name}'
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_holder_kube_vip_pod
+          changed_when: false
+          failed_when: false
+
+        - name: Restart holder kube-vip pod as fallback trigger when taint did not evict
+          ansible.builtin.command: >-
+            kubectl delete pod -n kube-system {{ egress_holder_kube_vip_pod.stdout }} --wait=false
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          changed_when: true
+          when:
+            - not (egress_taint_evicted_kube_vip | default(false) | bool)
+            - egress_holder_kube_vip_pod.stdout | default('') | length > 0
+
+        - name: Wait for holder change or lease re-election within lease window
+          ansible.builtin.shell: |
+            set -euo pipefail
+            vip_host=$(kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o jsonpath="{.metadata.annotations['kube-vip.io/vipHost']}");
+            lease_holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}');
+            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}');
+            [[ -n "${vip_host}${lease_holder}" ]]
+            [[ -n "${lease_holder}" ]]
+            [[ -n "${transitions}" ]]
+            echo "${vip_host}|${lease_holder}|${transitions}"
+          args:
+            executable: /bin/bash
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_failover_state
+          changed_when: false
+          retries: "{{ (vip_leaseduration | default(15) | int) + 20 }}"
+          delay: 1
+          until: >-
+            (((egress_failover_state.stdout.split('|') | first | default('')) | trim | length > 0)
+            and
+            ((egress_failover_state.stdout.split('|') | first | default('') | trim) != (egress_service_vip_host_before | default('') | trim)))
+            or
+            (((egress_failover_state.stdout.split('|'))[1] | default('') | trim | length > 0)
+            and
+            ((egress_failover_state.stdout.split('|'))[1] | default('') | trim) != (egress_lease_holder_before | default('') | trim))
+            or
+            ((egress_failover_state.stdout.split('|') | last | default('0') | int) > (egress_lease_transitions_before | default(0) | int))
+          ignore_errors: true
+
+        - name: Wait for Kubernetes API recovery and capture final failover state
+          ansible.builtin.shell: |
+            set -euo pipefail
+            vip_host=$(kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o jsonpath="{.metadata.annotations['kube-vip.io/vipHost']}")
+            lease_holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
+            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}')
+            [[ -n "${vip_host}${lease_holder}" ]]
+            [[ -n "${lease_holder}" ]]
+            [[ -n "${transitions}" ]]
+            echo "${vip_host}|${lease_holder}|${transitions}"
+          args:
+            executable: /bin/bash
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: egress_failover_state_recovered
+          changed_when: false
+          failed_when: false
+          retries: 30
+          delay: 1
+          until:
+            - egress_failover_state_recovered.rc == 0
+            - egress_failover_state_recovered.stdout | default('') | trim | length > 0
+
+        - name: Select recovered failover state when the initial wait saw an API outage
+          ansible.builtin.set_fact:
+            egress_failover_state: "{{ egress_failover_state_recovered if (egress_failover_state_recovered.rc | default(1) | int) == 0 else egress_failover_state }}"
+
+        - name: Parse final failover state fields
+          ansible.builtin.set_fact:
+            egress_vip_host_after: >-
+              {{
+                ((egress_failover_state.stdout.split('|') | first | default('')) | trim)
+                if (((egress_failover_state.stdout.split('|') | first | default('')) | trim | length) > 0)
+                else ((egress_failover_state.stdout.split('|'))[1] | default('') | trim)
+              }}
+            egress_lease_holder_after: "{{ ((egress_failover_state.stdout.split('|'))[1] | default('')) | trim }}"
+            egress_lease_transitions_after: "{{ (egress_failover_state.stdout.split('|'))[2] | default('0') | int }}"
+
+        - name: Classify failover observation
+          ansible.builtin.set_fact:
+            egress_service_holder_changed: >-
+              {{
+                ((egress_vip_host_after | default('')) | trim | length > 0)
+                and
+                ((egress_vip_host_after | default('') | trim) != (egress_vip_host_before | default('') | trim))
+              }}
+            egress_lease_holder_changed: >-
+              {{
+                ((egress_lease_holder_after | default('')) | trim | length > 0)
+                and
+                ((egress_lease_holder_after | default('') | trim) != (egress_lease_holder_before | default('') | trim))
+              }}
+            egress_failover_transition_increased: >-
+              {{
+                (egress_lease_transitions_after | default(0) | int)
+                >
+                (egress_lease_transitions_before | default(0) | int)
+              }}
+
+        - name: Derive failover result from holder-change classification
+          ansible.builtin.set_fact:
+            smoke_failover_observed: >-
+              {{
+                (egress_service_holder_changed | default(false) | bool)
+                or
+                (egress_lease_holder_changed | default(false) | bool)
+              }}
+            smoke_failover_result: >-
+              {{
+                'RUN (pass)'
+                if (
+                  (egress_service_holder_changed | default(false) | bool)
+                  or
+                  (egress_lease_holder_changed | default(false) | bool)
+                )
+                else 'RUN (fail: lease transitioned but holder unchanged)'
+                if (egress_failover_transition_increased | default(false) | bool)
+                else 'RUN (no migration/re-election observed)'
+              }}
+
+        - name: Show failover observation details
+          ansible.builtin.debug:
+            msg: >-
+              holder_before={{ egress_vip_host_before | default('') }},
+              failover_trigger_note={{ egress_failover_trigger_note | default('') }},
+              taint_apply_stdout={{ egress_taint_apply.stdout | default('') }},
+              taint_apply_noschedule_stdout={{ egress_taint_apply_noschedule.stdout | default('') }},
+              taint_evicted_kube_vip={{ egress_taint_evicted_kube_vip | default(false) }},
+              holder_kube_vip_after_taint={{ egress_holder_kube_vip_pod_after_taint.stdout | default('') }},
+              holder_taints_after_apply={{ (egress_holder_taints_after_apply.stdout_lines | default([])) | join(';') }},
+              service_vip_host_before={{ egress_service_vip_host_before | default('') }},
+              holder_after={{ egress_vip_host_after | default('') }},
+              lease_holder_before={{ egress_lease_holder_before | default('') }},
+              lease_holder_after={{ egress_lease_holder_after | default('') }},
+              lease_transitions_before={{ egress_lease_transitions_before | default(0) }},
+              lease_transitions_after={{ egress_lease_transitions_after | default(0) }}
+
+        - name: Assert failover behavior observed when strict mode is enabled
+          ansible.builtin.assert:
+            that:
+              - smoke_failover_observed | bool
+            fail_msg: >-
+              holder_before={{ egress_vip_host_before | default('') }},
+              service_vip_host_before={{ egress_service_vip_host_before | default('') }},
+              holder_after={{ egress_vip_host_after | default('') }},
+              lease_holder_before={{ egress_lease_holder_before | default('') }},
+              lease_holder_after={{ egress_lease_holder_after | default('') }},
+              lease_transitions_before={{ egress_lease_transitions_before | default(0) }},
+              lease_transitions_after={{ egress_lease_transitions_after | default(0) }}
+          when: egress_failover_strict | default(false) | bool
+      always:
+        - name: Remove test-only failover taint from previous holder node
+          ansible.builtin.command: >-
+            kubectl taint node {{ egress_vip_host_before | default('') }} smoke.kube-vip.io/failover-test:NoExecute-
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          changed_when: true
+          failed_when: false
+          register: egress_cleanup_taint_noexecute
+          retries: 30
+          delay: 1
+          until: egress_cleanup_taint_noexecute.rc | default(1) | int == 0
+          when: egress_vip_host_before | default('') | length > 0
+
+        - name: Remove test-only failover NoSchedule taint from previous holder node
+          ansible.builtin.command: >-
+            kubectl taint node {{ egress_vip_host_before | default('') }} smoke.kube-vip.io/failover-test:NoSchedule-
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          changed_when: true
+          failed_when: false
+          register: egress_cleanup_taint_noschedule
+          retries: 30
+          delay: 1
+          until: egress_cleanup_taint_noschedule.rc | default(1) | int == 0
+          when: egress_vip_host_before | default('') | length > 0
+
+        - name: Uncordon previous holder node
+          ansible.builtin.command: kubectl uncordon {{ egress_vip_host_before | default('') }}
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          changed_when: true
+          failed_when: false
+          register: egress_cleanup_uncordon
+          retries: 30
+          delay: 1
+          until: egress_cleanup_uncordon.rc | default(1) | int == 0
+          when: egress_vip_host_before | default('') | length > 0
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_run_failover_test | default(false) | bool
+
+    - name: Verify cluster and Multus recovered after failover test
+      ansible.builtin.shell: |
+        set -euo pipefail
+        kubectl wait --for=condition=Ready nodes --all --timeout=120s
+        kubectl rollout status daemonset/kube-multus-ds -n kube-system --timeout=120s
+        test -z "$(kubectl get pods -A --no-headers | awk '$3 ~ /CrashLoopBackOff|ContainerCreating|Terminating/ {print}')"
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_run_failover_test | default(false) | bool
+
+    # --- Egress gateway failover (real node reboot, destructive) ---
+    - name: Run egress VIP failover real-reboot scenario
+      block:
+        - name: Show explicit warning before real-reboot failover test
+          ansible.builtin.debug:
+            msg: |
+              WARNING: Real reboot failover test requested.
+              This will reboot the node currently holding kube-vip egress VIP and may temporarily disrupt traffic.
+              Use only in non-production test environments.
+
+        - name: Confirm real-reboot failover test interactively
+          ansible.builtin.pause:
+            prompt: >-
+              Type {{ egress_real_reboot_confirm_token | default('REBOOT') }} to continue real node reboot failover test,
+              or anything else to abort.
+          register: egress_real_reboot_confirmation
+
+        - name: Assert user explicitly confirmed real-reboot failover test
+          ansible.builtin.assert:
+            that:
+              - (egress_real_reboot_confirmation.user_input | default('')) == (egress_real_reboot_confirm_token | default('REBOOT'))
+            fail_msg: "Real reboot failover test aborted: explicit confirmation token not provided"
+
+        - name: Identify node currently holding the egress VIP before reboot
+          ansible.builtin.shell: |
+            set -euo pipefail
+            vip_host=$(kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o jsonpath="{.metadata.annotations['kube-vip.io/vipHost']}")
+            lease_holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
+            if [[ -n "${vip_host}" ]]; then
+              echo "${vip_host}"
+            else
+              echo "${lease_holder}"
+            fi
+          args:
+            executable: /bin/bash
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: real_egress_vip_host_before_cmd
+          changed_when: false
+
+        - name: Get initial lease holder and transition count before reboot failover test
+          ansible.builtin.shell: |
+            set -euo pipefail
+            holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}')
+            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}')
+            echo "${holder}|${transitions}"
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: real_egress_lease_state_before_cmd
+          changed_when: false
+
+        - name: Normalize real-reboot pre-failover state values
+          ansible.builtin.set_fact:
+            real_egress_vip_host_before: "{{ real_egress_vip_host_before_cmd.stdout | default('') | trim }}"
+            real_egress_lease_holder_before: "{{ real_egress_lease_state_before_cmd.stdout.split('|') | first | default('') }}"
+            real_egress_lease_transitions_before: "{{ real_egress_lease_state_before_cmd.stdout.split('|') | last | default('0') | int }}"
+
+        - name: Assert real-reboot precondition has a current VIP host
+          ansible.builtin.assert:
+            that:
+              - real_egress_vip_host_before | default('') | length > 0
+            fail_msg: "Could not determine current egress VIP holder before reboot test"
+
+        - name: Reboot current egress VIP holder node
+          ansible.builtin.reboot:
+            reboot_timeout: "{{ egress_real_reboot_timeout | default(900) }}"
+            post_reboot_delay: 10
+            test_command: whoami
+          become: true
+          delegate_to: "{{ real_egress_vip_host_before | default(inventory_hostname) }}"
+
+        - name: Wait for holder change or lease re-election after reboot
+          ansible.builtin.shell: |
+            set -euo pipefail
+            vip_host=$(kubectl get svc egress-gateway-svc -n {{ kube_vip_egress_namespace | default('kube-system') }} -o jsonpath="{.metadata.annotations['kube-vip.io/vipHost']}");
+            lease_holder=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.holderIdentity}');
+            transitions=$(kubectl get lease kubevip-egress-gateway-svc -n kube-system -o jsonpath='{.spec.leaseTransitions}');
+            holder="${vip_host}"
+            if [[ -z "${holder}" ]]; then
+              holder="${lease_holder}"
+            fi
+            [[ -n "${holder}" ]]
+            [[ -n "${lease_holder}" ]]
+            [[ -n "${transitions}" ]]
+            echo "${holder}|${lease_holder}|${transitions}"
+          args:
+            executable: /bin/bash
+          environment:
+            KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          register: real_egress_failover_state
+          changed_when: false
+          retries: "{{ (vip_leaseduration | default(15) | int) + 90 }}"
+          delay: 1
+          until: >-
+            (((real_egress_failover_state.stdout.split('|') | first | default('')) | length > 0)
+            and
+            ((real_egress_failover_state.stdout.split('|') | first | default('')) != (real_egress_vip_host_before | default(''))))
+            or
+            ((real_egress_failover_state.stdout.split('|') | last | default('0') | int) > (real_egress_lease_transitions_before | default(0) | int))
+          ignore_errors: true
+
+        - name: Parse real-reboot failover state fields
+          ansible.builtin.set_fact:
+            real_egress_vip_host_after: >-
+              {{
+                ((real_egress_failover_state.stdout.split('|') | first | default('')) | trim)
+                if (((real_egress_failover_state.stdout.split('|') | first | default('')) | trim | length) > 0)
+                else ((real_egress_failover_state.stdout.split('|'))[1] | default('') | trim)
+              }}
+            real_egress_lease_holder_after: "{{ (real_egress_failover_state.stdout.split('|'))[1] | default('') }}"
+            real_egress_lease_transitions_after: "{{ (real_egress_failover_state.stdout.split('|'))[2] | default('0') | int }}"
+
+        - name: Classify real-reboot failover observation
+          ansible.builtin.set_fact:
+            real_egress_service_holder_changed: >-
+              {{
+                ((real_egress_vip_host_after | default('')) | length > 0)
+                and
+                ((real_egress_vip_host_after | default('')) != (real_egress_vip_host_before | default('')))
+              }}
+            real_egress_lease_holder_changed: >-
+              {{
+                ((real_egress_lease_holder_after | default('')) | length > 0)
+                and
+                ((real_egress_lease_holder_after | default('')) != (real_egress_lease_holder_before | default('')))
+              }}
+            real_egress_failover_transition_increased: >-
+              {{
+                (real_egress_lease_transitions_after | default(0) | int)
+                >
+                (real_egress_lease_transitions_before | default(0) | int)
+              }}
+
+        - name: Derive real-reboot failover result from holder-change classification
+          ansible.builtin.set_fact:
+            smoke_real_failover_observed: >-
+              {{
+                (real_egress_service_holder_changed | default(false) | bool)
+                or
+                (real_egress_lease_holder_changed | default(false) | bool)
+              }}
+            smoke_real_failover_result: >-
+              {{
+                'RUN (pass)'
+                if (
+                  (real_egress_service_holder_changed | default(false) | bool)
+                  or
+                  (real_egress_lease_holder_changed | default(false) | bool)
+                )
+                else 'RUN (fail: lease transitioned but holder unchanged)'
+                if (real_egress_failover_transition_increased | default(false) | bool)
+                else 'RUN (no migration/re-election observed)'
+              }}
+
+        - name: Show real-reboot failover observation details
+          ansible.builtin.debug:
+            msg: >-
+              Real reboot failover observation: holder_before={{ real_egress_vip_host_before | default('') }},
+              holder_after={{ real_egress_vip_host_after | default('') }},
+              lease_holder_before={{ real_egress_lease_holder_before | default('') }},
+              lease_holder_after={{ real_egress_lease_holder_after | default('') }},
+              lease_transitions_before={{ real_egress_lease_transitions_before | default(0) }},
+              lease_transitions_after={{ real_egress_lease_transitions_after | default(0) }}
+
+        - name: Assert real-reboot failover observed when strict mode is enabled
+          ansible.builtin.assert:
+            that:
+              - smoke_real_failover_observed | bool
+            fail_msg: >-
+              Real reboot failover not observed. holder_before={{ real_egress_vip_host_before | default('') }},
+              holder_after={{ real_egress_vip_host_after | default('') }},
+              lease_holder_before={{ real_egress_lease_holder_before | default('') }},
+              lease_holder_after={{ real_egress_lease_holder_after | default('') }},
+              lease_transitions_before={{ real_egress_lease_transitions_before | default(0) }},
+              lease_transitions_after={{ real_egress_lease_transitions_after | default(0) }}
+          when: egress_real_reboot_strict | default(true) | bool
+      when:
+        - smoke_kube_vip_egress_enabled | bool
+        - egress_run_real_reboot_failover_test | default(false) | bool
+
+    # --- User Story 3: DHCP Mode (FR-007, FR-010) ---
+    - name: Attempt playbook run with DHCP and static IP range both set (expected failure)
+      ansible.builtin.command: >-
+        ansible-playbook -i {{ dhcp_test_inventory | default('tests/ansible/inventories/local') }}
+        ansible/playbooks/cluster-core.yml
+        -e kube_vip_lb_dhcp_enabled=true -e kube_vip_lb_ip_range=192.168.1.200-192.168.1.220
+        --tags kube-vip
+      register: dhcp_conflict_run
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      when: dhcp_run_mutual_exclusion_test | default(false) | bool
+
+    - name: Assert mutually-exclusive DHCP + static range configuration fails the playbook (FR-007)
+      ansible.builtin.assert:
+        that:
+          - dhcp_conflict_run.rc != 0
+          - "'mutually exclusive' in dhcp_conflict_run.stdout or 'mutually exclusive' in dhcp_conflict_run.stderr"
+        fail_msg: "Playbook did not fail as expected for kube_vip_lb_dhcp_enabled + kube_vip_lb_ip_range conflict"
+      when: dhcp_run_mutual_exclusion_test | default(false) | bool
+
+    - name: Get kube-vip ConfigMap when DHCP mode is enabled
+      ansible.builtin.command: kubectl get configmap kubevip -n kube-system -o json
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_vip_dhcp_configmap
+      changed_when: false
+      when: kube_vip_lb_dhcp_enabled | default(false) | bool
+
+    - name: Assert ConfigMap omits range-global key when DHCP mode is enabled (FR-010)
+      ansible.builtin.assert:
+        that:
+          - "'range-global' not in ((kube_vip_dhcp_configmap.stdout | from_json).data | default({}))"
+        fail_msg: "kubevip ConfigMap must omit range-global when kube_vip_lb_dhcp_enabled is true"
+      when: kube_vip_lb_dhcp_enabled | default(false) | bool
+
+    - name: Show overall smoke test summary
+      ansible.builtin.debug:
+        msg: |
+          Smoke test summary:
+          - RBAC consolidation/log checks: RUN (pass)
+          - Service election checks: {{ 'RUN (pass)' if (smoke_kube_vip_svc_election_enabled | bool) else 'SKIP (service election disabled)' }}
+          - kube-vip service lease holders validated: {{ (kube_vip_service_lease_items | default([]) | length) if (smoke_kube_vip_svc_election_enabled | bool) else 0 }}
+          - kube-vip service lease holder details:
+          {% if smoke_kube_vip_svc_election_enabled | bool %}
+          {% for line in (kube_vip_service_lease_summary_lines | default([])) %}
+            - {{ line }}
+          {% endfor %}
+          {% else %}
+            - <not-run>
+          {% endif %}
+          - Egress service/policy checks: {{ 'RUN (pass)' if (smoke_kube_vip_egress_enabled | bool) else 'SKIP (egress gateway not enabled/detected)' }}
+          - Egress source-IP probe: {{ 'RUN (pass)' if (smoke_observed_egress_ip | default('') == smoke_expected_egress_ip | default('')) else 'RUN (fail)' if (egress_cilium_snat.rc | default(1) == 0) else 'SKIP (external reachability probe did not succeed)' }}
+            - Expected egress IP: {{ smoke_expected_egress_ip | default('<unset>') }}
+            - Observed egress IP (SNAT): {{ smoke_observed_egress_ip | default('<not-collected>') }}
+            - Observed pod IP: {{ smoke_observed_pod_ip | default('<not-collected>') }}
+            - Observed node IP: {{ smoke_observed_node_ip | default('<not-collected>') }}
+            - Observed external IP: {{ smoke_observed_external_ip | default('<not-collected>') }} (may be upstream firewall NAT)
+          - Egress failover test (SC-002): {{ smoke_failover_result | default('SKIP (egress_run_failover_test=false)') }}
+            - Failover holder before: {{ egress_vip_host_before | default('<not-run>') }}
+            - Failover holder after: {{ egress_vip_host_after | default('<not-run>') }}
+            - Failover lease holder before: {{ egress_lease_holder_before | default('<not-run>') }}
+            - Failover lease holder after: {{ egress_lease_holder_after | default('<not-run>') }}
+            - Failover lease transitions: {{ egress_lease_transitions_before | default('<not-run>') }} -> {{ egress_lease_transitions_after | default('<not-run>') }}
+            - Failover signal observed: {{ smoke_failover_observed | default('<not-run>') }}
+          - Real reboot failover test (SC-002 destructive): {{ smoke_real_failover_result | default('SKIP (egress_run_real_reboot_failover_test=false)') }}
+            - Real failover holder before: {{ real_egress_vip_host_before | default('<not-run>') }}
+            - Real failover holder after: {{ real_egress_vip_host_after | default('<not-run>') }}
+            - Real failover lease holder before: {{ real_egress_lease_holder_before | default('<not-run>') }}
+            - Real failover lease holder after: {{ real_egress_lease_holder_after | default('<not-run>') }}
+            - Real failover lease transitions: {{ real_egress_lease_transitions_before | default('<not-run>') }} -> {{ real_egress_lease_transitions_after | default('<not-run>') }}
+            - Real failover signal observed: {{ smoke_real_failover_observed | default('<not-run>') }}
+          - DHCP mutual exclusion test (FR-007): {{ 'RUN (pass)' if (dhcp_run_mutual_exclusion_test | default(false) | bool) else 'SKIP (dhcp_run_mutual_exclusion_test=false)' }}
+          - DHCP configmap assertion (FR-010): {{ 'RUN (pass)' if (kube_vip_lb_dhcp_enabled | default(false) | bool) else 'SKIP (kube_vip_lb_dhcp_enabled=false)' }}
+
+

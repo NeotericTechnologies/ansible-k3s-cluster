@@ -87,7 +87,7 @@ As a maintainer, I want clear documentation of HA behavior and minimum replica e
 - **FR-011**: The system MUST define component-specific minimum HA targets for each in-scope managed component.
 - **FR-012**: Component-specific minimum HA targets MUST be managed in the same top-level configuration location as the corresponding component version definitions.
 - **FR-013**: The specification MUST define an explicit critical-component subset used for resilience and availability validation scenarios.
-- **FR-014**: The critical-component subset for resilience validation consists of k3s control plane server service, kube-vip, and Traefik.
+- **FR-014**: The critical-component subset for disruption resilience validation consists of the K3s control plane server service, probed through the control-plane VIP, and Traefik, probed through its LoadBalancer VIP. kube-vip remains covered by dedicated HA policy and failover validation; it is not measured as a second API-through-VIP probe.
 - **FR-015**: The system MUST execute resilience validation against the critical-component subset using the SC-003 measurement protocol and fail when any listed component misses the threshold.
 
 ### Key Entities *(include if feature involves data)*

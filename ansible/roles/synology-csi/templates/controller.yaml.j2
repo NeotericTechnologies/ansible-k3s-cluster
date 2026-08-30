@@ -27,6 +27,30 @@ spec:
             - --endpoint=unix:///csi/csi.sock
             - --client-info=/etc/synology/client-info.yml
             - --log-level=info
+          resources:
+            requests:
+              cpu: {{ synology_csi_driver_requests_cpu | default('25m') }}
+              memory: {{ synology_csi_driver_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_driver_limits_cpu | default('100m') }}
+              memory: {{ synology_csi_driver_limits_memory | default('64Mi') }}
+{% if synology_csi_liveness_probe_enabled %}
+          # Complements the dsm-login-reconciler CronJob: this reacts fast to sustained DSM
+          # outages, but can't see the one-shot-login-already-failed-then-network-recovered
+          # case (this probe only reflects current reachability) — the CronJob still owns that.
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  wget -q -O /dev/null --no-check-certificate --timeout=5
+                  'https://{{ synology_csi_endpoint }}:{{ synology_csi_port }}/webapi/query.cgi?api=SYNO.API.Info&method=query&version=1'
+            initialDelaySeconds: {{ synology_csi_liveness_probe_initial_delay }}
+            periodSeconds: {{ synology_csi_liveness_probe_period }}
+            timeoutSeconds: {{ synology_csi_liveness_probe_timeout }}
+            failureThreshold: {{ synology_csi_liveness_probe_failure_threshold }}
+{% endif %}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -39,6 +63,13 @@ spec:
             - --csi-address=/csi/csi.sock
             - --timeout=60s
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -47,6 +78,13 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -55,6 +93,13 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
@@ -64,6 +109,13 @@ spec:
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: socket-dir
               mountPath: /csi

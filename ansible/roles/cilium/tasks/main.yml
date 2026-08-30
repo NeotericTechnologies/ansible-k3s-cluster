@@ -1,0 +1,16 @@
+---
+# ansible/roles/cilium/tasks/main.yml
+# Purpose: Entry point for Cilium CNI role
+# Reference: FR-003c
+
+- name: Include cilium installation tasks
+  ansible.builtin.include_tasks:
+    file: install.yml
+    apply:
+      tags:
+        - install
+        - cilium
+  when: cilium_enabled | default(false)
+  tags:
+    - install
+    - cilium

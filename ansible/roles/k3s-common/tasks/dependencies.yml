@@ -65,3 +65,55 @@
 - name: Install helm-diff plugin for reliable Helm idempotency checks
   ansible.builtin.command: helm plugin install https://github.com/databus23/helm-diff --version v3.9.12
   when: not (helm_plugin_list.stdout is search('(?m)^diff\s'))
+
+- name: Ensure k3s containerd config fragment directory exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.d
+    state: directory
+    mode: "0755"
+
+- name: Create containerd CNI paths config fragment
+  # k3s imports config-v3.toml.d/*.toml into its generated containerd config.
+  # Keep containerd on k3s-managed CNI paths; do not create a second CNI installation
+  # in the generic /etc/cni/net.d or /opt/cni/bin locations.
+  ansible.builtin.copy:
+    dest: "/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.d/cni-plugin-dirs.toml"
+    mode: "0644"
+    content: |
+      # k3s CNI plugin directory configuration
+      # Source: ansible/roles/k3s-common/tasks/dependencies.yml
+      [plugins.'io.containerd.cri.v1.runtime'.cni]
+        conf_dir = "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+        bin_dirs = ["/var/lib/rancher/k3s/data/cni"]
+  register: containerd_cni_config
+
+- name: Create containerd shim timeouts config fragment
+  # Default shim.cleanup/load (5s), shim.shutdown (3s), and task.state (2s) timeouts are
+  # too tight under the I/O/CPU pressure of mass concurrent pod churn (e.g. node-wide
+  # NoExecute taint evictions), leading to leaky shims and stuck CRI exec/sandbox calls.
+  # See containerd/containerd#6080 for the failure mode and this workaround.
+  ansible.builtin.copy:
+    dest: "/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.d/shim-timeouts.toml"
+    mode: "0644"
+    content: |
+      # Mitigates leaky-shim/stuck-exec issues under high pod churn (containerd/containerd#6080)
+      # Source: ansible/roles/k3s-common/tasks/dependencies.yml
+      [timeouts]
+        "io.containerd.timeout.shim.cleanup" = "30s"
+        "io.containerd.timeout.shim.load" = "30s"
+        "io.containerd.timeout.shim.shutdown" = "30s"
+        "io.containerd.timeout.task.state" = "30s"
+  register: containerd_shim_timeouts_config
+
+- name: Check whether k3s is installed before reloading containerd configuration
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary_for_cni_config
+
+- name: Reload k3s after changing native containerd configuration fragments
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+  when:
+    - k3s_binary_for_cni_config.stat.exists
+    - (containerd_cni_config is changed) or (containerd_shim_timeouts_config is changed)

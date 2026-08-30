@@ -14,6 +14,14 @@ Deploys the Synology CSI driver for persistent storage on k3s clusters, with opt
 - k3s cluster with `kubernetes.core` Ansible collection available
 - Synology NAS with DSM 7.x, HTTPS API enabled on port 8443
 - For csi-driver-nfs: a pre-existing NFS shared folder exported from the Synology NAS
+- For any iSCSI-protocol StorageClass: the `open-iscsi` package (`iscsiadm`/`iscsid`) must
+  be installed and running on every node that could schedule a PVC-using pod — the CSI node
+  plugin execs the host's `iscsiadm` to log into targets. Handled automatically by
+  `tasks/host-prerequisites.yml`, applied to the full `k3s_cluster` group in
+  `cluster-addons.yml` (before the CSI driver itself is deployed) whenever
+  `synology_csi_enabled: true` and at least one `synology_csi_storage_classes` entry has
+  `protocol: "iscsi"`. Without it, pods hang in `ContainerCreating` with
+  `MountVolume.MountDevice failed ... can't execute 'iscsiadm': No such file or directory`.
 
 ## Variables
 

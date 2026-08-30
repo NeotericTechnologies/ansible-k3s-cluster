@@ -1,0 +1,33 @@
+---
+# ansible/roles/cilium/templates/cilium-egress-gateway-policy.yaml.j2
+# Purpose: CiliumEgressGatewayPolicy steering matching pod egress through the kube-vip egress VIP
+# Reference: FR-003a, data-model.md §6
+# Note: Lives in the cilium role (not kube-vip) because it is a Cilium CRD — the CRD is
+# only registered once the Cilium Helm chart is installed, and the cilium role owns the
+# Helm/CRD lifecycle. Values reference kube-vip's egress variables (mirrored in
+# ansible/group_vars/all.yml), since the egress gateway feature is jointly owned by
+# kube-vip (VIP/Service) and Cilium (traffic steering/SNAT).
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: {{ kube_vip_egress_policy_name }}
+spec:
+  egressGateway:
+{% if kube_vip_egress_ip | default('') | length > 0 %}
+    egressIP: "{{ kube_vip_egress_ip }}"
+{% else %}
+    interface: "{{ kube_vip_egress_gateway_interface }}"
+{% endif %}
+    nodeSelector:
+      matchLabels: {{ kube_vip_egress_gateway_node_selector | to_json }}
+  destinationCIDRs: {{ kube_vip_egress_destination_cidrs | default(['0.0.0.0/0']) | to_json }}
+{% if _cilium_egress_excluded_cidrs_effective | default([]) | length > 0 %}
+  excludedCIDRs: {{ _cilium_egress_excluded_cidrs_effective | to_json }}
+{% endif %}
+  selectors:
+    - podSelector:
+        matchLabels: {{ kube_vip_egress_pod_selector | default({}) | to_json }}
+{% if kube_vip_egress_namespace_selector | default({}) | length > 0 %}
+      namespaceSelector:
+        matchLabels: {{ kube_vip_egress_namespace_selector | to_json }}
+{% endif %}

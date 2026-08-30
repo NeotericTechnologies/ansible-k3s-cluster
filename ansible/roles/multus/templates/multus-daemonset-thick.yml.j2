@@ -127,6 +127,7 @@ spec:
     spec:
       hostNetwork: true
       hostPID: true
+      priorityClassName: system-node-critical
       tolerations:
         - operator: Exists
           effect: NoSchedule
@@ -164,13 +165,32 @@ spec:
           resources:
             requests:
               cpu: "100m"
-              memory: "50Mi"
+              memory: "64Mi"
             limits:
               cpu: "100m"
-              memory: "50Mi"
+              memory: "128Mi"
           securityContext:
             privileged: true
           terminationMessagePolicy: FallbackToLogsOnError
+          startupProbe:
+            exec:
+              command:
+                - test
+                - -S
+                - /host/run/multus/multus.sock
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command:
+                - test
+                - -S
+                - /host/run/multus/multus.sock
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
           volumeMounts:
             - name: cni
               mountPath: /host/etc/cni/net.d
@@ -201,7 +221,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-      terminationGracePeriodSeconds: 10
+      terminationGracePeriodSeconds: 30
       volumes:
         - name: cni
           hostPath:

@@ -84,11 +84,11 @@ Captures post-run validation status for each enabled in-scope component.
 Explicit subset used for disruption validation success criteria.
 
 - **Fields**:
-  - `components`: Fixed list from spec: `k3s control plane server service`, `kube-vip`, `Traefik`.
+  - `components`: Explicit disruption probe list from spec: `k3s control plane server service` through the control-plane VIP and `Traefik` through its LoadBalancer VIP.
   - `availability_threshold`: `>=99%` request availability during defined disruption test window.
 
 - **Validation Rules**:
-  - All listed components MUST be included in disruption checks for HA topology.
+  - All listed probes MUST be included in disruption checks for HA topology. kube-vip is validated separately because its control-plane path is already exercised by the K3s API probe.
 
 ## Relationships Summary
 

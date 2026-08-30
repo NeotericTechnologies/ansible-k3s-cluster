@@ -1,0 +1,56 @@
+---
+# ansible/roles/cilium/tasks/reconcile.yml
+# Purpose: Idempotent post-deploy reconciliation - safe to run whenever Cilium is present.
+# Called from install.yml (after Helm deploy) and from the orchestrator on every play
+# so that policies are applied even when the Cilium version has not changed.
+
+- name: Auto-detect Cilium pod pool CIDR for egress exclusion
+  # Intra-cluster pod and service CIDRs must bypass the egress gateway so pods can
+  # communicate internally. LAN and internet traffic intentionally goes through the
+  # egress VIP for consistent source-IP firewall rules. Override by setting
+  # kube_vip_egress_excluded_cidrs explicitly in inventory.
+  ansible.builtin.command:
+    cmd: kubectl get cm -n kube-system cilium-config -o jsonpath='{.data.cluster-pool-ipv4-cidr}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: _cilium_pool_cidr_raw
+  changed_when: false
+  when:
+    - kube_vip_egress_enabled | default(false) | bool
+    - kube_vip_egress_excluded_cidrs | default([]) | length == 0
+
+- name: Auto-detect service CIDR for egress exclusion
+  ansible.builtin.command:
+    cmd: kubectl get servicecidrs kubernetes -o jsonpath='{.spec.cidrs[0]}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: _service_cidr_raw
+  changed_when: false
+  when:
+    - kube_vip_egress_enabled | default(false) | bool
+    - kube_vip_egress_excluded_cidrs | default([]) | length == 0
+
+- name: Build effective egress excluded CIDRs
+  ansible.builtin.set_fact:
+    _cilium_egress_excluded_cidrs_effective: >-
+      {{
+        kube_vip_egress_excluded_cidrs
+        if (kube_vip_egress_excluded_cidrs | default([]) | length > 0)
+        else (
+          ([_cilium_pool_cidr_raw.stdout | default('')] | select('ne', '') | list)
+          + ([_service_cidr_raw.stdout | default('')] | select('ne', '') | list)
+        ) | unique
+      }}
+  when: kube_vip_egress_enabled | default(false) | bool
+
+- name: Apply CiliumEgressGatewayPolicy for kube-vip egress gateway
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  loop: "{{ lookup('template', 'cilium-egress-gateway-policy.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - kube_vip_egress_enabled | default(false) | bool
+    - item is not none

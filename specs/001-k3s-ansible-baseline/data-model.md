@@ -13,8 +13,6 @@ Represents the desired state of a single k3s cluster.
 - **Fields**:
   - `name`: Human-friendly cluster name.
   - `k3s_version`: Pinned k3s version (minor/patch) for servers and agents.
-  - `cluster_cidr`: Pod network CIDR.
-  - `service_cidr`: Service network CIDR.
   - `control_plane_vip`: Virtual IP or DNS name used for control-plane access.
   - `api_port`: Port exposed on the VIP for the Kubernetes API.
   - `ha_mode`: Enum: `single-node` | `embedded-etcd-ha`.

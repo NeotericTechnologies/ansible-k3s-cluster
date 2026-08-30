@@ -43,6 +43,71 @@
     label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
   when: item is not none
 
+- name: Set resource requests/limits on cert-manager deployments
+  # Upstream manifest defines no resources; strategic-merge patch by container name.
+  kubernetes.core.k8s:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    merge_type: strategic-merge
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ item.deployment }}"
+        namespace: cert-manager
+      spec:
+        template:
+          spec:
+            containers:
+              - name: "{{ item.container }}"
+                resources:
+                  requests:
+                    cpu: "{{ cert_manager_requests_cpu | default('10m') }}"
+                    memory: "{{ cert_manager_requests_memory | default('32Mi') }}"
+                  limits:
+                    cpu: "{{ cert_manager_limits_cpu | default('100m') }}"
+                    memory: "{{ cert_manager_limits_memory | default('128Mi') }}"
+  loop:
+    - { deployment: cert-manager, container: cert-manager-controller }
+    - { deployment: cert-manager-webhook, container: cert-manager-webhook }
+    - { deployment: cert-manager-cainjector, container: cert-manager-cainjector }
+  loop_control:
+    label: "{{ item.deployment }}"
+
+- name: Ensure cluster has at least one Ready node before cert-manager readiness checks
+  block:
+    - name: Wait for at least one Ready node
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+      register: cm_nodes
+      retries: 30
+      delay: 10
+      until: >-
+        (cm_nodes.resources | default([]) | map(attribute='status.conditions') | flatten |
+        selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') |
+        list | length) > 0
+      changed_when: false
+
+  rescue:
+    - name: Collect node readiness summary when no Ready nodes are available
+      ansible.builtin.command: kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cert_manager_node_summary
+      changed_when: false
+      failed_when: false
+
+    - name: Fail early with actionable node readiness diagnostics
+      ansible.builtin.fail:
+        msg: |
+          cert-manager cannot become Ready because no Kubernetes nodes are Ready.
+          This is usually a CNI/runtime initialization problem (e.g., cni plugin not initialized),
+          not a cert-manager chart issue.
+
+          Node summary:
+          {{ cert_manager_node_summary.stdout | default('unable to collect node summary') }}
+
 - name: Wait for cert-manager deployment to be ready
   kubernetes.core.k8s_info:
     api_version: apps/v1

@@ -10,6 +10,10 @@
     - validation
 
 - name: Include common k3s dependencies
-  ansible.builtin.include_tasks: dependencies.yml
+  ansible.builtin.include_tasks:
+    file: dependencies.yml
+    apply:
+      tags:
+        - dependencies
   tags:
     - dependencies

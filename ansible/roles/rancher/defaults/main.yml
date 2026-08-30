@@ -3,3 +3,25 @@ rancher_enabled: false
 rancher_hostname: "rancher.example.com"
 rancher_ingress_class: "traefik"
 rancher_tls_source: "rancher"  # Options: rancher, letsEncrypt, secret
+
+# Heal a Rancher Helm release stuck at "pending-install" (revision 1, no prior deployed
+# revision to roll back to) when the Rancher Deployment is actually healthy — see
+# tasks/install.yml. Guards against a fresh-install `--atomic` helm command timing out on
+# transient apiserver/network flakiness after the Deployment already converged.
+rancher_helm_pending_release_auto_heal_enabled: true
+
+# Auto-recover Rancher's bundled rancher-turtles (embedded Cluster API) app when it
+# crash-loops on a fresh install because the companion CAPI Operator hasn't finished
+# provisioning core Cluster API CRDs yet. See tasks/install.yml for detection/recovery logic.
+# rancher-turtles is installed asynchronously by Rancher's own helm-operation controller,
+# typically several minutes after the main Rancher Deployment is Ready — the appearance/
+# stabilize waits below account for that delay rather than checking a single snapshot.
+rancher_turtles_auto_recover_enabled: true
+rancher_turtles_namespace: "cattle-turtles-system"
+rancher_turtles_crashloop_restart_threshold: 3
+rancher_turtles_appearance_retries: 40   # ~10min budget for the pod to even be created
+rancher_turtles_appearance_delay: 15
+rancher_turtles_stabilize_retries: 30    # ~7.5min budget to reach Ready or the restart threshold
+rancher_turtles_stabilize_delay: 15
+rancher_turtles_recovery_retries: 12
+rancher_turtles_recovery_delay: 15

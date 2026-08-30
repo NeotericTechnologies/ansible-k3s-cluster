@@ -45,6 +45,15 @@
     - role: kube-vip
       tags: ['kube-vip', 'vip']
 
+- name: Deploy Cilium CNI
+  hosts: k3s_servers[0]
+  become: true
+  gather_facts: false
+  roles:
+    - role: cilium
+      tags: ['cilium', 'networking']
+      when: cilium_enabled | default(false) | bool
+
 - name: Deploy k3s worker (agent) nodes
   hosts: k3s_agents
   become: true
@@ -77,6 +86,21 @@
       register: cluster_nodes
       changed_when: false
 
+    - name: Detect pod and service CIDRs from live cluster
+      ansible.builtin.shell: |
+        pod_cidr=$(kubectl get cm -n kube-system cilium-config \
+          -o jsonpath='{.data.cluster-pool-ipv4-cidr}' 2>/dev/null \
+          || kubectl get nodes -o jsonpath='{.items[0].spec.podCIDR}' 2>/dev/null \
+          || echo '<unknown>')
+        svc_cidr=$(kubectl get servicecidrs kubernetes \
+          -o jsonpath='{.spec.cidrs[0]}' 2>/dev/null \
+          || echo '<unknown>')
+        echo "${pod_cidr}|${svc_cidr}"
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: _detected_network_cidrs
+      changed_when: false
+
     - name: Display cluster status
       ansible.builtin.debug:
         msg: |
@@ -84,8 +108,8 @@
           {{ cluster_nodes.stdout }}
 
           Control-plane VIP: {{ control_plane_vip }}:{{ api_port }}
-          Cluster CIDR: {{ cluster_cidr }}
-          Service CIDR: {{ service_cidr }}
+          Pod CIDR:     {{ _detected_network_cidrs.stdout.split('|') | first }}
+          Service CIDR: {{ _detected_network_cidrs.stdout.split('|') | last }}
 
     - name: Verify control-plane VIP is accessible
       ansible.builtin.command: >-

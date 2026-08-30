@@ -54,10 +54,23 @@ Control-Plane Nodes:
 
 Worker Nodes:
 - `10250/tcp` - Kubelet API
-- `8472/udp` - Flannel VXLAN overlay network
+- `8472/udp` - Flannel VXLAN overlay network (default CNI) or Cilium VXLAN when `cilium_enabled: true`
+- `4240/tcp` - Cilium health checks (when `cilium_enabled: true`)
+- `4244/tcp` - Cilium Hubble (when `cilium_enabled: true`)
 
 kube-vip:
 - ARP broadcasts for VIP failover (Layer 2 network)
+
+### Cilium CNI and Egress Gateway
+
+Cilium is an opt-in CNI that replaces Flannel when `cilium_enabled: true` (`ansible/roles/cilium`).
+Enabling Cilium is required for the load-balanced egress gateway feature
+(`kube_vip_egress_enabled: true`, `ansible/roles/kube-vip`), which combines a kube-vip HA
+LoadBalancer VIP with a `CiliumEgressGatewayPolicy` to give the cluster a single, stable
+outbound source IP. k3s MUST start with `--flannel-backend=none --disable-network-policy`
+when Cilium is enabled. See [`ansible/roles/cilium/README.md`](../ansible/roles/cilium/README.md)
+and [`ansible/roles/kube-vip/README.md`](../ansible/roles/kube-vip/README.md) for configuration
+details.
 
 **Internet Access:**
 - Required for downloading k3s binaries (get.k3s.io)
@@ -140,17 +153,19 @@ Topology-aware HA targets are defined alongside corresponding component versions
 Critical subset used for resilience validation:
 
 - `k3s-control-plane`
-- `kube-vip`
 - `traefik`
 
 Validation workflow:
 
 1. Ensure HA topology (`k3s_servers` count >= 3).
-2. Run `tests/ansible/smoke/ha-disruption-test.yml`.
-3. Use external probes from `critical_component_probes`.
-4. Execute probe loop for the configured disruption window (default 10 minutes).
-5. Calculate availability per component as successful requests / total requests.
-6. Fail when any critical subset component falls below `ha_probe_min_availability_percent` (default 99.0).
+2. Start the intended single-node disruption separately, such as stopping or rebooting one server. The smoke playbook does not cause the disruption.
+3. Run `tests/ansible/smoke/ha-disruption-test.yml` during that disruption window.
+4. Use external probes from `critical_component_probes`.
+5. Execute probe loop for the configured disruption window (default 10 minutes).
+6. Calculate availability per component as successful requests / total requests.
+7. Fail when any critical subset component falls below `ha_probe_min_availability_percent` (default 99.0).
+
+The test is observational: it measures service availability while an operator or a separate automation step performs the disruption. kube-vip is covered by dedicated HA policy and failover validation rather than a duplicate API-through-VIP probe.
 
 ## Explicit Non-Goals
 
@@ -167,9 +182,9 @@ This baseline intentionally does NOT include:
    - Use Rancher for multi-cluster needs
 
 3. **Advanced Networking**
-   - No Calico/Cilium integration
-   - No network policies by default
-   - Basic Flannel VXLAN only
+   - Cilium is supported as an opt-in CNI (`cilium_enabled: true`, replaces Flannel) — see [Cilium CNI and Egress Gateway](#cilium-cni-and-egress-gateway) below
+   - No network policies by default when Flannel is used (k3s default)
+   - Flannel VXLAN remains the default CNI
 
 4. **Complex Storage Solutions**
    - No Rook/Ceph integration

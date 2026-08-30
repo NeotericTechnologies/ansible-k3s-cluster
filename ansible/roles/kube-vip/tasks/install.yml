@@ -5,6 +5,18 @@
 # NON-NEGOTIABLE: DaemonSet mode per docs/ai-prompts/plan.md
 # CONSTRAINT: No file copies to nodes — deploy via Kubernetes API only (R-013)
 
+- name: Force service election when egress gateway is enabled
+  ansible.builtin.set_fact:
+    kube_vip_svc_election_enabled: true
+  when: kube_vip_egress_enabled | default(false) | bool
+
+# Egress gateway requires kube_vip_egress_gateway_node_selector to match exactly the current
+# VIP holder (see defaults/main.yml) — node labeling is what keeps that selector accurate.
+- name: Force node labeling when egress gateway is enabled
+  ansible.builtin.set_fact:
+    kube_vip_enable_node_labeling: true
+  when: kube_vip_egress_enabled | default(false) | bool
+
 - name: Ensure k3s service is running on bootstrap server
   ansible.builtin.systemd:
     name: k3s
@@ -85,6 +97,20 @@
           kube-vip bootstrap failed because Kubernetes API readiness/discovery checks did not succeed.
           Review the diagnostics printed above.
 
+- name: Apply consolidated kube-vip RBAC via API
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-rbac.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - item is not none
+
 - name: Apply kube-vip DaemonSet via API
   kubernetes.core.k8s:
     definition: "{{ item }}"
@@ -148,6 +174,42 @@
   when:
     - inventory_hostname == groups['k3s_servers'][0]
     - kube_vip_lb_enable | default(false)
+    - item is not none
+
+- name: Apply egress gateway Service via API
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-egress-service.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_egress_enabled | default(false) | bool
+    - item is not none
+
+# NOTE: The CiliumEgressGatewayPolicy CR is applied by the cilium role
+# (ansible/roles/cilium/tasks/install.yml), not here. It is a Cilium CRD, whose
+# API is only registered after the Cilium Helm chart is installed; the cilium
+# role runs after this one in cluster-core.yml, so applying it here would fail.
+
+- name: Apply kube-vip label-reconciler CronJob via API
+  kubernetes.core.k8s:
+    definition: "{{ item }}"
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    host: https://127.0.0.1:6443
+    validate_certs: false
+  loop: "{{ lookup('template', 'kube-vip-label-reconciler-cronjob.yaml.j2') | from_yaml_all | list }}"
+  loop_control:
+    label: "{{ item.kind | default('Resource') }}/{{ item.metadata.name | default('unnamed') }}"
+  when:
+    - inventory_hostname == groups['k3s_servers'][0]
+    - kube_vip_enable_node_labeling | default(false) | bool
+    - kube_vip_label_reconciler_enabled | default(true) | bool
     - item is not none
 
 - name: Verify control-plane VIP is reachable

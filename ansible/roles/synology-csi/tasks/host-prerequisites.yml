@@ -1,0 +1,75 @@
+---
+# ansible/roles/synology-csi/tasks/host-prerequisites.yml
+# Purpose: Install/enable the iSCSI initiator on every node so kubelet can mount
+# Synology iSCSI-backed PersistentVolumes. The Synology CSI node plugin execs the
+# host's iscsiadm (via hostPath/nsenter) to log into targets — without it, PVC-using
+# pods hang in ContainerCreating forever with:
+#   "Failed to login with target iqn ...: env: can't execute 'iscsiadm':
+#    No such file or directory (exit status 127)"
+# Reference: FR-015, Contract C-005
+# Must run against the full k3s_cluster group (any node may schedule a PVC-using
+# pod) — unlike the rest of this role, which only applies manifests via the API
+# from k3s_servers[0].
+
+- name: Determine whether any iSCSI-protocol StorageClass is configured
+  ansible.builtin.set_fact:
+    synology_csi_iscsi_in_use: "{{ (synology_csi_storage_classes | default([]) | selectattr('protocol', 'equalto', 'iscsi') | list | length) > 0 }}"
+
+- name: Install open-iscsi (provides iscsiadm/iscsid required by the Synology CSI iSCSI node plugin)
+  ansible.builtin.apt:
+    name: open-iscsi
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - ansible_facts.os_family == 'Debian'
+    - synology_csi_iscsi_in_use
+
+- name: Ensure iscsid.socket is enabled and running (socket-activates iscsid on demand)
+  ansible.builtin.systemd:
+    name: iscsid.socket
+    enabled: true
+    state: started
+  when: synology_csi_iscsi_in_use
+
+- name: Gather service facts to detect multipathd
+  ansible.builtin.service_facts:
+  when: synology_csi_iscsi_in_use
+
+# When multipath-tools is present (common on default Ubuntu Server images), multipathd
+# auto-claims the Synology iSCSI LUNs as dm devices. The CSI node plugin then tries to
+# mkfs the raw /dev/disk/by-path/... device directly, which multipathd is still holding
+# open, causing: "format of disk ... failed ... ERROR: unable to open ...: Resource busy".
+# These LUNs are single-portal/single-session per PV, not intended for OS-level MPIO, so
+# blacklist them from multipath-tools entirely rather than configure multipath for them.
+- name: Blacklist Synology iSCSI LUNs from multipath-tools (avoids mkfs "Resource busy" from multipathd holding the device open)
+  ansible.builtin.blockinfile:
+    path: /etc/multipath.conf
+    create: true
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - synology-csi blacklist"
+    block: |
+      blacklist {
+          device {
+              vendor  "SYNOLOGY"
+              product ".*"
+          }
+      }
+  register: synology_csi_multipath_conf
+  when:
+    - synology_csi_iscsi_in_use
+    - "'multipathd.service' in ansible_facts.services"
+
+- name: Restart multipathd to apply the updated blacklist
+  ansible.builtin.systemd:
+    name: multipathd
+    state: restarted
+  when:
+    - synology_csi_iscsi_in_use
+    - synology_csi_multipath_conf is changed
+
+- name: Flush stale multipath maps left over from before the blacklist took effect
+  ansible.builtin.command: multipath -F
+  changed_when: false
+  when:
+    - synology_csi_iscsi_in_use
+    - "'multipathd.service' in ansible_facts.services"

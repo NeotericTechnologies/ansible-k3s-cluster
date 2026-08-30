@@ -16,6 +16,10 @@
   kubernetes.core.k8s:
     definition: "{{ item }}"
     state: present
+    apply: true
+    server_side_apply:
+      field_manager: ansible-multus
+      force_conflicts: true
     kubeconfig: "{{ multus_kubeconfig }}"
   loop: "{{ lookup('template', 'multus-daemonset-thick.yml.j2') | from_yaml_all | list }}"
   loop_control:
@@ -39,7 +43,51 @@
     (multus_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
     (multus_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
   changed_when: false
-  when: multus_deploy_result is defined and multus_deploy_result.changed
+
+- name: Find Multus config preserved by a previous exclusive CNI configuration
+  ansible.builtin.stat:
+    path: "{{ multus_cni_conf_dir }}/00-multus.conf.cilium_bak"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  register: multus_preserved_config
+
+- name: Restore preserved Multus CNI configuration after daemon readiness
+  ansible.builtin.command:
+    argv:
+      - cp
+      - "{{ multus_cni_conf_dir }}/00-multus.conf.cilium_bak"
+      - "{{ multus_cni_conf_dir }}/00-multus.conf"
+    creates: "{{ multus_cni_conf_dir }}/00-multus.conf"
+  delegate_to: "{{ item.item }}"
+  loop: "{{ multus_preserved_config.results }}"
+  when: item.stat.exists
+
+- name: Verify active Multus CNI configuration exists on every node
+  ansible.builtin.stat:
+    path: "{{ multus_cni_conf_dir }}/00-multus.conf"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  register: multus_active_config
+
+- name: Verify Multus socket exists on every node
+  ansible.builtin.stat:
+    path: "/var/run/multus/multus.sock"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  register: multus_socket
+
+- name: Assert Multus CNI handoff is complete on every node
+  ansible.builtin.assert:
+    that:
+      - item.0.stat.exists
+      - item.1.stat.exists
+    fail_msg: >-
+      Multus CNI handoff incomplete on {{ item.0.item }}:
+      active_config={{ item.0.stat.exists }}, socket={{ item.1.stat.exists }}
+    success_msg: "Multus CNI config and socket are ready on {{ item.0.item }}"
+  loop: "{{ multus_active_config.results | zip(multus_socket.results) | list }}"
+  loop_control:
+    label: "{{ item.0.item }}"
 
 - name: Validate DHCP daemon is enabled when VLAN networks require DHCP IPAM
   ansible.builtin.assert:
