@@ -29,6 +29,21 @@ kube_vip_label_reconciler_schedule: "*/5 * * * *"
 kube_vip_label_reconciler_image: "alpine/kubectl:{{ kube_vip_label_reconciler_kubectl_version | default('1.36.4') }}"
 kube_vip_label_reconciler_history_limit: 3
 
+# Same CronJob also detects a stale VIP address left bound on a node that is no longer the
+# Lease holder — kube-vip's leadership handoff has an observed race (via the
+# egress-gateway-test.yml failover scenario) where a rapid leadership change can leave the
+# outgoing leader's VIP still bound to its interface, a real duplicate-IP condition on the
+# network, because its "stop old instance" cleanup silently failed to find the instance to
+# stop. Escalation, cheapest first: restart that node's kube-vip pod and let it release the
+# address itself (the normal recovery path) — only if the address is *still* present
+# kube_vip_label_reconciler_stale_vip_recheck_delay seconds later does the reconciler reach
+# directly into host networking to force-remove it (needed because a manually reproduced
+# version of the fault showed a restart alone does not always clear it, e.g. if the old process
+# was SIGKILLed rather than gracefully stopped). Needs an image with a POSIX shell and an `ip`
+# command supporting `addr show`/`addr del`.
+kube_vip_label_reconciler_stale_vip_recheck_delay: 10
+kube_vip_label_reconciler_vip_check_image: "busybox:1.36"
+
 kube_vip_egress_enabled: false
 kube_vip_egress_ip: ""
 kube_vip_egress_hostname: ""

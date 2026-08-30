@@ -85,3 +85,36 @@ subjects:
   - kind: ServiceAccount
     name: kube-vip-label-reconciler
     namespace: kube-system
+---
+# Scoped separately from the shared `kube-vip` ClusterRole above so the actual kube-vip
+# workload pods (bound to that ClusterRole too) don't gain pod-delete permission — only the
+# reconciler needs it, to restart a kube-vip pod stuck holding a stale VIP after a failed
+# leadership handoff, and to create short-lived privileged pods that directly verify/force-clear
+# a stale VIP address at the network level on non-holder nodes (see
+# kube-vip-label-reconciler-cronjob.yaml.j2).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kube-vip-label-reconciler-pods
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-vip-label-reconciler-pods
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-vip-label-reconciler-pods
+subjects:
+  - kind: ServiceAccount
+    name: kube-vip-label-reconciler
+    namespace: kube-system
