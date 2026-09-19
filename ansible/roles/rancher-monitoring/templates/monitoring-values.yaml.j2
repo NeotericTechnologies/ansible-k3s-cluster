@@ -10,6 +10,9 @@ prometheus:
       requests:
         cpu: {{ rancher_monitoring_prometheus_cpu | default('250m') }}
         memory: {{ rancher_monitoring_prometheus_memory | default('750Mi') }}
+      limits:
+        cpu: {{ rancher_monitoring_prometheus_limits_cpu | default('500m') }}
+        memory: {{ rancher_monitoring_prometheus_limits_memory | default('1Gi') }}
 {% if rancher_monitoring_scrape_targets_overrides | default({}) | length > 0 %}
     additionalScrapeConfigs:
 {% for target in rancher_monitoring_scrape_targets_overrides %}
@@ -24,3 +27,39 @@ grafana:
   replicas: {{ rancher_monitoring_replicas | default(1) }}
   persistence:
     enabled: {{ rancher_monitoring_grafana_persistence | default(false) | lower }}
+  resources:
+    requests:
+      cpu: {{ rancher_monitoring_grafana_cpu | default('50m') }}
+      memory: {{ rancher_monitoring_grafana_memory | default('128Mi') }}
+    limits:
+      cpu: {{ rancher_monitoring_grafana_limits_cpu | default('200m') }}
+      memory: {{ rancher_monitoring_grafana_limits_memory | default('256Mi') }}
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: {{ rancher_monitoring_alertmanager_cpu | default('25m') }}
+        memory: {{ rancher_monitoring_alertmanager_memory | default('64Mi') }}
+      limits:
+        cpu: {{ rancher_monitoring_alertmanager_limits_cpu | default('100m') }}
+        memory: {{ rancher_monitoring_alertmanager_limits_memory | default('128Mi') }}
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: {{ rancher_monitoring_node_exporter_cpu | default('25m') }}
+      memory: {{ rancher_monitoring_node_exporter_memory | default('32Mi') }}
+    limits:
+      cpu: {{ rancher_monitoring_node_exporter_limits_cpu | default('50m') }}
+      memory: {{ rancher_monitoring_node_exporter_limits_memory | default('64Mi') }}
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: {{ rancher_monitoring_kube_state_metrics_cpu | default('25m') }}
+      memory: {{ rancher_monitoring_kube_state_metrics_memory | default('64Mi') }}
+    limits:
+      cpu: {{ rancher_monitoring_kube_state_metrics_limits_cpu | default('100m') }}
+      memory: {{ rancher_monitoring_kube_state_metrics_limits_memory | default('128Mi') }}
+

@@ -53,8 +53,6 @@
     K3S_TOKEN: "{{ k3s_node_token }}"
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
     INSTALL_K3S_EXEC: "agent {{ k3s_agent_extra_args }}"
-  args:
-    creates: /etc/systemd/system/k3s-agent.service
   when: k3s_agent_install_needed
 
 - name: Enable and start k3s-agent service

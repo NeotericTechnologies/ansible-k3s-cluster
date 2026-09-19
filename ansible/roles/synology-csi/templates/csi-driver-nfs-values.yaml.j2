@@ -12,5 +12,35 @@ controller:
 node:
   dnsPolicy: ClusterFirstWithHostNet
 
+resources:
+  csiProvisioner:
+    requests:
+      cpu: {{ csi_nfs_provisioner_requests_cpu | default('10m') }}
+      memory: {{ csi_nfs_provisioner_requests_memory | default('32Mi') }}
+    limits:
+      cpu: {{ csi_nfs_provisioner_limits_cpu | default('100m') }}
+      memory: {{ csi_nfs_provisioner_limits_memory | default('128Mi') }}
+  nfs:
+    requests:
+      cpu: {{ csi_nfs_driver_requests_cpu | default('10m') }}
+      memory: {{ csi_nfs_driver_requests_memory | default('32Mi') }}
+    limits:
+      cpu: {{ csi_nfs_driver_limits_cpu | default('100m') }}
+      memory: {{ csi_nfs_driver_limits_memory | default('128Mi') }}
+  livenessProbe:
+    requests:
+      cpu: {{ csi_nfs_liveness_requests_cpu | default('10m') }}
+      memory: {{ csi_nfs_liveness_requests_memory | default('16Mi') }}
+    limits:
+      cpu: {{ csi_nfs_liveness_limits_cpu | default('50m') }}
+      memory: {{ csi_nfs_liveness_limits_memory | default('64Mi') }}
+  nodeDriverRegistrar:
+    requests:
+      cpu: {{ csi_nfs_registrar_requests_cpu | default('10m') }}
+      memory: {{ csi_nfs_registrar_requests_memory | default('16Mi') }}
+    limits:
+      cpu: {{ csi_nfs_registrar_limits_cpu | default('50m') }}
+      memory: {{ csi_nfs_registrar_limits_memory | default('64Mi') }}
+
 storageClass:
   create: false

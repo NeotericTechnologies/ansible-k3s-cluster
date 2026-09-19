@@ -1,0 +1,30 @@
+---
+# ansible/roles/kube-vip/templates/kube-vip-egress-service.yaml.j2
+# Purpose: LoadBalancer Service holding the stable egress gateway VIP
+# Reference: FR-002, FR-003, research.md Decision 1
+# Design: kube-vip manages VIP binding only — no egress annotation, no externalTrafficPolicy: Local.
+# Cilium CiliumEgressGatewayPolicy performs pod selection, routing, and SNAT using this VIP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-gateway-svc
+  namespace: {{ kube_vip_egress_namespace }}
+  labels:
+    app.kubernetes.io/name: kube-vip-egress-gateway
+  annotations:
+    # Required since kube-vip v1.2.x: this Service's selector never matches a real pod
+    # (backend-less by design), so kube-vip skips leader election/node-labeling for it
+    # unless explicitly opted in (kube-vip pkg/endpoints/endpoints.go shouldAllowReconcileWithoutEndpoints).
+    kube-vip.io/allow-reconcile-without-endpoints: "true"
+{% if kube_vip_egress_hostname | default('') | length > 0 %}
+    kube-vip.io/egress-hostname: "{{ kube_vip_egress_hostname }}"
+{% endif %}
+spec:
+  type: LoadBalancer
+  loadBalancerIP: "{{ kube_vip_egress_ip }}"
+  ports:
+    - port: 9
+      targetPort: 9
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: kube-vip-egress-gateway-placeholder

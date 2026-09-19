@@ -1,0 +1,670 @@
+---
+# ansible/roles/cilium/tasks/install.yml
+# Purpose: Install Cilium CNI via Helm; enable egress gateway datapath when required
+# Reference: FR-003c, FR-003a (cilium_egress_gateway_enabled), data-model.md §5
+
+- name: Assert cilium_version is set
+  ansible.builtin.assert:
+    that:
+      - cilium_version is defined
+      - cilium_version | length > 0
+    fail_msg: "cilium_version must be set to a pinned Cilium version (e.g. 'v1.16.6') — no default is provided"
+
+- name: Read k3s service file on each node to verify flannel-backend
+  # Cilium and flannel both use VXLAN UDP/8472; k3s must disable flannel first.
+  ansible.builtin.slurp:
+    src: /etc/systemd/system/k3s.service
+  register: cilium_k3s_svc
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups.get('k3s_agents', []) }}"
+  loop_control:
+    label: "{{ item }}"
+  failed_when: false
+
+- name: Assert k3s is configured with --flannel-backend=none on all nodes
+  ansible.builtin.assert:
+    that:
+      - item.content is defined
+      - "'flannel-backend=none' in (item.content | b64decode)"
+    fail_msg: >-
+      k3s on {{ item.item }} still has flannel enabled (flannel-backend=none not found
+      in /etc/systemd/system/k3s.service). Re-run the k3s-server role with cilium_enabled=true
+      to update the service file before deploying Cilium, otherwise both CNIs will fight
+      over VXLAN UDP port 8472 and k3s will crash-loop.
+  loop: "{{ cilium_k3s_svc.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.content is defined
+
+- name: Read runtime CNI configuration on each node
+  ansible.builtin.command:
+    cmd: crictl info -o json
+  register: cilium_runtime_info
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups.get('k3s_agents', []) }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  failed_when: false
+
+- name: Assert runtime CNI metadata is readable on all nodes
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - item.stdout is defined
+      - item.stdout | length > 0
+      - "(item.stdout | from_json).cniconfig is defined"
+    fail_msg: >-
+      Unable to read runtime CNI metadata on {{ item.item }} via `crictl info -o json`.
+      Fix CRI availability on the node before deploying Cilium.
+  loop: "{{ cilium_runtime_info.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stdout is defined and item.stdout | length > 0
+
+- name: Auto-enable Cilium egress gateway datapath when kube-vip egress gateway is enabled
+  ansible.builtin.set_fact:
+    cilium_egress_gateway_enabled: true
+  when: kube_vip_egress_enabled | default(false) | bool
+
+- name: Detect k3s pod CIDR from service file to align Cilium IPAM pool
+  # Reuses already-read service file; falls back to k3s built-in default when not explicitly set.
+  ansible.builtin.set_fact:
+    _k3s_cluster_cidr: >-
+      {{
+        (
+          cilium_k3s_svc.results
+          | selectattr('content', 'defined')
+          | map(attribute='content')
+          | map('b64decode')
+          | select
+          | list
+          | first
+          | default('')
+          | regex_search('(?<=--cluster-cidr=)[\d./]+')
+        ) | default('10.42.0.0/16', true)
+      }}
+
+- name: Merge auto-detected k3s pod CIDR into Cilium IPAM pool Helm values
+  # User-supplied cilium_helm_values.ipam overrides this default.
+  ansible.builtin.set_fact:
+    cilium_helm_values: >-
+      {{
+        {
+          'ipam': {
+            'operator': {
+              'clusterPoolIPv4PodCIDRList': [_k3s_cluster_cidr],
+              'clusterPoolIPv4MaskSize': 24
+            }
+          }
+        } | combine(cilium_helm_values, recursive=True)
+      }}
+
+- name: Merge egress gateway setting into Cilium Helm values
+  ansible.builtin.set_fact:
+    # egressGateway has cascading dependencies:
+    # - egressGateway.enabled requires masquerade (--enable-ipv4-masquerade) and bpf.masquerade
+    # - bpf.masquerade requires nodePort (--enable-node-port)
+    # - nodePort + bpf.masquerade require socketLB for proper traffic steering
+    # - k3s requires explicit CNI paths so kubelet and Multus read Cilium config
+    #   from /var/lib/rancher/k3s/agent/etc/cni/net.d instead of stale Flannel
+    #   configs left from prior deployments.
+    # NOTE: Do not force autoDirectNodeRoutes here. It is incompatible with
+    # routing-mode=tunnel and causes cilium-agent to exit at startup.
+    # Operators using native routing can still set it explicitly via cilium_helm_values.
+    #
+    # Enforce these automatically when egress gateway is enabled. Respect user-supplied overrides.
+    cilium_helm_values: >-
+      {{
+        cilium_helm_values | combine(
+          {
+            'egressGateway': {'enabled': cilium_egress_gateway_enabled | bool},
+            'masquerade': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.masquerade | default(false) | bool),
+            'bpf': {
+              'masquerade': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.bpf.masquerade | default(false) | bool)
+            },
+            'nodePort': {
+              'enabled': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.nodePort.enabled | default(false) | bool)
+            },
+            'socketLB': {
+              'enabled': (cilium_egress_gateway_enabled | bool) or (cilium_helm_values.socketLB.enabled | default(false) | bool)
+            },
+            'cni': {
+              'confPath': cilium_helm_values.cni.confPath | default(cilium_cni_conf_path),
+              'binPath': cilium_helm_values.cni.binPath | default(cilium_cni_bin_path),
+              'exclusive': cilium_helm_values.cni.exclusive | default(not (multus_enabled | default(false) | bool))
+            }
+          },
+          recursive=True
+        )
+      }}
+
+- name: Merge default resource requests/limits into Cilium Helm values
+  # Reduces contention on control-plane nodes under pod-churn events; user-supplied
+  # cilium_helm_values.resources / operator.resources override these defaults.
+  ansible.builtin.set_fact:
+    cilium_helm_values: >-
+      {{
+        {
+          'resources': {
+            'requests': {
+              'cpu': cilium_agent_requests_cpu | default('100m'),
+              'memory': cilium_agent_requests_memory | default('256Mi')
+            },
+            'limits': {
+              'cpu': cilium_agent_limits_cpu | default('500m'),
+              'memory': cilium_agent_limits_memory | default('512Mi')
+            }
+          },
+          'operator': {
+            'resources': {
+              'requests': {
+                'cpu': cilium_operator_requests_cpu | default('50m'),
+                'memory': cilium_operator_requests_memory | default('64Mi')
+              },
+              'limits': {
+                'cpu': cilium_operator_limits_cpu | default('200m'),
+                'memory': cilium_operator_limits_memory | default('128Mi')
+              }
+            }
+          }
+        } | combine(cilium_helm_values, recursive=True)
+      }}
+
+- name: Remove stale flannel CNI config from k3s CNI directories
+  ansible.builtin.file:
+    path: "{{ item.0 }}/10-flannel.conflist"
+    state: absent
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ [cilium_cni_conf_path] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Remove stale Cilium config links from generic CNI directory
+  ansible.builtin.file:
+    path: "/etc/cni/net.d/{{ item.0 }}"
+    state: absent
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ['05-cilium.conflist', '10-cilium.conflist'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Remove stale Cilium plugin links from generic CNI directory
+  ansible.builtin.file:
+    path: "/opt/cni/bin/{{ item.0 }}"
+    state: absent
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ['cilium-cni', 'bandwidth', 'bridge', 'cni', 'firewall', 'flannel', 'host-local', 'loopback', 'portmap'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Remove stale Flannel VXLAN interfaces from host network namespace
+  ansible.builtin.command:
+    cmd: ip link delete {{ item.0 }}
+  register: cilium_stale_iface_cleanup
+  changed_when: cilium_stale_iface_cleanup.rc == 0
+  failed_when: cilium_stale_iface_cleanup.rc != 0 and ('Cannot find device' not in (cilium_stale_iface_cleanup.stderr | default('')))
+  delegate_to: "{{ item.1 }}"
+  # cilium_vxlan is the active Cilium datapath device during idempotent runs and must not be deleted.
+  loop: "{{ ['flannel.1'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Ensure cilium CNI binaries are discoverable in kubelet plugin directory
+  ansible.builtin.file:
+    path: "{{ cilium_cni_bin_path }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+
+- name: Ensure kubelet plugin directory exists when different from Cilium bin path
+  ansible.builtin.file:
+    path: "{{ cilium_kubelet_cni_bin_path }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  when: cilium_kubelet_cni_bin_path != cilium_cni_bin_path
+
+- name: Ensure cilium-cni is discoverable in kubelet plugin directory
+  ansible.builtin.file:
+    src: "{{ cilium_cni_bin_path }}/cilium-cni"
+    dest: "{{ cilium_kubelet_cni_bin_path }}/cilium-cni"
+    state: link
+    force: true
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['k3s_servers'] + groups['k3s_agents'] }}"
+  when: cilium_kubelet_cni_bin_path != cilium_cni_bin_path
+
+- name: Check if cilium-secrets namespace exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: cilium-secrets
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_secrets_ns
+
+- name: Remove finalizers from cilium-secrets namespace if stuck terminating
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: cilium-secrets
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      metadata:
+        finalizers: []
+  when:
+    - cilium_secrets_ns.resources | length > 0
+    - cilium_secrets_ns.resources[0].status.phase == 'Terminating'
+
+- name: Wait for cilium-secrets namespace to be fully removed
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: cilium-secrets
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_secrets_ns_wait
+  retries: 30
+  delay: 5
+  until: cilium_secrets_ns_wait.resources | length == 0
+  when:
+    - cilium_secrets_ns.resources | length > 0
+    - cilium_secrets_ns.resources[0].status.phase == 'Terminating'
+
+- name: Add Cilium Helm repository
+  kubernetes.core.helm_repository:
+    name: cilium
+    repo_url: "{{ cilium_helm_repo }}"
+
+- name: Deploy Cilium Helm chart
+  kubernetes.core.helm:
+    name: "{{ cilium_helm_release_name }}"
+    chart_ref: cilium/cilium
+    # The official Cilium Helm chart is versioned 1:1 with the Cilium app version,
+    # but published chart versions omit any leading "v" (e.g. chart "1.16.6" installs
+    # Cilium app version v1.16.6). cilium_version documents the actual Cilium version
+    # (accepts either "v1.16.6" or "1.16.6") — strip the "v" for the Helm chart lookup.
+    chart_version: "{{ cilium_version | regex_replace('^v', '') }}"
+    release_namespace: "{{ cilium_namespace }}"
+    create_namespace: false
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    values: "{{ cilium_helm_values }}"
+    # wait=false avoids Helm's internal context deadline during CNI bootstrap:
+    # Cilium IS the CNI, so pods may not be schedulable until Cilium itself is running.
+    # Readiness is verified by the explicit k8s_info poll below.
+    wait: false
+  register: cilium_helm_install
+
+- name: Wait for Cilium DaemonSet to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: cilium
+    namespace: "{{ cilium_namespace }}"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_ds
+  retries: 60
+  delay: 10
+  until: >-
+    (cilium_ds.resources | default([]) | length) > 0 and
+    (cilium_ds.resources[0].status.numberReady | default(0) | int) ==
+    (cilium_ds.resources[0].status.desiredNumberScheduled | default(-1) | int) and
+    (cilium_ds.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
+  changed_when: false
+
+- name: Ensure legacy k3s CNI directories exist for compatibility
+  ansible.builtin.file:
+    path: "{{ item.0 }}"
+    state: directory
+    mode: "0755"
+  delegate_to: "{{ item.1 }}"
+  loop: "{{ ['/var/lib/rancher/k3s/agent/etc/cni/net.d', '/var/lib/rancher/k3s/data/current/bin', '/var/lib/rancher/k3s/data/cni'] | product(groups['k3s_servers'] + groups['k3s_agents']) | list }}"
+
+- name: Verify Cilium datapath is healthy on all nodes
+  # Pod readiness can pass while the vxlan tunnel device is still failing to initialize.
+  # This catches that split-brain by polling `cilium status` until the agent reports OK.
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium status --brief
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_datapath_status
+  retries: 30
+  delay: 10
+  until: >
+    cilium_datapath_status.rc == 0 and
+    'error' not in (cilium_datapath_status.stdout | lower)
+  changed_when: false
+  failed_when: false
+
+- name: Assert Cilium datapath is healthy before proceeding
+  ansible.builtin.assert:
+    that:
+      - cilium_datapath_status.rc == 0
+      - "'error' not in (cilium_datapath_status.stdout | lower)"
+    fail_msg: |
+      Cilium datapath failed to initialize after {{ 30 * 10 }}s.
+      Status output: {{ cilium_datapath_status.stdout }}
+      Check for stale network interfaces (cilium_vxlan, flannel.1) on the nodes.
+
+- name: Check Cilium cross-node health before overlay probe
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_cluster_health
+  retries: 30
+  delay: 10
+  until: >-
+    cilium_cluster_health.rc == 0 and
+    'Cluster health:' in cilium_cluster_health.stdout and
+    '0/' not in cilium_cluster_health.stdout and
+    'Connection timed out' not in cilium_cluster_health.stdout
+  changed_when: false
+  failed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
+# --- Cross-node overlay probe (self-healing) ---
+# cilium status --brief passes even when VXLAN BPF programs are stale and cross-node
+# pod traffic is silently dropped. This probe detects that split-brain by launching a
+# temporary pod on one server and pinging a pod on a different server via the overlay.
+# When it fails, the DaemonSet is restarted (reinitialises BPF programs) and re-probed.
+- name: Get CoreDNS pod placement for cross-node overlay probe
+  ansible.builtin.command:
+    cmd: >-
+      kubectl get pod -n kube-system -l k8s-app=kube-dns
+      -o jsonpath='{.items[0].status.podIP}{"\t"}{.items[0].spec.nodeName}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_coredns_placement
+  changed_when: false
+  failed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Set cross-node overlay probe source node
+  ansible.builtin.set_fact:
+    cilium_overlay_probe_target_ip: "{{ cilium_coredns_placement.stdout.split('\t') | first }}"
+    cilium_overlay_probe_target_node: "{{ cilium_coredns_placement.stdout.split('\t') | last }}"
+    cilium_overlay_probe_source_node: >-
+      {{
+        groups['k3s_servers']
+        | reject('equalto', cilium_coredns_placement.stdout.split('\t') | last)
+        | list
+        | first
+      }}
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Run cross-node overlay probe
+  when: (groups['k3s_servers'] | length) > 1
+  block:
+    - name: Deploy overlay probe pod on source node
+      ansible.builtin.command:
+        cmd: >-
+          kubectl run cilium-overlay-probe -n kube-system --restart=Never
+          --image=busybox:1.36.1
+          --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
+          -- sleep 300
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: true
+      failed_when: false
+
+    - name: Wait for overlay probe pod to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=120s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_probe_ready
+      changed_when: false
+      failed_when: false
+
+    - name: Test ICMP cross-node pod overlay connectivity
+      ansible.builtin.command:
+        cmd: >-
+          kubectl exec -n kube-system cilium-overlay-probe
+          -- ping -c3 -W2 {{ cilium_overlay_probe_target_ip }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_probe_result
+      changed_when: false
+      failed_when: false
+      when: cilium_overlay_probe_ready.rc == 0
+
+  always:
+    - name: Remove overlay probe pod
+      ansible.builtin.command:
+        cmd: kubectl delete pod cilium-overlay-probe -n kube-system --ignore-not-found
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+      failed_when: false
+
+- name: Restart Cilium DaemonSet to reinitialise stale BPF programs
+  ansible.builtin.command:
+    cmd: kubectl rollout restart daemonset/cilium -n {{ cilium_namespace }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_bpf_restart
+  changed_when: true
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_coredns_placement.rc | default(1) == 0
+    - cilium_coredns_placement.stdout | default('') is search('\t')
+    - >-
+      cilium_cluster_health.rc | default(1) != 0 or
+      '0/' in (cilium_cluster_health.stdout | default('')) or
+      'Connection timed out' in (cilium_cluster_health.stdout | default('')) or
+      cilium_overlay_probe_ready.rc | default(1) != 0 or
+      cilium_overlay_probe_result.rc | default(1) != 0
+
+- name: Wait for Cilium DaemonSet rollout after BPF reinitialisation
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/cilium -n {{ cilium_namespace }} --timeout=180s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  when: cilium_bpf_restart is changed
+
+- name: Re-probe cross-node overlay after DaemonSet restart
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_bpf_restart is changed
+  block:
+    - name: Deploy overlay re-probe pod
+      ansible.builtin.command:
+        cmd: >-
+          kubectl run cilium-overlay-probe -n kube-system --restart=Never
+          --image=busybox:1.36.1
+          --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
+          -- sleep 300
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: true
+      failed_when: false
+
+    - name: Wait for overlay re-probe pod to be Ready
+      ansible.builtin.command:
+        cmd: kubectl wait -n kube-system --for=condition=Ready pod/cilium-overlay-probe --timeout=120s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_post_restart_ready
+      changed_when: false
+      failed_when: false
+
+    - name: Test cross-node overlay connectivity after DaemonSet restart
+      ansible.builtin.command:
+        cmd: >-
+          kubectl exec -n kube-system cilium-overlay-probe
+          -- ping -c3 -W2 {{ cilium_overlay_probe_target_ip }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_overlay_post_restart_result
+      changed_when: false
+      failed_when: false
+      when: cilium_overlay_post_restart_ready.rc == 0
+
+  always:
+    - name: Remove overlay re-probe pod
+      ansible.builtin.command:
+        cmd: kubectl delete pod cilium-overlay-probe -n kube-system --ignore-not-found
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      changed_when: false
+      failed_when: false
+
+- name: Re-check Cilium cross-node health after recovery
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_cluster_health_after_restart
+  retries: 30
+  delay: 10
+  until: >-
+    cilium_cluster_health_after_restart.rc == 0 and
+    'Cluster health:' in cilium_cluster_health_after_restart.stdout and
+    '0/' not in cilium_cluster_health_after_restart.stdout and
+    'Connection timed out' not in cilium_cluster_health_after_restart.stdout
+  changed_when: false
+  failed_when: false
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_bpf_restart is changed
+
+- name: Assert cross-node overlay connectivity
+  ansible.builtin.assert:
+    that:
+      - >-
+        (cilium_overlay_probe_result.rc | default(0) == 0)
+        or (cilium_overlay_post_restart_result.rc | default(0) == 0)
+      - >-
+        (cilium_cluster_health.rc | default(0) == 0 and
+        '0/' not in (cilium_cluster_health.stdout | default('')) and
+        'Connection timed out' not in (cilium_cluster_health.stdout | default(''))) or
+        (cilium_cluster_health_after_restart.rc | default(0) == 0 and
+        '0/' not in (cilium_cluster_health_after_restart.stdout | default('')) and
+        'Connection timed out' not in (cilium_cluster_health_after_restart.stdout | default('')))
+    fail_msg: >-
+      Cross-node pod overlay (VXLAN) connectivity probe failed on both initial check and
+      after DaemonSet restart. Source={{ cilium_overlay_probe_source_node }},
+      Target={{ cilium_overlay_probe_target_ip }} ({{ cilium_overlay_probe_target_node }}).
+      Manual intervention required: check UDP 8472 between nodes and Cilium BPF program state.
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Check whether multus DaemonSet is already deployed
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: kube-multus-ds
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_multus_ds_probe
+  when: multus_enabled | default(false) | bool
+
+- name: Restart multus DaemonSet to pick up Cilium primary CNI config
+  ansible.builtin.command:
+    cmd: kubectl rollout restart daemonset/kube-multus-ds -n kube-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: true
+  when:
+    - multus_enabled | default(false) | bool
+    - (cilium_multus_ds_probe.resources | default([]) | length) > 0
+    - cilium_helm_install is changed or cilium_bpf_restart is changed
+  register: cilium_multus_restart
+
+- name: Wait for multus DaemonSet to be ready after restart
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    name: kube-multus-ds
+    namespace: kube-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: cilium_multus_ds_after_restart
+  retries: 30
+  delay: 10
+  until: >-
+    (cilium_multus_ds_after_restart.resources | default([]) | length) > 0 and
+    (cilium_multus_ds_after_restart.resources[0].status.numberReady | default(0) | int) ==
+    (cilium_multus_ds_after_restart.resources[0].status.desiredNumberScheduled | default(-1) | int) and
+    (cilium_multus_ds_after_restart.resources[0].status.desiredNumberScheduled | default(0) | int) > 0
+  changed_when: false
+  when:
+    - multus_enabled | default(false) | bool
+    - (cilium_multus_ds_probe.resources | default([]) | length) > 0
+    - cilium_multus_restart is changed
+
+- name: Check Cilium health after Multus reconciliation
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_health_after_multus
+  retries: 30
+  delay: 5
+  until: >-
+    cilium_health_after_multus.rc == 0 and
+    'Cluster health:' in cilium_health_after_multus.stdout and
+    '0/' not in cilium_health_after_multus.stdout and
+    'Connection timed out' not in cilium_health_after_multus.stdout
+  changed_when: false
+  failed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Restart Cilium after Multus-induced overlay degradation
+  ansible.builtin.command:
+    cmd: kubectl rollout restart daemonset/cilium -n {{ cilium_namespace }}
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_post_multus_restart
+  changed_when: true
+  when:
+    - (groups['k3s_servers'] | length) > 1
+    - cilium_multus_restart is changed
+    - cilium_health_after_multus.rc | default(1) != 0 or
+      '0/' in (cilium_health_after_multus.stdout | default('')) or
+      'Connection timed out' in (cilium_health_after_multus.stdout | default(''))
+
+- name: Wait for Cilium after Multus-induced recovery
+  ansible.builtin.command:
+    cmd: kubectl rollout status daemonset/cilium -n {{ cilium_namespace }} --timeout=180s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  when: cilium_post_multus_restart is changed
+
+- name: Verify final Cilium health before completing the role
+  ansible.builtin.command:
+    cmd: >-
+      kubectl exec -n {{ cilium_namespace }} ds/cilium
+      -- cilium-health status --verbose
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_final_health
+  retries: 30
+  delay: 5
+  until: >-
+    cilium_final_health.rc == 0 and
+    'Cluster health:' in cilium_final_health.stdout and
+    '0/' not in cilium_final_health.stdout and
+    'Connection timed out' not in cilium_final_health.stdout
+  changed_when: false
+  failed_when: false
+  when: (groups['k3s_servers'] | length) > 1
+
+- name: Assert final Cilium cross-node health
+  ansible.builtin.assert:
+    that:
+      - cilium_final_health.rc == 0
+      - "'Cluster health:' in cilium_final_health.stdout"
+      - "'0/' not in cilium_final_health.stdout"
+      - "'Connection timed out' not in cilium_final_health.stdout"
+    fail_msg: >-
+      Cilium is not healthy after Cilium/Multus reconciliation. The playbook will not
+      report success while cross-node pod connectivity is degraded. Health output:
+      {{ cilium_final_health.stdout | default('') }}
+  when: (groups['k3s_servers'] | length) > 1
+
+# CRD is guaranteed present once the DaemonSet-ready wait above succeeds.
+- name: Reconcile CiliumEgressGatewayPolicy
+  ansible.builtin.include_tasks: reconcile.yml

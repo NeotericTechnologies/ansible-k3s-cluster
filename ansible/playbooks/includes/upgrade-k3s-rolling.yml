@@ -208,6 +208,77 @@
   delay: 5
   when: _node_needs_upgrade | bool
 
+- name: Check cilium-cni binary on upgraded node (pre-reconcile)
+  ansible.builtin.command:
+    cmd: test -x /var/lib/rancher/k3s/data/current/bin/cilium-cni
+  register: _cilium_cni_binary_initial
+  changed_when: false
+  failed_when: false
+  when:
+    - _node_needs_upgrade | bool
+    - cilium_enabled | default(false) | bool
+
+- name: Reconcile Cilium DaemonSet pod when CNI binary is missing on upgraded node
+  block:
+    - name: Delete Cilium pod on upgraded node to rerun init containers
+      ansible.builtin.shell: >-
+        kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+        --insecure-skip-tls-verify=true
+        delete pod -n kube-system
+        -l k8s-app=cilium
+        --field-selector spec.nodeName={{ _target_node }}
+        --wait=false
+        ||
+        kubectl --server https://127.0.0.1:6443
+        --insecure-skip-tls-verify=true
+        delete pod -n kube-system
+        -l k8s-app=cilium
+        --field-selector spec.nodeName={{ _target_node }}
+        --wait=false
+      changed_when: true
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+
+    - name: Wait for Cilium pod on upgraded node to become Ready
+      ansible.builtin.shell: >-
+        kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+        --insecure-skip-tls-verify=true
+        wait --for=condition=Ready pod
+        -n kube-system
+        -l k8s-app=cilium
+        --field-selector spec.nodeName={{ _target_node }}
+        --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+        ||
+        kubectl --server https://127.0.0.1:6443
+        --insecure-skip-tls-verify=true
+        wait --for=condition=Ready pod
+        -n kube-system
+        -l k8s-app=cilium
+        --field-selector spec.nodeName={{ _target_node }}
+        --timeout={{ upgrade_node_ready_timeout | default(300) }}s
+      changed_when: false
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      delegate_to: "{{ groups['k3s_servers'][0] }}"
+  when:
+    - _node_needs_upgrade | bool
+    - cilium_enabled | default(false) | bool
+    - _cilium_cni_binary_initial is defined
+    - _cilium_cni_binary_initial.rc != 0
+
+- name: Wait for cilium-cni binary to exist on upgraded node
+  ansible.builtin.command:
+    cmd: test -x /var/lib/rancher/k3s/data/current/bin/cilium-cni
+  register: _cilium_cni_binary_ready
+  retries: 18
+  delay: 10
+  until: _cilium_cni_binary_ready.rc == 0
+  changed_when: false
+  when:
+    - _node_needs_upgrade | bool
+    - cilium_enabled | default(false) | bool
+
 - name: Check multus-shim binary on upgraded node (pre-reconcile)
   ansible.builtin.command:
     cmd: test -x /var/lib/rancher/k3s/data/current/bin/multus-shim

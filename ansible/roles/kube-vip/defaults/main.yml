@@ -8,3 +8,57 @@ kube_vip_interface: "eth0"
 kube_vip_deployment_mode: "daemonset"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+kube_vip_lb_dhcp_enabled: false
+
+kube_vip_svc_election_enabled: false
+vip_leaseduration: 15
+vip_renewdeadline: 10
+vip_retryperiod: 2
+
+# Labels the current VIP-holding node for kube-vip-managed services on leader election
+# (auto-enabled when kube_vip_egress_enabled: true — see kube_vip_egress_gateway_node_selector)
+kube_vip_enable_node_labeling: false
+
+# Periodic reconciliation of service-provided.kube-vip.io/<svc>.<ns> node labels against each
+# service's actual coordination.k8s.io Lease holderIdentity. Self-heals stale/duplicate labels
+# left behind when kube-vip's own leadership-loss label removal PATCH fails during a transient
+# apiserver outage — kube-vip logs the error but does not retry (see README.md "Label
+# Reconciliation"). Only meaningful when kube_vip_enable_node_labeling is true.
+kube_vip_label_reconciler_enabled: true
+kube_vip_label_reconciler_schedule: "*/5 * * * *"
+kube_vip_label_reconciler_image: "alpine/kubectl:{{ kube_vip_label_reconciler_kubectl_version | default('1.36.4') }}"
+kube_vip_label_reconciler_history_limit: 3
+
+# Same CronJob also detects a stale VIP address left bound on a node that is no longer the
+# Lease holder — kube-vip's leadership handoff has an observed race (via the
+# egress-gateway-test.yml failover scenario) where a rapid leadership change can leave the
+# outgoing leader's VIP still bound to its interface, a real duplicate-IP condition on the
+# network, because its "stop old instance" cleanup silently failed to find the instance to
+# stop. Escalation, cheapest first: restart that node's kube-vip pod and let it release the
+# address itself (the normal recovery path) — only if the address is *still* present
+# kube_vip_label_reconciler_stale_vip_recheck_delay seconds later does the reconciler reach
+# directly into host networking to force-remove it (needed because a manually reproduced
+# version of the fault showed a restart alone does not always clear it, e.g. if the old process
+# was SIGKILLed rather than gracefully stopped). Needs an image with a POSIX shell and an `ip`
+# command supporting `addr show`/`addr del`.
+kube_vip_label_reconciler_stale_vip_recheck_delay: 10
+kube_vip_label_reconciler_vip_check_image: "busybox:1.36"
+
+kube_vip_egress_enabled: false
+kube_vip_egress_ip: ""
+kube_vip_egress_hostname: ""
+kube_vip_egress_namespace: "kube-system"
+kube_vip_egress_policy_name: "egress-gateway-policy"
+kube_vip_egress_pod_selector: {}
+kube_vip_egress_namespace_selector: {}
+kube_vip_egress_destination_cidrs:
+  - "0.0.0.0/0"
+# Override to pin specific exclusions; empty = auto-detect pod pool + service CIDRs at apply time
+kube_vip_egress_excluded_cidrs: []
+# Matches only the node kube-vip currently elected leader for egress-gateway-svc (requires
+# kube_vip_enable_node_labeling: true). A broad selector like node-role.kubernetes.io/control-plane
+# would match every control-plane node, and Cilium deterministically picks the first one by name
+# regardless of which node actually holds the VIP — breaking egress on failover.
+kube_vip_egress_gateway_node_selector:
+  service-provided.kube-vip.io/egress-gateway-svc.kube-system: "{{ kube_vip_egress_ip }}"
+kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"

@@ -4,7 +4,12 @@
 # Reference: FR-006
 
 - name: Include multus installation tasks
-  ansible.builtin.include_tasks: install.yml
+  ansible.builtin.include_tasks:
+    file: install.yml
+    apply:
+      tags:
+        - install
+        - multus
   when: multus_enabled | default(false)
   tags:
     - install

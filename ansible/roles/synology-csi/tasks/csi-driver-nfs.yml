@@ -24,17 +24,24 @@
   register: csi_nfs_helm
 
 - name: Wait for csi-driver-nfs controller to be ready
+  # Plain register/until (not module wait_condition) so a transient "apiserver not ready" 503
+  # during a fresh install — the API call itself raising rather than just failing the wait
+  # condition — gets retried instead of crashing the play.
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: csi-nfs-controller
     namespace: kube-system
     kubeconfig: /etc/rancher/k3s/k3s.yaml
-    wait: true
-    wait_timeout: 120
-    wait_condition:
-      type: Available
-      status: "True"
+  register: csi_nfs_controller
+  until: >-
+    csi_nfs_controller.resources | default([]) | length > 0 and
+    (csi_nfs_controller.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Available')
+      | selectattr('status', 'equalto', 'True')
+      | list | length) > 0
+  retries: 30
+  delay: 10
 
 - name: Wait for csi-driver-nfs node DaemonSet to be ready
   kubernetes.core.k8s_info:

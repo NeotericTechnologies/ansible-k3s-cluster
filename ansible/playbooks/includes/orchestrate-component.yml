@@ -244,6 +244,24 @@
               ├─ Desired: {{ component_plan[_curr_component].desired_version }}
               └─ Executing on {{ groups['k3s_agents'] | length }} nodes (serial: 1)
 
+        - name: Fresh install prerequisites on k3s_agents
+          # Mirrors the equivalent k3s_servers step above — without this, agent nodes
+          # provisioned via site.yml silently skip the OS/CPU/memory/port/network fail-fast
+          # checks that cluster-core.yml's "Validate host prerequisites for all nodes" play
+          # (hosts: k3s_cluster) runs for every node, servers and agents alike.
+          ansible.builtin.include_role:
+            name: k3s-common
+            tasks_from: main.yml
+            apply:
+              delegate_to: "{{ agent_node }}"
+          vars:
+            k3s_target_host: "{{ agent_node }}"
+          loop: "{{ groups['k3s_agents'] }}"
+          loop_control:
+            loop_var: agent_node
+            label: "{{ agent_node }} - prereqs"
+          when: _curr_action == 'install' and is_fresh_install | default(false) | bool
+
         - name: Deploy k3s agents (serial 1)
           ansible.builtin.include_role:
             name: k3s-agent
@@ -298,6 +316,40 @@
       when:
         - _curr_component == 'kube_vip'
         - _curr_action != 'none'
+
+    # Cilium
+    - name: "Execute cilium"
+      block:
+        - name: Display cilium context
+          ansible.builtin.debug:
+            msg: |
+              → {{ _curr_component }}: {{ _curr_action }}
+              ├─ Priority: {{ _curr_priority }}
+              ├─ Current: {{ component_plan[_curr_component].live_version }}
+              └─ Desired: {{ component_plan[_curr_component].desired_version }}
+
+        - name: Fresh install cilium
+          ansible.builtin.include_role:
+            name: cilium
+          when: _curr_action == 'install'
+
+        - name: Upgrade cilium
+          ansible.builtin.include_tasks: includes/upgrade-cilium.yml
+          when: _curr_action in ['upgrade', 'downgrade']
+
+      when:
+        - _curr_component == 'cilium'
+        - _curr_action != 'none'
+
+    # Reconcile cilium policies even when the version is already at desired state
+    - name: Reconcile cilium policies (version unchanged)
+      ansible.builtin.include_role:
+        name: cilium
+        tasks_from: reconcile.yml
+      when:
+        - _curr_component == 'cilium'
+        - _curr_action == 'none'
+        - cilium_enabled | default(false) | bool
 
     # Rancher
     - name: "Execute rancher"

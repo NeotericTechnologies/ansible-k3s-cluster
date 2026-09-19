@@ -26,6 +26,9 @@ spec:
             - --endpoint=unix:///csi/csi.sock
             - --client-info=/etc/synology/client-info.yml
             - --log-level=info
+            # The image does not bundle iscsiadm/open-iscsi — the driver chroots into the
+            # host-root mount below to exec the host's iscsiadm for iSCSI logins.
+            - --chroot-dir=/host
           env:
             - name: KUBE_NODE_NAME
               valueFrom:
@@ -33,6 +36,29 @@ spec:
                   fieldPath: spec.nodeName
           securityContext:
             privileged: true
+          resources:
+            requests:
+              cpu: {{ synology_csi_driver_requests_cpu | default('25m') }}
+              memory: {{ synology_csi_driver_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_driver_limits_cpu | default('100m') }}
+              memory: {{ synology_csi_driver_limits_memory | default('64Mi') }}
+{% if synology_csi_liveness_probe_enabled %}
+          # See controller.yaml.j2 — the node plugin runs the same one-shot DSM login at
+          # startup as the controller, so it's equally exposed to the same failure mode.
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  wget -q -O /dev/null --no-check-certificate --timeout=5
+                  'https://{{ synology_csi_endpoint }}:{{ synology_csi_port }}/webapi/query.cgi?api=SYNO.API.Info&method=query&version=1'
+            initialDelaySeconds: {{ synology_csi_liveness_probe_initial_delay }}
+            periodSeconds: {{ synology_csi_liveness_probe_period }}
+            timeoutSeconds: {{ synology_csi_liveness_probe_timeout }}
+            failureThreshold: {{ synology_csi_liveness_probe_failure_threshold }}
+{% endif %}
           volumeMounts:
             - name: kubelet-dir
               mountPath: /var/lib/kubelet
@@ -48,11 +74,20 @@ spec:
               mountPath: /run/udev
             - name: iscsi-lib
               mountPath: /etc/iscsi
+            - name: host-root
+              mountPath: /host
         - name: csi-node-driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.3
           args:
             - --csi-address=/csi/csi.sock
             - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.san.synology.com/csi.sock
+          resources:
+            requests:
+              cpu: {{ synology_csi_sidecar_requests_cpu | default('10m') }}
+              memory: {{ synology_csi_sidecar_requests_memory | default('32Mi') }}
+            limits:
+              cpu: {{ synology_csi_sidecar_limits_cpu | default('50m') }}
+              memory: {{ synology_csi_sidecar_limits_memory | default('64Mi') }}
           volumeMounts:
             - name: plugin-dir
               mountPath: /csi
@@ -84,3 +119,7 @@ spec:
           hostPath:
             path: /etc/iscsi
             type: DirectoryOrCreate
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory

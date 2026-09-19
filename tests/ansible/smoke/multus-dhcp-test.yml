@@ -187,6 +187,14 @@
         fail_msg: "Found leftover CNI plugins tarball in pod — initContainer cleanup failed"
         success_msg: "No leftover tarballs found — initContainer cleanup verified"
 
+    - name: Remove stale test pod before deployment
+      ansible.builtin.command: >-
+        kubectl delete pod {{ test_pod_name }} -n {{ test_namespace }}
+        --grace-period=0 --force --ignore-not-found=true
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
     - name: Deploy test pod with DHCP-based secondary interface
       ansible.builtin.command:
         argv:
@@ -234,15 +242,29 @@
     - name: Get pod network status annotation
       ansible.builtin.command: >-
         kubectl get pod {{ test_pod_name }} -n {{ test_namespace }}
-        -o jsonpath='{.metadata.annotations.k8s\.v1\.cni\.cncf\.io/network-status}'
+        -o json
       environment:
         KUBECONFIG: "{{ kubeconfig }}"
-      register: network_status_raw
+      register: test_pod_raw
       changed_when: false
+
+    - name: Extract pod network status annotation
+      ansible.builtin.set_fact:
+        network_status_raw: >-
+          {{ (test_pod_raw.stdout | from_json).metadata.annotations[
+             'k8s.v1.cni.cncf.io/network-status'] | default('') }}
+
+    - name: Assert pod network status annotation is present
+      ansible.builtin.assert:
+        that:
+          - network_status_raw | length > 0
+        fail_msg: >-
+          Pod has no k8s.v1.cni.cncf.io/network-status annotation; Multus did not report
+          secondary network attachment. Pod JSON: {{ test_pod_raw.stdout | from_json | to_nice_json }}
 
     - name: Parse network status
       ansible.builtin.set_fact:
-        network_status: "{{ network_status_raw.stdout | from_json }}"
+        network_status: "{{ network_status_raw | from_json }}"
 
     - name: Assert pod has secondary interface with IP from DHCP
       ansible.builtin.assert:

@@ -19,9 +19,11 @@ k3s_server_labels:
 k3s_server_init: "{{ 'server' if ha_mode == 'embedded-etcd-ha' else 'server' }}"
 
 # Additional k3s server arguments
+# Cilium CNI (cilium_enabled: true) requires k3s to disable its bundled Flannel CNI
+# and network policy controller so Cilium can take over both roles (FR-012).
 k3s_server_extra_args: >-
   --disable traefik
   --disable servicelb
-  --flannel-backend=vxlan
+  {{ '--flannel-backend=none --disable-network-policy' if (cilium_enabled | default(false) | bool) else '--flannel-backend=vxlan' }}
   --write-kubeconfig-mode=644
   --tls-san={{ control_plane_vip }}

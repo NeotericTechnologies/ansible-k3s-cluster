@@ -49,7 +49,7 @@ echo ""
 echo "7. VIP ASSIGNMENT CHECK"
 echo "────────────────────────────────────────────────────────────────"
 VIP_IP=$(kubectl get svc --all-namespaces --field-selector spec.type=LoadBalancer | awk 'NR==2 {print $5}')
-ip addr show enp6s18 | grep ${VIP_IP} 2>/dev/null || echo "ERROR: Unable to find VIP ${VIP_IP} on interface enp6s18"
+ip addr show ens18 | grep ${VIP_IP} 2>/dev/null || echo "ERROR: Unable to find VIP ${VIP_IP} on interface ens18"
 echo ""
 
 echo "8. HELM RELEASE STATUS"

@@ -34,7 +34,7 @@
 
 ## R-005: Critical-Component Subset for Disruption Validation
 
-- **Decision**: Use an explicit critical subset defined in the spec: `k3s control plane server service`, `kube-vip`, and `Traefik`.
+- **Decision**: Use independent disruption probes for the `k3s control plane server service` through the control-plane VIP and `Traefik` through its LoadBalancer VIP. kube-vip is validated through dedicated HA policy and failover checks because a second API-through-VIP probe would be redundant.
 - **Rationale**: These components represent API control-plane continuity, front-door traffic continuity, and core ingress availability during single-node disruption tests.
 - **Alternatives considered**:
   - **All components critical**: Rejected due to noisy and brittle disruption checks for optional addons.

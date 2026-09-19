@@ -8,7 +8,11 @@ Deploy and configure kube-vip for:
 
 ## Version
 
-This role supports **kube-vip v1.1.2** and compatible cloud-provider versions. See [Migration Notes](#migration-notes) for upgrading from v0.6.4.
+This role supports **kube-vip v1.1.2+** and compatible cloud-provider versions. **v1.2.3+ is required**
+when `kube_vip_egress_enabled: true` — the per-Service leader labeling used by
+`kube_vip_egress_gateway_node_selector` was not present before v1.2.1, and v1.2.1/v1.2.2 have a leader-election
+deadlock for backend-less (zero-endpoint) LoadBalancer Services such as `egress-gateway-svc` (fixed in v1.2.3,
+see kube-vip#1668, #1650). See [Migration Notes](#migration-notes) for upgrading from v0.6.4.
 
 ## Requirements
 
@@ -26,12 +30,150 @@ This role supports **kube-vip v1.1.2** and compatible cloud-provider versions. S
 - Binds VIP to specified network interface
 - Provides highly available Kubernetes API access via VIP
 
+### Consolidated RBAC (FR-008, FR-009)
+
+- Single ClusterRole `kube-vip` (`templates/kube-vip-rbac.yaml.j2`) grants the union of permissions
+  required by both the kube-vip DaemonSet and the kube-vip-cloud-controller Deployment.
+- Two ServiceAccounts (`kube-vip`, `kube-vip-cloud-controller`) and two ClusterRoleBindings, both
+  referencing the single ClusterRole.
+- Applied with `state: present` before the DaemonSet/Deployment on every run — clean overwrite,
+  no custom-rule detection or migration. Any manually applied rules not in the template are
+  overwritten on the next role run (by design).
+
 ### Service Load Balancer (FR-012)
 
 - Deploys kube-vip cloud controller for LoadBalancer service type
 - Creates ConfigMap with IP address pool for LoadBalancer IPs
 - Enables LoadBalancer services (replaces k3s default servicelb/klipper-lb)
 - Uses nftables for port forwarding (v1.1.2+)
+
+### DHCP Mode for LoadBalancer IPs (FR-007, FR-010)
+
+- `kube_vip_lb_dhcp_enabled: true` switches the LoadBalancer IP pool from the static
+  `kube_vip_lb_ip_range` to per-service DHCP-assigned addresses.
+- **Mutually exclusive with `kube_vip_lb_ip_range`** — setting both a non-empty
+  `kube_vip_lb_ip_range` and `kube_vip_lb_dhcp_enabled: true` fails validation
+  (`ansible/roles/kube-vip/tasks/validate.yml`).
+- When enabled, the `kubevip` ConfigMap omits the `range-global` key entirely.
+- **DHCP networking prerequisites**:
+  - An external DHCP server reachable from the node network is required.
+  - Nodes must support macvlan interfaces with a MAC address the DHCP server can lease
+    against (kube-vip generates a macvlan interface per DHCP-assigned service).
+  - The `macvlan` kernel module must be loaded on all control-plane nodes.
+- **Operator action required per service**: set `loadBalancerIP: 0.0.0.0` on each Service
+  of `type: LoadBalancer` to request a DHCP-assigned address instead of one drawn from a
+  static pool.
+
+### Service Leader Election (FR-004, FR-005)
+
+
+- `kube_vip_svc_election_enabled: true` enables per-service leader election: each
+  LoadBalancer Service holds its own `coordination.k8s.io` Lease, and kube-vip instances
+  compete for it independently — spreads VIP ownership across nodes instead of pinning
+  all services to one global leader.
+- Automatically forced `true` when `kube_vip_egress_enabled: true` (required for egress VIP
+  binding to the active gateway node).
+- Lease timing is controlled via `vip_leaseduration` (default `15`s), `vip_renewdeadline`
+  (default `10`s), and `vip_retryperiod` (default `2`s).
+
+### Node Labeling (`kube_vip_enable_node_labeling`)
+
+- `kube_vip_enable_node_labeling: true` enables kube-vip's built-in leader-election node
+  labeling: whichever node currently wins ARP leader election for a given VIP gets labeled
+  `service-provided.kube-vip.io/<service>.<namespace>=<address>`; the label is removed when that
+  node loses leadership.
+- Automatically forced `true` when `kube_vip_egress_enabled: true` — required so
+  `kube_vip_egress_gateway_node_selector` (see below) always resolves to the real VIP holder.
+- Requires no extra RBAC — the consolidated `kube-vip` ClusterRole already grants
+  `update`/`patch` on `nodes`.
+
+### Load-Balanced Egress Gateway (FR-001–FR-003a)
+
+Combines a kube-vip HA LoadBalancer VIP with a Cilium `CiliumEgressGatewayPolicy` so all
+outbound pod traffic exits through one stable, predictable IP. **Requires Cilium as the active
+CNI** (`cilium_enabled: true`, see `ansible/roles/cilium`) — the playbook fails otherwise.
+
+This role owns the egress LoadBalancer `Service` (the kube-vip-managed VIP). The
+`CiliumEgressGatewayPolicy` CR itself is applied by the **cilium** role, not this one — it is
+a Cilium CRD that only exists once the Cilium Helm chart has installed, and the cilium role
+runs after kube-vip in `cluster-core.yml`. See `ansible/roles/cilium/README.md`.
+
+```yaml
+kube_vip_egress_enabled: false                # Master enable flag
+kube_vip_egress_ip: ""                        # Preferred gateway target when set — dedicated IP, independent of kube_vip_lb_ip_range
+kube_vip_egress_hostname: ""                  # Documentation only — DNS registration is out of scope
+kube_vip_egress_namespace: "kube-system"
+kube_vip_egress_policy_name: "egress-gateway-policy"
+kube_vip_egress_pod_selector: {}              # Label selector for gated pods — operators SHOULD restrict this
+kube_vip_egress_namespace_selector: {}
+kube_vip_egress_destination_cidrs:            # Destination CIDRs routed through egress gateway
+  - "0.0.0.0/0"
+kube_vip_egress_gateway_node_selector:
+  service-provided.kube-vip.io/egress-gateway-svc.kube-system: "{{ kube_vip_egress_ip }}"
+kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"  # Used only when kube_vip_egress_ip is empty
+```
+
+The cilium role renders **exactly one** egress gateway target field in `CiliumEgressGatewayPolicy`:
+- If `kube_vip_egress_ip` is non-empty, render `egressIP`.
+- Otherwise render `interface`.
+
+This avoids invalid Cilium policy objects where both fields are present.
+
+**`kube_vip_egress_gateway_node_selector` CONSTRAINT**: MUST match *exactly one* node — the
+current VIP holder — not a broad pool. Cilium's egress gateway selects a gateway node by
+iterating its (globally sorted) node list and picking the **first** one whose labels match this
+selector; it is a static, deterministic pick, not "whichever node currently has the address". If
+the selector matches multiple nodes (e.g. `node-role.kubernetes.io/control-plane: "true"` on a
+3-node control-plane), Cilium always designates the same node regardless of where kube-vip's ARP
+leader election actually put the VIP — on failover, egress silently breaks until the VIP fails
+back. `kube_vip_enable_node_labeling: true` (auto-enabled when `kube_vip_egress_enabled: true`)
+is what keeps the selector resolving to exactly one node: kube-vip labels the current Service
+leader with `service-provided.kube-vip.io/<service>.<namespace>=<address>` in real time (added/removed inside its own leader-election
+callbacks, `pkg/cluster/clusterLeaderElection.go`), and label changes on `CiliumNode` are one of
+the few things that actually make Cilium re-evaluate its gateway selection.
+
+**Failover behavior**: kube-vip `svc_election` (auto-enabled) binds the egress VIP to the
+current leader node within the pool selected by `kube_vip_egress_gateway_node_selector`. On
+node failure, kube-vip migrates the VIP via ARP within `vip_leaseduration` (default 15s) and
+moves the Service-specific label to the new holder; Cilium reacts to that label change and
+reroutes matching pod egress — no manual
+coordination required.
+
+### Label Reconciliation (`kube_vip_label_reconciler_enabled`)
+
+kube-vip only adds/removes its leader-election node labels from inside its own leader-election
+callbacks (`OnStartedLeading`/`OnStoppedLeading`) — this applies both to the control-plane VIP
+label (`kube-vip.io/has-ip`, driven by the `plndr-cp-lock` Lease) and to per-service labels
+(`service-provided.kube-vip.io/<svc>.<ns>`, driven by each service's `kubevip-<svc>` Lease); both
+share the same node-label manager and the same `kube_vip_enable_node_labeling` toggle. If the
+label-removal PATCH fails during the same transient apiserver outage that caused the leadership
+loss — observed in production as `connection reset by peer` / `the server rejected our request` —
+kube-vip logs the error and restarts *without retrying*, leaving the old leader's label orphaned
+while the new leader adds its own. The result is stale/duplicate labels across nodes, which
+silently breaks `kube_vip_egress_gateway_node_selector` (see constraint above) since it no longer
+resolves to exactly one node. Each kube-vip pod can only patch its own node's labels by design, so
+it can never clean up a label left behind on a node it no longer runs the election for — only an
+external, cluster-wide reconciler can.
+
+- `kube_vip_label_reconciler_enabled: true` deploys a `CronJob` (`kube-vip-label-reconciler`,
+  `kube-system` namespace) that, on `kube_vip_label_reconciler_schedule` (default every 5
+  minutes):
+  1. Reconciles `kube-vip.io/has-ip` against the `plndr-cp-lock` Lease holder and
+     `control_plane_vip`.
+  2. Lists all `LoadBalancer` Services, reads each one's `kubevip-<svc>` Lease `holderIdentity`,
+     and reconciles its `service-provided.kube-vip.io/<svc>.<ns>` label.
+  For each managed label: adds/fixes it on the current lease holder, removes it from every other
+  node that still carries it.
+- Every run logs a summary (`labels_checked`/`fixed`/`removed`/`skipped` counts) and the final
+  reconciled state — holder node, expected value, and which node (if any) carries the label —
+  for every managed label; view with `kubectl logs -n kube-system job/<job-name>`.
+- Only meaningful when `kube_vip_enable_node_labeling: true` — the CronJob is not applied
+  otherwise.
+- Runs as a dedicated `kube-vip-label-reconciler` ServiceAccount bound to the same consolidated
+  `kube-vip` ClusterRole (no additional RBAC required — `get`/`list` on `services`/`nodes`/`leases`
+  and `patch` on `nodes` are already granted).
+- Manual one-off run: `kubectl create job --from=cronjob/kube-vip-label-reconciler
+  -n kube-system label-reconciler-manual-$(date +%s)`.
 
 ## Role Variables
 
@@ -47,10 +189,16 @@ kube_vip_interface: "eth0"
 ### Optional
 
 ```yaml
-kube_vip_version: "v1.1.2"
+kube_vip_version: "v1.2.3"
 kube_vip_cloud_provider_version: "v0.0.12"
 kube_vip_lb_enable: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+
+# Label reconciliation (see "Label Reconciliation" above)
+kube_vip_label_reconciler_enabled: true
+kube_vip_label_reconciler_schedule: "*/5 * * * *"
+kube_vip_label_reconciler_image: "alpine/kubectl:1.36.4"
+kube_vip_label_reconciler_history_limit: 3
 ```
 
 ## Dependencies

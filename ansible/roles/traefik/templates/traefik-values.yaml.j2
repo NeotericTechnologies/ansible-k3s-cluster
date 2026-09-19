@@ -30,6 +30,14 @@ additionalArguments:
 deployment:
   replicas: {{ traefik_replicas | default(1) }}
 
+resources:
+  requests:
+    cpu: {{ traefik_requests_cpu | default('100m') }}
+    memory: {{ traefik_requests_memory | default('128Mi') }}
+  limits:
+    cpu: {{ traefik_limits_cpu | default('300m') }}
+    memory: {{ traefik_limits_memory | default('256Mi') }}
+
 ingressRoute:
   dashboard:
     enabled: {{ traefik_dashboard_enabled | default(false) | lower }}

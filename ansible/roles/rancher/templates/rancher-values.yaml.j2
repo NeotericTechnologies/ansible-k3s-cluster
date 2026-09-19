@@ -11,6 +11,14 @@ ingress:
 
 bootstrapPassword: {{ rancher_bootstrap_password | default('') }}
 
+resources:
+  requests:
+    cpu: {{ rancher_requests_cpu | default('250m') }}
+    memory: {{ rancher_requests_memory | default('512Mi') }}
+  limits:
+    cpu: {{ rancher_limits_cpu | default('1000m') }}
+    memory: {{ rancher_limits_memory | default('1Gi') }}
+
 {% if rancher_tls_source == 'letsEncrypt' %}
 letsEncrypt:
   email: {{ cert_manager_email | default('admin@example.com') }}

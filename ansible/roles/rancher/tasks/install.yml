@@ -90,15 +90,80 @@
     - rancher_helm_status is match('^pending-')
     - rancher_last_deployed_revision | string | length > 0
 
-- name: Fail when Rancher Helm release is pending and no deployed revision exists
-  ansible.builtin.fail:
-    msg: >-
-      Rancher Helm release is in pending state ({{ rancher_helm_status }}) and
-      no prior deployed revision was found for rollback recovery.
-      Resolve the Helm release manually before re-running the playbook.
+- name: Check actual Rancher Deployment health when no prior revision exists to roll back to
+  # A fresh-install `helm upgrade --install --atomic` can leave revision 1 stuck at
+  # pending-install if the command itself timed out/errored (e.g. transient apiserver or
+  # network flakiness) even though the Deployment went on to converge and become Ready.
+  # There's no earlier revision to roll back to in that case, so check reality on the ground
+  # before treating it as a hard failure.
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: rancher
+    namespace: cattle-system
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: rancher_deploy_check
   when:
     - rancher_helm_status is match('^pending-')
     - rancher_last_deployed_revision | default('') | string | length == 0
+
+- name: Record whether Rancher is actually healthy despite the stuck Helm release
+  ansible.builtin.set_fact:
+    rancher_actually_healthy: >-
+      {{
+        (rancher_deploy_check.resources | default([]) | length) > 0 and
+        ((rancher_deploy_check.resources[0].status.availableReplicas | default(0)) | int) >=
+        (rancher_replicas | default(1) | int)
+      }}
+  when:
+    - rancher_helm_status is match('^pending-')
+    - rancher_last_deployed_revision | default('') | string | length == 0
+
+- name: Heal stuck pending Rancher Helm release status when the Deployment is actually healthy
+  # helm status/history read the release's embedded info.status (base64(base64(gzip(json)))
+  # in the storage Secret's data.release) — patching the Secret's "status" label alone does not
+  # change what `helm status`/`helm upgrade` see, so the embedded payload must be rewritten too.
+  ansible.builtin.shell: |
+    set -euo pipefail
+    revision="{{ (rancher_helm_status_raw.stdout | from_json).version }}"
+    secret="sh.helm.release.v1.rancher.v${revision}"
+    kubectl get secret "$secret" -n cattle-system -o jsonpath='{.data.release}' > /tmp/rancher_release.b64
+    python3 - <<'PYEOF'
+    import base64, gzip, json
+    with open('/tmp/rancher_release.b64') as f:
+        outer_b64 = f.read().strip()
+    gz = base64.b64decode(base64.b64decode(outer_b64))
+    data = json.loads(gzip.decompress(gz))
+    data['info']['status'] = 'deployed'
+    new_gz = gzip.compress(json.dumps(data).encode())
+    new_outer_b64 = base64.b64encode(base64.b64encode(new_gz)).decode()
+    with open('/tmp/rancher_release_fixed.b64', 'w') as f:
+        f.write(new_outer_b64)
+    PYEOF
+    kubectl patch secret "$secret" -n cattle-system --type=merge \
+      -p "{\"data\":{\"release\":\"$(cat /tmp/rancher_release_fixed.b64)\"},\"metadata\":{\"labels\":{\"status\":\"deployed\"}}}"
+    rm -f /tmp/rancher_release.b64 /tmp/rancher_release_fixed.b64
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: rancher_helm_pending_heal
+  changed_when: rancher_helm_pending_heal.rc == 0
+  when:
+    - rancher_helm_pending_release_auto_heal_enabled | bool
+    - rancher_helm_status is match('^pending-')
+    - rancher_last_deployed_revision | default('') | string | length == 0
+    - rancher_actually_healthy | default(false)
+
+- name: Fail when Rancher Helm release is pending and no deployed revision exists
+  ansible.builtin.fail:
+    msg: >-
+      Rancher Helm release is in pending state ({{ rancher_helm_status }}), no prior
+      deployed revision was found for rollback recovery, and the Rancher Deployment
+      itself is not healthy either. Resolve the Helm release manually before
+      re-running the playbook.
+  when:
+    - rancher_helm_status is match('^pending-')
+    - rancher_last_deployed_revision | default('') | string | length == 0
+    - not (rancher_actually_healthy | default(false))
 
 - name: Install Rancher via Helm
   ansible.builtin.shell: |
@@ -166,3 +231,137 @@
     ((rancher_ready.resources[0].status.availableReplicas | default(0)) | int) >=
     (rancher_replicas | default(1) | int)
   changed_when: false
+
+- name: Wait for rancher-turtles controller pod to be created by Rancher's async installer
+  # Rancher auto-installs the bundled rancher-turtles (embedded Cluster API) app via its own
+  # internal helm-operation controller — this typically starts several minutes *after* the
+  # main Rancher Deployment is Ready, not synchronously with it. A single snapshot check here
+  # would almost always see "no pod yet" and wrongly conclude there's nothing to recover, so
+  # poll with a generous budget for the pod to even show up before judging its health.
+  # This is Rancher-managed, not deployed by this role — see README.md "Out of Scope" (CAPI).
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ rancher_turtles_namespace }}"
+    label_selectors:
+      - "control-plane=controller-manager"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: rancher_turtles_pods
+  until: (rancher_turtles_pods.resources | default([]) | length) > 0
+  retries: "{{ rancher_turtles_appearance_retries | int }}"
+  delay: "{{ rancher_turtles_appearance_delay | int }}"
+  failed_when: false
+  changed_when: false
+  when: rancher_turtles_auto_recover_enabled | bool
+
+- name: Wait for rancher-turtles controller to reach a stable Ready or crash-looping state
+  # Once the pod exists, give it time to settle: it either becomes Ready on its own (the CAPI
+  # Operator finished provisioning CRDs in the meantime), or it accumulates enough restarts to
+  # be confidently judged as crash-looping. CrashLoopBackOff's exponential backoff means hitting
+  # the restart threshold can itself take several minutes, so this needs its own generous budget.
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ rancher_turtles_namespace }}"
+    label_selectors:
+      - "control-plane=controller-manager"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: rancher_turtles_pods
+  until: >-
+    (rancher_turtles_pods.resources | default([]) | length) == 0 or
+    (
+      (rancher_turtles_pods.resources[0].status.containerStatuses
+        | default([{'ready': false, 'restartCount': 0}]))[0].ready | default(false)
+    ) or
+    (
+      (rancher_turtles_pods.resources[0].status.containerStatuses
+        | default([{'restartCount': 0}]))[0].restartCount | default(0) | int
+    ) >= (rancher_turtles_crashloop_restart_threshold | int)
+  retries: "{{ rancher_turtles_stabilize_retries | int }}"
+  delay: "{{ rancher_turtles_stabilize_delay | int }}"
+  failed_when: false
+  changed_when: false
+  when:
+    - rancher_turtles_auto_recover_enabled | bool
+    - (rancher_turtles_pods.resources | default([]) | length) > 0
+
+- name: Detect rancher-turtles crash-looping on the CAPI CRD bootstrap race
+  ansible.builtin.set_fact:
+    rancher_turtles_crashlooping: >-
+      {{
+        (rancher_turtles_pods.resources | default([]) | length) > 0 and
+        (
+          (rancher_turtles_pods.resources[0].status.containerStatuses
+            | default([{'ready': true, 'restartCount': 0}]))[0].ready | default(true) == false
+        ) and
+        (
+          (rancher_turtles_pods.resources[0].status.containerStatuses
+            | default([{'restartCount': 0}]))[0].restartCount | default(0) | int
+        ) >= (rancher_turtles_crashloop_restart_threshold | int)
+      }}
+  when: rancher_turtles_auto_recover_enabled | bool
+
+- name: Recycle rancher-turtles namespace to recover from CAPI CRD bootstrap race
+  # Deleting the namespace forces Rancher's app controller to reinstall the chart from
+  # scratch; by the time it retries, the CAPI Operator has normally already reconciled the
+  # core CRDs. See https://turtles.docs.rancher.com/turtles/stable/en/troubleshooting/troubleshooting.html
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ rancher_turtles_namespace }}"
+    state: absent
+    wait: true
+    wait_timeout: 120
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  when:
+    - rancher_turtles_auto_recover_enabled | bool
+    - rancher_turtles_crashlooping | default(false)
+
+- name: Wait for Rancher to reinstall a healthy rancher-turtles controller
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ rancher_turtles_namespace }}"
+    label_selectors:
+      - "control-plane=controller-manager"
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+  register: rancher_turtles_recovered
+  until: >-
+    (rancher_turtles_recovered.resources | default([]) | length) > 0 and
+    (
+      (rancher_turtles_recovered.resources[0].status.containerStatuses
+        | default([{'ready': false}]))[0].ready | default(false)
+    )
+  retries: "{{ rancher_turtles_recovery_retries | int }}"
+  delay: "{{ rancher_turtles_recovery_delay | int }}"
+  changed_when: false
+  failed_when: false
+  when:
+    - rancher_turtles_auto_recover_enabled | bool
+    - rancher_turtles_crashlooping | default(false)
+
+- name: Record whether rancher-turtles recovered
+  ansible.builtin.set_fact:
+    rancher_turtles_recovered_ok: >-
+      {{
+        (rancher_turtles_recovered.resources | default([]) | length) > 0 and
+        (
+          (rancher_turtles_recovered.resources[0].status.containerStatuses
+            | default([{'ready': false}]))[0].ready | default(false)
+        )
+      }}
+  when:
+    - rancher_turtles_auto_recover_enabled | bool
+    - rancher_turtles_crashlooping | default(false)
+
+- name: Warn when rancher-turtles did not recover automatically
+  ansible.builtin.debug:
+    msg: >-
+      rancher-turtles-controller-manager was still not Ready after recycling
+      {{ rancher_turtles_namespace }}. This is Rancher's bundled Cluster API
+      integration (not managed by this repo) — inspect manually with
+      `kubectl logs -n {{ rancher_turtles_namespace }} -l control-plane=controller-manager`.
+  when:
+    - rancher_turtles_auto_recover_enabled | bool
+    - rancher_turtles_crashlooping | default(false)
+    - not (rancher_turtles_recovered_ok | default(false))

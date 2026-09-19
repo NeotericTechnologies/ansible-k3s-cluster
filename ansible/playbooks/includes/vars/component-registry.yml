@@ -51,6 +51,17 @@ upgrade_components:
     upgrade_priority: 20
     play_file: includes/upgrade-kube-vip.yml
 
+  - name: cilium
+    version_var: cilium_version
+    enabled_var: cilium_enabled
+    detect_method: helm_release
+    detect_args:
+      release_name: cilium
+      namespace: kube-system
+    fresh_install_priority: 11
+    upgrade_priority: 22
+    play_file: includes/upgrade-cilium.yml
+
   - name: k3s_servers
     version_var: k3s_version
     enabled_var: null

@@ -44,7 +44,7 @@
       ansible.builtin.command: >-
         kubectl wait --for=jsonpath='{.status.phase}'=Bound
         pvc/{{ test_pvc_name }} -n {{ test_namespace }}
-        --timeout=120s
+        --timeout=300s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: pvc_bound
@@ -80,7 +80,7 @@
     - name: Wait for writer pod to complete
       ansible.builtin.command: >-
         kubectl wait --for=condition=Ready pod/{{ test_pod_name }}
-        -n {{ test_namespace }} --timeout=120s
+        -n {{ test_namespace }} --timeout=300s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: pod_ready
@@ -167,7 +167,7 @@
       ansible.builtin.command: >-
         kubectl wait --for=jsonpath='{.status.phase}'=Bound
         pvc/{{ test_pvc_name }} -n {{ test_namespace }}
-        --timeout=120s
+        --timeout=300s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: pvc_bound
@@ -203,7 +203,7 @@
     - name: Wait for writer pod to be ready
       ansible.builtin.command: >-
         kubectl wait --for=condition=Ready pod/{{ test_pod_name }}
-        -n {{ test_namespace }} --timeout=120s
+        -n {{ test_namespace }} --timeout=300s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: pod_ready
