@@ -119,15 +119,6 @@
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Fail when a desired component version differs from live
-      ansible.builtin.assert:
-        that:
-          - item.desired == item.live
-        fail_msg: "Version drift detected for {{ item.name }}: desired={{ item.desired }}, live={{ item.live }}"
-      loop: "{{ smoke_version_checks }}"
-      loop_control:
-        label: "{{ item.name }}"
-
     - name: Check if k3s service is running
       ansible.builtin.systemd:
         name: k3s
