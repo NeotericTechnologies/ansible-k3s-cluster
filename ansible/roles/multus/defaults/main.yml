@@ -16,6 +16,8 @@ multus_cni_bin_dir: "/var/lib/rancher/k3s/data/current/bin"
 # Multus daemon configuration
 multus_log_level: "error"
 multus_log_to_stderr: true
+multus_requests_memory: "128Mi"
+multus_limits_memory: "256Mi"
 
 # DHCP daemon for DHCP-based IPAM on secondary networks
 # When true, deploys a DHCP daemon DaemonSet that proxies DHCP requests

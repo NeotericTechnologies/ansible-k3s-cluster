@@ -165,10 +165,10 @@ spec:
           resources:
             requests:
               cpu: "100m"
-              memory: "64Mi"
+              memory: "{{ multus_requests_memory }}"
             limits:
               cpu: "100m"
-              memory: "128Mi"
+              memory: "{{ multus_limits_memory }}"
           securityContext:
             privileged: true
           terminationMessagePolicy: FallbackToLogsOnError
