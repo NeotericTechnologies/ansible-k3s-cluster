@@ -9,7 +9,7 @@
   tasks:
     - name: Load shared cluster defaults used by smoke assertions
       ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../../ansible/group_vars/all.yml"
+        file: "{{ playbook_dir }}/../../../ansible/inventories/test-cluster/group_vars/all.yml"
         name: smoke_defaults
 
     - name: Check if k3s is installed
@@ -22,6 +22,111 @@
       ansible.builtin.debug:
         msg: "k3s version: {{ k3s_version_output.stdout }}"
       when: k3s_version_output.rc == 0
+
+    - name: Collect live component versions
+      ansible.builtin.shell: "{{ item.command }}"
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      loop:
+        - key: k3s_version
+          command: "k3s --version | head -n1 | awk '{print $3}'"
+        - key: kube_vip_version
+          command: "kubectl get ds kube-vip -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: kube_vip_cloud_provider_version
+          command: "kubectl get deploy kube-vip-cloud-controller -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: kube_vip_label_reconciler_kubectl_version
+          command: "kubectl get cronjob kube-vip-label-reconciler -n kube-system -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].image}' | sed -E 's/.*:([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: cilium_version
+          command: "kubectl get ds cilium -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: cert_manager_version
+          command: "kubectl get deploy cert-manager -n cert-manager -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: multus_version
+          command: "kubectl get ds kube-multus-ds -n kube-system -o jsonpath='{.spec.template.spec.initContainers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+-thick).*/\\1/'"
+        - key: multus_dhcp_daemon_image
+          command: "kubectl get ds multus-dhcp-daemon -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}'"
+        - key: multus_cni_plugins_version
+          command: "kubectl get ds multus-dhcp-daemon -n kube-system -o jsonpath='{.spec.template.spec.initContainers[0].command[2]}' | sed -n 's/.*DESIRED_VERSION=\"\\([^\"]*\\)\".*/\\1/p'"
+        - key: rancher_version
+          command: "kubectl get deploy rancher -n cattle-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:v?([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: traefik_version
+          command: "kubectl get deploy traefik -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: synology_csi_version
+          command: "kubectl get sts synology-csi-controller -n synology-csi -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: synology_csi_snapshotter_version
+          command: "kubectl get deploy synology-csi-snapshotter -n synology-csi -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: csi_nfs_version
+          command: "kubectl get deploy csi-nfs-controller -n kube-system -o jsonpath='{range .spec.template.spec.containers[*]}{.image}{\"\\n\"}{end}' | sed -n 's/.*nfsplugin:\\(v[0-9.]*\\).*/\\1/p'"
+      register: smoke_version_results
+      changed_when: false
+      failed_when: false
+
+    - name: Build live version map
+      ansible.builtin.set_fact:
+        smoke_live_versions: "{{ dict(smoke_version_results.results | map(attribute='item.key') | zip(smoke_version_results.results | map(attribute='stdout'))) }}"
+
+    - name: Build desired versus live version checks
+      ansible.builtin.set_fact:
+        smoke_version_checks:
+          - name: k3s_version
+            desired: "{{ smoke_defaults.k3s_version }}"
+            live: "{{ smoke_live_versions.k3s_version | trim }}"
+          - name: kube_vip_version
+            desired: "{{ smoke_defaults.kube_vip_version }}"
+            live: "{{ smoke_live_versions.kube_vip_version | trim }}"
+          - name: kube_vip_cloud_provider_version
+            desired: "{{ smoke_defaults.kube_vip_cloud_provider_version }}"
+            live: "{{ smoke_live_versions.kube_vip_cloud_provider_version | trim }}"
+          - name: kube_vip_label_reconciler_kubectl_version
+            desired: "{{ smoke_defaults.kube_vip_label_reconciler_kubectl_version }}"
+            live: "{{ smoke_live_versions.kube_vip_label_reconciler_kubectl_version | trim }}"
+          - name: cilium_version
+            desired: "{{ smoke_defaults.cilium_version }}"
+            live: "{{ smoke_live_versions.cilium_version | trim }}"
+          - name: cert_manager_version
+            desired: "{{ smoke_defaults.cert_manager_version }}"
+            live: "{{ smoke_live_versions.cert_manager_version | trim }}"
+          - name: multus_version
+            desired: "{{ smoke_defaults.multus_version }}"
+            live: "{{ smoke_live_versions.multus_version | trim }}"
+          - name: multus_dhcp_daemon_image
+            desired: "{{ smoke_defaults.multus_dhcp_daemon_image }}"
+            live: "{{ smoke_live_versions.multus_dhcp_daemon_image | trim }}"
+          - name: multus_cni_plugins_version
+            desired: "{{ smoke_defaults.multus_cni_plugins_version }}"
+            live: "{{ smoke_live_versions.multus_cni_plugins_version | trim }}"
+          - name: rancher_version
+            desired: "{{ smoke_defaults.rancher_version }}"
+            live: "{{ smoke_live_versions.rancher_version | trim }}"
+          - name: traefik_version
+            desired: "{{ smoke_defaults.traefik_version }}"
+            live: "{{ smoke_live_versions.traefik_version | trim }}"
+          - name: synology_csi_version
+            desired: "{{ smoke_defaults.synology_csi_version }}"
+            live: "{{ smoke_live_versions.synology_csi_version | trim }}"
+          - name: synology_csi_snapshotter_version
+            desired: "{{ smoke_defaults.synology_csi_snapshotter_version }}"
+            live: "{{ smoke_live_versions.synology_csi_snapshotter_version | trim }}"
+          - name: csi_nfs_version
+            desired: "{{ smoke_defaults.csi_nfs_version }}"
+            live: "{{ smoke_live_versions.csi_nfs_version | trim }}"
+
+    - name: Display desired versus live version summary
+      ansible.builtin.debug:
+        msg: "{{ 'DIFF' if item.desired != item.live else 'OK' }} {{ item.name }}: desired={{ item.desired }}, live={{ item.live }}"
+      loop: "{{ smoke_version_checks }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail when a desired component version differs from live
+      ansible.builtin.assert:
+        that:
+          - item.desired == item.live
+        fail_msg: "Version drift detected for {{ item.name }}: desired={{ item.desired }}, live={{ item.live }}"
+      loop: "{{ smoke_version_checks }}"
+      loop_control:
+        label: "{{ item.name }}"
 
     - name: Check if k3s service is running
       ansible.builtin.systemd:
@@ -46,16 +151,12 @@
       changed_when: false
       failed_when: false
 
-    - name: Display cluster nodes
-      ansible.builtin.debug:
-        var: kubectl_nodes.stdout_lines
-      when: kubectl_nodes.rc == 0
-
     - name: Check control-plane VIP reachability
       ansible.builtin.wait_for:
         host: "{{ control_plane_vip }}"
         port: "{{ api_port }}"
         timeout: 5
+      register: control_plane_vip_status
       when: control_plane_vip is defined
 
     - name: Compute topology classification for smoke validation
@@ -89,3 +190,42 @@
     - name: Smoke test summary
       ansible.builtin.debug:
         msg: "Smoke tests completed. Review output above for any failures."
+
+    - name: Build human-readable smoke test summary
+      ansible.builtin.set_fact:
+        smoke_health_checks:
+          - name: k3s installed
+            passed: "{{ k3s_version_output.rc == 0 }}"
+          - name: k3s service running
+            passed: "{{ not (k3s_service_status.failed | default(false)) and (k3s_service_status.status.ActiveState | default('unknown') == 'active') }}"
+          - name: kubectl available
+            passed: "{{ kubectl_version.rc == 0 }}"
+          - name: cluster nodes listed
+            passed: "{{ kubectl_nodes.rc == 0 }}"
+          - name: control-plane VIP reachable
+            passed: "{{ not (control_plane_vip_status.failed | default(false)) }}"
+          - name: HA targets valid
+            passed: true
+          - name: non-HA defaults valid
+            passed: true
+
+    - name: Display final human-readable version report
+      ansible.builtin.debug:
+        msg: |
+          Smoke test summary
+          ==================
+          STATUS  TEST
+          {% for item in smoke_health_checks %}
+          {{ '%-7s %s' | format('OK' if item.passed else 'FAIL', item.name) }}
+          {% endfor %}
+
+          Cluster node summary
+          ====================
+          {{ kubectl_nodes.stdout | default('Node details unavailable') | trim }}
+
+          Component version summary
+          ========================
+          STATUS  COMPONENT                                      DESIRED                 LIVE
+          {% for item in smoke_version_checks %}
+          {{ '%-7s %-45s %-23s %s' | format('OK' if item.desired == item.live else 'DIFF', item.name, item.desired, item.live) }}
+          {% endfor %}
