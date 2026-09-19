@@ -154,6 +154,7 @@
     K3S_TOKEN: "{{ k3s_node_token }}"
     INSTALL_K3S_VERSION: "{{ k3s_version }}"
     INSTALL_K3S_EXEC: "server --server https://{{ groups['k3s_servers'][0] }}:{{ api_port }} --tls-san={{ control_plane_vip }} {{ k3s_server_extra_args }}"
+    INSTALL_K3S_SKIP_START: "true"
     INSTALL_K3S_FORCE: "{{ 'true' if k3s_args_drifted | default(false) | bool else omit }}"
   when:
     - k3s_install_needed
