@@ -34,7 +34,7 @@ Deploys the Synology CSI driver for persistent storage on k3s clusters, with opt
 | `synology_csi_namespace` | `synology-csi` | Namespace for CSI components |
 | `synology_csi_endpoint` | `""` | NAS management endpoint (FQDN or IP) |
 | `synology_csi_port` | `8443` | HTTPS API port |
-| `synology_csi_tls_verify` | `false` | Verify TLS certificate |
+| `synology_csi_tls_verify` | `false` | Verify TLS certificate; when false, renders Synology CSI `insecureSkipVerify: true` |
 | `synology_csi_username` | `""` | DSM credentials (use Ansible Vault) |
 | `synology_csi_password` | `""` | DSM credentials (use Ansible Vault) |
 | `synology_csi_snapshots_enabled` | `false` | Deploy snapshot controller and CRDs |
