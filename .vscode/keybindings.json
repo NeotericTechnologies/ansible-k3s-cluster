@@ -1,0 +1,9 @@
+// Example - Add this to your Keybindings file.
+[
+    {
+        "key": "ctrl+alt+shift+e",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Ansible Vault Edit Current File",
+        "when": "editorFocus"
+    }
+]
