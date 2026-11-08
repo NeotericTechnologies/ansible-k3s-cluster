@@ -8,6 +8,9 @@ rancher_version: "2.15.1"
 
 rancher_ha_min_replicas: 2
 rancher_non_ha_default_replicas: 1
-rancher_hostname: "rancher.example.com"
 rancher_ingress_class: "traefik"
 rancher_tls_source: "cert-manager"
+
+# Sensitive information: maintain actual values as overrides in your private
+# ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
+rancher_hostname: "rancher.example.com"

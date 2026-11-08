@@ -12,9 +12,11 @@ k3s_version: "v1.36.4+k3s1"
 k3s_server_ha_min_replicas: 3
 k3s_server_non_ha_default_replicas: 1
 
+# HA mode: single-node | embedded-etcd-ha
+ha_mode: "embedded-etcd-ha"
+
+# Sensitive information: maintain actual values as overrides in your private
+# ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
 # Control-plane access (VIP managed by kube-vip)
 control_plane_vip: "192.168.1.100"
 api_port: 6443
-
-# HA mode: single-node | embedded-etcd-ha
-ha_mode: "embedded-etcd-ha"

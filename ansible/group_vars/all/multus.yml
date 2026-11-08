@@ -18,6 +18,10 @@ multus_dhcp_daemon_image: "alpine:3.24.2"
 
 # https://github.com/containernetworking/plugins/releases
 multus_cni_plugins_version: "v1.9.1"  # CNI plugins release (initContainer downloads tarball)
+
+# Sensitive information: maintain actual values as overrides in your private
+# ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
+# Multus VLAN network configuration (including interface, VLAN, and IPAM details).
 multus_vlan_networks: []
 # Example:
 # multus_vlan_networks:

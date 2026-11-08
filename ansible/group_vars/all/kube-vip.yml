@@ -19,9 +19,7 @@ kube_vip_label_reconciler_kubectl_version: "1.37.0"
 
 kube_vip_ha_min_replicas: 2
 kube_vip_non_ha_default_replicas: 1
-kube_vip_interface: "eth0"
 kube_vip_lb_enable: true
-kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
 kube_vip_lb_dhcp_enabled: false
 
 # kube-vip service leader election (auto-enabled when kube_vip_egress_enabled: true)
@@ -36,8 +34,6 @@ kube_vip_enable_node_labeling: false
 
 # kube-vip egress gateway (combined with Cilium CiliumEgressGatewayPolicy)
 kube_vip_egress_enabled: false
-kube_vip_egress_ip: ""
-kube_vip_egress_hostname: ""
 kube_vip_egress_namespace: "kube-system"
 kube_vip_egress_policy_name: "egress-gateway-policy"
 kube_vip_egress_pod_selector: {}
@@ -49,3 +45,10 @@ kube_vip_egress_destination_cidrs:
 kube_vip_egress_gateway_node_selector:
   service-provided.kube-vip.io/egress-gateway-svc.kube-system: "{{ kube_vip_egress_ip }}"
 kube_vip_egress_gateway_interface: "{{ kube_vip_interface }}"
+
+# Sensitive information: maintain actual values as overrides in your private
+# ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
+kube_vip_interface: "eth0"
+kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
+kube_vip_egress_ip: ""
+kube_vip_egress_hostname: ""

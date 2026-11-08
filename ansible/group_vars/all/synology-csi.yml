@@ -15,12 +15,26 @@ synology_csi_snapshotter_version: "v8.6.0"
 synology_csi_ha_min_replicas: 2
 synology_csi_non_ha_default_replicas: 1
 synology_csi_namespace: "synology-csi"
+synology_csi_snapshots_enabled: false
+
+# csi-driver-nfs configuration (NFS sub-directory provisioning via kubernetes-csi/csi-driver-nfs)
+# Deploys nfs.csi.k8s.io driver via Helm; creates sub-directories in a pre-existing NFS share per PVC
+# See ansible/roles/synology-csi/defaults/main.yml for full variable reference
+# https://github.com/kubernetes-csi/csi-driver-nfs/releases
+csi_nfs_enabled: false
+csi_nfs_version: "v4.13.4"
+# csi_nfs_version: "v4.13.2"
+
+csi_nfs_ha_min_replicas: 2
+csi_nfs_non_ha_default_replicas: 1
+
+# Sensitive information: maintain actual values as overrides in your private
+# ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
 synology_csi_endpoint: ""
 synology_csi_port: 8443
 synology_csi_tls_verify: false
 synology_csi_username: ""
-synology_csi_password: ""  # Store in Ansible Vault
-synology_csi_snapshots_enabled: false
+synology_csi_password: ""
 synology_csi_storage_classes:
   - name: "synology-iscsi-retain"
     protocol: "iscsi"
@@ -37,17 +51,6 @@ synology_csi_storage_classes:
     volume_binding_mode: "Immediate"
     parameters:
       location: "/volume1"
-
-# csi-driver-nfs configuration (NFS sub-directory provisioning via kubernetes-csi/csi-driver-nfs)
-# Deploys nfs.csi.k8s.io driver via Helm; creates sub-directories in a pre-existing NFS share per PVC
-# See ansible/roles/synology-csi/defaults/main.yml for full variable reference
-# https://github.com/kubernetes-csi/csi-driver-nfs/releases
-csi_nfs_enabled: false
-csi_nfs_version: "v4.13.4"
-# csi_nfs_version: "v4.13.2"
-
-csi_nfs_ha_min_replicas: 2
-csi_nfs_non_ha_default_replicas: 1
 csi_nfs_storage_classes:
   - name: "nfs-subdir"
     server: "{{ synology_csi_endpoint }}"
