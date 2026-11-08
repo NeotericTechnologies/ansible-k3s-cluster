@@ -56,10 +56,10 @@
       ansible.builtin.set_fact:
         test_rancher_version: "v2.9.0"  # Fixed test version
 
-    - name: Store original group_vars for restoration
+    - name: Store original Rancher group_vars for restoration
       ansible.builtin.slurp:
-        src: "{{ playbook_dir }}/../../ansible/group_vars/all.yml"
-      register: original_all_yml
+        src: "{{ playbook_dir }}/../../ansible/group_vars/all/rancher.yml"
+      register: original_rancher_vars
 
     - name: "Create temporary test inventory with isolated Rancher version override"
       block:

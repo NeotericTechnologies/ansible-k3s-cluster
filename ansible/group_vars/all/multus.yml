@@ -1,0 +1,41 @@
+---
+# multus CNI configuration (when enabled)
+# See ansible/roles/multus/README.md for full variable reference
+# https://github.com/k8snetworkplumbingwg/multus-cni/releases
+# https://github.com/k8snetworkplumbingwg/multus-cni/pkgs/container/multus-cni
+multus_enabled: true
+multus_version: "v4.3.1-thick"
+# multus_version: "v4.3.0-thick"
+
+multus_ha_min_replicas: 2
+multus_non_ha_default_replicas: 1
+multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based IPAM
+
+# Image for DHCP daemon initContainer + main container
+# https://hub.docker.com/_/alpine/tags
+multus_dhcp_daemon_image: "alpine:3.24.2"
+# multus_dhcp_daemon_image: "alpine:3"
+
+# https://github.com/containernetworking/plugins/releases
+multus_cni_plugins_version: "v1.9.1"  # CNI plugins release (initContainer downloads tarball)
+multus_vlan_networks: []
+# Example:
+# multus_vlan_networks:
+#   - name: iot-vlan
+#     # Must match an interface that exists on every target node.
+#     # Using ens18 (same NIC as kube_vip_interface) avoids "Link not found" from macvlan.
+#     interface: ens18
+#     # Leave vlan_id unset unless the host already has a matching VLAN subinterface (e.g. ens18.10).
+#     ipam_type: dhcp          # dhcp (default) | host-local | static
+#
+#   - name: iot-vlan
+#     interface: eth0
+#     vlan_id: 50
+#     ipam_type: dhcp          # dhcp (default) | host-local | static
+#
+#   - name: storage-net
+#     interface: eth0
+#     vlan_id: 100
+#     ipam_type: host-local
+#     cidr: 10.100.0.0/24
+#     gateway: 10.100.0.1

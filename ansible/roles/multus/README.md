@@ -129,7 +129,7 @@ Setting `multus_dhcp_daemon_enabled: false` and re-running the playbook will cle
 ### Enable multus in group_vars
 
 ```yaml
-# ansible/group_vars/all.yml (or inventory group_vars)
+# ansible/group_vars/all/multus.yml (or inventory group_vars)
 multus_enabled: true
 
 multus_vlan_networks:

@@ -9,7 +9,7 @@
   tasks:
     - name: Load shared cluster defaults used by smoke assertions
       ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../../ansible/inventories/test-cluster/group_vars/all.yml"
+        dir: "{{ playbook_dir }}/../../../ansible/inventories/test-cluster/group_vars/all"
         name: smoke_defaults
 
     - name: Check if k3s is installed

@@ -264,7 +264,7 @@ api_token: "my_secret_token_123"
 
 ## Cleanup and Version Management Rules
 
-- Treat `ansible/group_vars/all.yml` as the canonical source for managed component versions.
+- Treat the matching file under `ansible/group_vars/all/` as the canonical source for each managed component's version.
 - Avoid adding new hard-coded version literals in playbooks, templates, or role defaults when a central variable exists.
 - When removing or deprecating repository artifacts, run reference scans across `ansible/`, `docs/`, and `tests/` and update stale references in the same change.
 - Record cleanup rationale and validation evidence in `docs/cleanup-decision-record.md` for cleanup-focused features.

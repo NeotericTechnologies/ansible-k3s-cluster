@@ -10,7 +10,7 @@
   tasks:
     - name: Load shared HA disruption defaults
       ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../../ansible/group_vars/all.yml"
+        dir: "{{ playbook_dir }}/../../../ansible/group_vars/all"
         name: smoke_defaults
 
     - name: Resolve disruption timing thresholds

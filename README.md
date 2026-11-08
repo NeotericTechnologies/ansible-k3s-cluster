@@ -54,26 +54,33 @@ vi ansible/inventories/production/hosts.ini
 
 ### 3. Configure Variables
 
-Edit cluster configuration in `ansible/group_vars/all.yml`:
+Edit cluster configuration in `ansible/group_vars/all/`, with each component's settings in its own file:
 
 ```yaml
+# ansible/group_vars/all/k3s.yml
 cluster_name: "my-k3s-cluster"
 k3s_version: "v1.28.5+k3s1"
 control_plane_vip: "192.168.1.100"
+
+# ansible/group_vars/all/kube-vip.yml
 kube_vip_interface: "eth0"
 
-# Enable desired add-ons
+# Enable desired add-ons in their component files
+# ansible/group_vars/all/cert-manager.yml
 cert_manager_enabled: true
+# ansible/group_vars/all/rancher.yml
 rancher_enabled: true
+# ansible/group_vars/all/traefik.yml
 traefik_enabled: true
+# ansible/group_vars/all/multus.yml
 multus_enabled: true
 ```
 
 Version management policy:
 
-- Treat `ansible/group_vars/all.yml` as the canonical source for managed component versions.
+- Treat the matching files under `ansible/group_vars/all/` as the canonical source for managed component versions.
 - Avoid embedding new hard-coded versions in role defaults or playbook commands.
-- Use inventory-specific overrides (for example `ansible/inventories/test-cluster/group_vars/all.yml`) when environment-specific version differences are required.
+- Use inventory-specific overrides (for example files under `ansible/inventories/test-cluster/group_vars/all/`) when environment-specific version differences are required.
 
 For multus VLAN networking, define secondary networks:
 
@@ -230,7 +237,7 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/scale-nodes
 
 ### Upgrade k3s Version
 
-Update `k3s_version` in `group_vars/all.yml`, then:
+Update `k3s_version` in `group_vars/all/k3s.yml`, then:
 
 ```bash
 # Recommended: Unified workflow (handles dependency ordering, cordon/drain, constraint validation)
@@ -240,7 +247,7 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
 To upgrade Rancher and k3s together (Rancher is upgraded first automatically):
 
 ```bash
-# Update rancher_version and k3s_version in group_vars/all.yml, then:
+# Update rancher_version in group_vars/all/rancher.yml and k3s_version in group_vars/all/k3s.yml, then:
 ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
 ```
 
@@ -313,7 +320,7 @@ ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-
 
 ### Add-ons Strategy
 
-- **Conditional Deployment**: Enable/disable via `*_enabled` flags in `group_vars/all.yml`
+- **Conditional Deployment**: Enable/disable via `*_enabled` flags in the corresponding files under `group_vars/all/`
 - **Helm-Based**: Rancher, rancher-monitoring use Helm charts
 - **kubectl-Based**: cert-manager, multus, kube-vip use manifests
 - **Provider-Agnostic**: cert-manager DNS-01 supports multiple providers via credentials
@@ -356,7 +363,7 @@ ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-
 
 ### Add-ons not deploying
 
-1. Check enablement flags in `group_vars/all.yml`
+1. Check enablement flags in the corresponding files under `group_vars/all/`
 2. Verify cluster is operational: `kubectl get nodes`
 3. Check pod status: `kubectl get pods -A`
 
@@ -379,4 +386,3 @@ This project follows constitutional governance. See [.specify/memory/constitutio
 - [cert-manager](https://cert-manager.io/)
 - [Rancher](https://www.rancher.com/)
 - [Ansible Documentation](https://docs.ansible.com/)
-

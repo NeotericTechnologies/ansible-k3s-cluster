@@ -12,7 +12,19 @@ ansible/
 │   │   └── single-node/ # Single control-plane node
 │   └── production/      # Production inventory (user-defined)
 ├── group_vars/          # Group-level variables
-│   ├── all.yml         # Cluster-wide settings
+│   ├── all/            # Cluster-wide settings, split by component
+│   │   ├── 00_defaults.yml
+│   │   ├── k3s.yml
+│   │   ├── kube-vip.yml
+│   │   ├── cilium.yml
+│   │   ├── cert-manager.yml
+│   │   ├── multus.yml
+│   │   ├── rancher.yml
+│   │   ├── rancher-monitoring.yml
+│   │   ├── traefik.yml
+│   │   ├── synology-csi.yml
+│   │   ├── ha-policy.yml
+│   │   └── upgrade.yml
 │   ├── k3s_servers.yml # Control-plane node settings
 │   └── k3s_agents.yml  # Worker node settings
 ├── host_vars/           # Host-specific variables (optional)
@@ -93,40 +105,40 @@ Before running the playbooks, ensure each target host meets the following requir
 ### HA Configuration
 For high availability with embedded etcd:
 - Use **odd number** of control-plane nodes (1, 3, or 5)
-- Set `ha_mode: "embedded-etcd-ha"` in `group_vars/all.yml`
+- Set `ha_mode: "embedded-etcd-ha"` in `group_vars/all/k3s.yml`
 - Configure `control_plane_vip` for kube-vip virtual IP
 
 ### Single-Node Configuration
 For development or small deployments:
 - Define single host in `k3s_servers` group
-- Set `ha_mode: "single-node"` in `group_vars/all.yml`
+- Set `ha_mode: "single-node"` in `group_vars/all/k3s.yml`
 - No workers required
 
 ## Variable Structure
 
-### Cluster-Wide Variables (`group_vars/all.yml`)
+### Cluster-Wide Variables (`group_vars/all/`)
 - Cluster identity (name, version)
 - Control-plane VIP and port
-- Add-on enablement flags
-- Add-on configuration (cert-manager, multus, Rancher, etc.)
-- kube-vip configuration
+- Generic defaults in `00_defaults.yml`
+- Each component's enablement flag, version, and configuration in its component file
+- HA execution policy in `ha-policy.yml`; upgrade compatibility and safety controls in `upgrade.yml`
 
 ### Canonical Version Source Policy
 
-- Use `ansible/group_vars/all.yml` as the authoritative version source for managed components (k3s, kube-vip, cert-manager, multus, Rancher, monitoring, Synology CSI).
+- Use the matching file under `ansible/group_vars/all/` as the authoritative version source for each managed component (for example, `k3s.yml`, `kube-vip.yml`, and `cert-manager.yml`).
 - Keep playbooks and role defaults free of duplicate hard-coded version values whenever possible.
 - For environment-specific needs, override versions in inventory-scoped group vars rather than editing role internals.
 
 ### Same-Scope HA Target Policy
 
-- Every managed component version variable must have corresponding HA/non-HA target variables in the same top-level `group_vars/all.yml` scope.
+- Every managed component version variable must have corresponding HA/non-HA target variables in the same component file under `group_vars/all/`.
 - Environment-specific adjustments must use inventory-scoped `group_vars/all.yml` overrides for both version and HA target variables together.
 - Do not add HA target values only in role defaults when a top-level version variable exists.
 
 ### Maintainer Workflow for New Managed Components
 
-1. Add the component version variable in `ansible/group_vars/all.yml`.
-2. Add `<component>_ha_min_replicas` and `<component>_non_ha_default_replicas` in the same file section.
+1. Add the component version variable in its file under `ansible/group_vars/all/`.
+2. Add `<component>_ha_min_replicas` and `<component>_non_ha_default_replicas` in the same component file.
 3. Add inventory override examples in test/prod inventory `group_vars/all.yml` if needed.
 4. Update `docs/ansible-k3s-baseline.md` HA policy table and expectation matrix.
 5. Extend `ansible/roles/k3s-common/tasks/resolve-ha-policy.yml` with component policy mapping.

@@ -1,7 +1,7 @@
 ---
 # ansible/roles/cert-manager/defaults/main.yml
 # Purpose: Default variables for cert-manager role
-# Reference: Configured in group_vars/all.yml
+# Reference: Configured in group_vars/all/cert-manager.yml
 
 cert_manager_enabled: false
 cert_manager_email: "admin@example.com"

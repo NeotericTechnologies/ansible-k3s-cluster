@@ -1,0 +1,14 @@
+---
+# cert-manager DNS-01 configuration (when enabled)
+# https://github.com/cert-manager/cert-manager/releases
+cert_manager_enabled: false
+cert_manager_version: "v1.21.2"
+# cert_manager_version: "v1.19.5"
+
+cert_manager_ha_min_replicas: 2
+cert_manager_non_ha_default_replicas: 1
+cert_manager_email: "admin@example.com"
+cert_manager_dns_provider: "cloudflare"  # Options: cloudflare, route53, etc.
+cert_manager_dns_provider_credentials: {}  # Provider-specific credentials (secret)
+cert_manager_staging_issuer: "letsencrypt-staging"
+cert_manager_production_issuer: "letsencrypt-production"
