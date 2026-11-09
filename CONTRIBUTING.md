@@ -2,6 +2,23 @@
 
 Thank you for considering contributing to this project! This document provides guidelines for contributions.
 
+## Private Configuration and Workspace
+
+Keep network-specific inventories and sensitive overrides in your private
+`ansible-k3s-cluster-ops` repository, encrypted with Ansible Vault. This public
+repository owns the automation and shared defaults; the ops repository is a
+configuration companion, not a separate Ansible implementation.
+
+Open [ansible-k3s-cluster.code-workspace](ansible-k3s-cluster.code-workspace)
+to manage both sibling checkouts in VS Code. Review and commit changes in each
+repository separately, and never include private values, Vault password files,
+or decrypted inventory output in public pull requests.
+
+See [Private Configuration and Multi-Repository Workspace](README.md#private-configuration-and-multi-repository-workspace)
+for the directory layout, shared Vault settings, automatic decryption, and
+combined-inventory commands. Run Ansible from the main checkout so it uses the
+main project's `ansible.cfg` and Git-ignored `.vault_pass`.
+
 ## Code of Conduct
 
 - Be respectful and inclusive
