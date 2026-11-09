@@ -77,7 +77,7 @@
           - "1. BACKUP ETCD DATA (critical!):"
           - "   On control-plane: tar -czf etcd-backup.tar.gz /var/lib/rancher/k3s/server/db/"
           - ""
-          - "2. Set target version in group_vars/all.yml or use extra-vars:"
+          - "2. Set target version in group_vars/all/k3s.yml or use extra-vars:"
           - "   k3s_version: v1.28.6+k3s1"
           - ""
           - "3. Run upgrade playbook:"

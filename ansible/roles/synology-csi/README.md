@@ -113,7 +113,7 @@ csi_nfs_storage_classes:
 Enable in your inventory group vars:
 
 ```yaml
-# group_vars/all.yml or host_vars
+# group_vars/all/synology-csi.yml or host_vars
 synology_csi_enabled: true
 synology_csi_endpoint: "nas.example.com"
 synology_csi_username: "k8s-csi"

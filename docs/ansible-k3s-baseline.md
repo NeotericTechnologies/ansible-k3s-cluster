@@ -115,13 +115,13 @@ The `ansible/requirements.yml` documents the `kubernetes.core` and `community.ku
 
 ## Version Management Policy
 
-- Canonical managed-component versions are defined in `ansible/group_vars/all.yml`.
+- Canonical managed-component versions are defined in the corresponding component files under `ansible/group_vars/all/`.
 - Avoid introducing duplicate hard-coded versions in role defaults or playbook command lines.
 - Use inventory-scoped overrides when one environment needs different versions.
 
 ## HA Policy Variable Reference
 
-Topology-aware HA targets are defined alongside corresponding component versions in `ansible/group_vars/all.yml` and can be overridden in inventory-scoped `group_vars/all.yml`.
+Topology-aware HA targets are defined alongside corresponding component versions in `ansible/group_vars/all/` and can be overridden in inventory-scoped `group_vars/all.yml`.
 
 | Component | Version Variable | HA Target Variable | Non-HA Default Variable |
 |-----------|------------------|--------------------|-------------------------|
@@ -238,8 +238,8 @@ cp -r inventories/examples/ha-cluster inventories/prod
 # Edit inventory
 vim inventories/prod/hosts.ini
 
-# Configure cluster variables
-vim group_vars/all.yml
+# Edit the relevant component files under group_vars/all/
+vim group_vars/all/k3s.yml
 ```
 
 ### 3. Provision Cluster
@@ -308,7 +308,7 @@ ansible-playbook -i inventories/prod/hosts.ini playbooks/cluster-core.yml
 
 **Example:**
 ```bash
-# Enable specific add-ons in group_vars/all.yml:
+# Enable each add-on in its component file under group_vars/all/:
 cert_manager_enabled: true
 traefik_enabled: true
 
@@ -386,14 +386,14 @@ ansible-playbook -i inventories/prod/hosts.ini \
 
 ### Essential Variables
 
-**group_vars/all.yml - Cluster Identity:**
+**group_vars/all/k3s.yml - Cluster Identity:**
 ```yaml
 cluster_name: my-k3s-cluster
 k3s_version: v1.28.5+k3s1
 api_port: 6443
 ```
 
-**group_vars/all.yml - kube-vip (Control-Plane VIP):**
+**group_vars/all/kube-vip.yml - kube-vip (Control-Plane VIP):**
 ```yaml
 control_plane_vip: 192.168.1.100
 ha_mode: true
@@ -401,13 +401,13 @@ kube_vip_version: v1.1.2
 kube_vip_cloud_provider_version: v0.0.12
 ```
 
-**group_vars/all.yml - LoadBalancer IP Pool:**
+**group_vars/all/kube-vip.yml - LoadBalancer IP Pool:**
 ```yaml
 kube_vip_lb_enabled: true
 kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
 ```
 
-**group_vars/all.yml - Add-on Flags:**
+**Add-on flags:** Set each flag in its matching component file under `group_vars/all/` (for example, `cert-manager.yml`, `multus.yml`, or `synology-csi.yml`).
 ```yaml
 cert_manager_enabled: true
 multus_enabled: false
@@ -449,7 +449,7 @@ synology_csi_storage_classes:
 **Enable with DNS-01 for wildcard certificates:**
 
 ```yaml
-# group_vars/all.yml
+# group_vars/all/cert-manager.yml
 cert_manager_enabled: true
 cert_manager_version: "v1.13.3"
 cert_manager_email: "admin@example.com"
@@ -493,7 +493,7 @@ vault_cert_manager_api_token: "secret_token_here"
 vault_synology_username: "admin"
 vault_synology_password: "secret_password"
 
-# Reference in group_vars/all.yml:
+# Reference from ansible/group_vars/all/cert-manager.yml:
 cert_manager_dns_provider_credentials:
   api_token: "{{ vault_cert_manager_api_token }}"
 synology_csi_username: "{{ vault_synology_username }}"

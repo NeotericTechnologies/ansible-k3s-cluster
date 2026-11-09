@@ -1,0 +1,5 @@
+---
+# Generic defaults shared by cluster components
+
+# Shared smoke/functional test image used in playbook runtime checks
+smoke_test_image: "busybox:1.36.1"

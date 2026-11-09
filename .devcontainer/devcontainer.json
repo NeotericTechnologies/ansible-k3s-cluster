@@ -1,6 +1,14 @@
 {
     "name": "Spec Kit",
     "image": "mcr.microsoft.com/devcontainers/python:2-3.14-trixie",
+    "workspaceFolder": "/workspaces/ansible-k3s-cluster",
+    "mounts": [
+        {
+            "source": "${localWorkspaceFolder}/../ansible-k3s-cluster-ops",
+            "target": "/workspaces/ansible-k3s-cluster-ops",
+            "type": "bind"
+        }
+    ],
     "features": {
         "ghcr.io/devcontainers-extra/features/uv:1": {},
         "ghcr.io/devcontainers-extra/features/ansible:2": {},

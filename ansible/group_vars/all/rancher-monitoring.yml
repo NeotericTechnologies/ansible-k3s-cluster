@@ -1,0 +1,9 @@
+---
+# rancher-monitoring configuration (when enabled)
+rancher_monitoring_enabled: false
+rancher_monitoring_version: "110.0.1"
+# rancher_monitoring_version: "103.0.3"
+
+rancher_monitoring_ha_min_replicas: 2
+rancher_monitoring_non_ha_default_replicas: 1
+rancher_monitoring_retention: "7d"

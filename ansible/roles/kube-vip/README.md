@@ -177,7 +177,7 @@ external, cluster-wide reconciler can.
 
 ## Role Variables
 
-### Required (from group_vars/all.yml)
+### Required (from group_vars/all/kube-vip.yml)
 
 ```yaml
 control_plane_vip: "192.168.1.100"
@@ -253,7 +253,7 @@ This role has been updated to support kube-vip v1.1.2, which includes several br
 - Added `priorityClassName: system-cluster-critical` to ensure pods survive eviction
 
 **Migration Steps:**
-1. Update `kube_vip_version` to `v1.1.2` in `group_vars/all.yml`
+1. Update `kube_vip_version` to `v1.1.2` in `group_vars/all/kube-vip.yml`
 2. Ensure `kube_vip_interface` is correctly set (usually `eth0`)
 3. Re-run the playbook to deploy updated manifests
 4. Verify VIP is functional: `ping <control_plane_vip>`

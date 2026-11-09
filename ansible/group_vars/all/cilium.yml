@@ -1,0 +1,16 @@
+---
+# Cilium CNI configuration (replaces Flannel when enabled)
+cilium_enabled: true
+
+# https://github.com/cilium/cilium/releases
+cilium_version: "v1.20.2"
+# cilium_version: "v1.19.6"
+
+cilium_namespace: "kube-system"
+cilium_helm_repo: "https://helm.cilium.io/"
+cilium_helm_release_name: "cilium"
+cilium_helm_values: {}
+cilium_egress_gateway_enabled: true
+cilium_cni_conf_path: "/var/lib/rancher/k3s/agent/etc/cni/net.d"
+cilium_cni_bin_path: "/var/lib/rancher/k3s/data/current/bin"
+cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"

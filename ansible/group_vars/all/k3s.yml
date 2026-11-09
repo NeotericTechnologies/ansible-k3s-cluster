@@ -1,0 +1,22 @@
+---
+# Cluster identity
+cluster_name: "test-k3s-cluster"
+
+# k3s version (pinned for consistent upgrades)
+# https://docs.k3s.io/release-notes/v1.36.X
+# https://docs.k3s.io/release-notes/v1.35.X
+k3s_version: "v1.36.4+k3s1"
+# k3s_version: "v1.35.4+k3s1"
+
+# HA policy target for control-plane service (3+ servers only)
+k3s_server_ha_min_replicas: 3
+k3s_server_non_ha_default_replicas: 1
+
+# HA mode: single-node | embedded-etcd-ha
+ha_mode: "embedded-etcd-ha"
+
+# Sensitive information: maintain actual values as overrides in your private
+# ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
+# Control-plane access (VIP managed by kube-vip)
+control_plane_vip: "192.168.1.100"
+api_port: 6443

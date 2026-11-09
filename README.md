@@ -45,37 +45,53 @@ cd ansible-k3s-cluster
 
 ### 2. Configure Inventory
 
-Copy an example inventory and customize for your environment:
+For a functional cluster, keep the inventory and network-specific overrides in
+your private `ansible-k3s-cluster-ops` repository. Follow
+[Private Configuration and Multi-Repository Workspace](#private-configuration-and-multi-repository-workspace)
+below to set up the companion repository and Vault password.
+
+Copy an example inventory into the private repository and customize it:
 
 ```bash
-cp -r ansible/inventories/examples/ha-cluster ansible/inventories/production
-vi ansible/inventories/production/hosts.ini
+mkdir -p ../ansible-k3s-cluster-ops/ansible/inventories
+cp -r ansible/inventories/examples/ha-cluster ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster
+vi ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster/hosts.ini
 ```
 
 ### 3. Configure Variables
 
-Edit cluster configuration in `ansible/group_vars/all.yml`:
+Public defaults are in `ansible/group_vars/all/`, with each component's settings
+in its own file. Put environment-specific values in the private inventory's
+`group_vars/all/` overrides rather than changing public defaults. The following
+examples show the corresponding component settings:
 
 ```yaml
+# ansible/group_vars/all/k3s.yml
 cluster_name: "my-k3s-cluster"
 k3s_version: "v1.28.5+k3s1"
 control_plane_vip: "192.168.1.100"
+
+# ansible/group_vars/all/kube-vip.yml
 kube_vip_interface: "eth0"
 
-# Enable desired add-ons
+# Enable desired add-ons in their component files
+# ansible/group_vars/all/cert-manager.yml
 cert_manager_enabled: true
+# ansible/group_vars/all/rancher.yml
 rancher_enabled: true
+# ansible/group_vars/all/traefik.yml
 traefik_enabled: true
+# ansible/group_vars/all/multus.yml
 multus_enabled: true
 ```
 
 Version management policy:
 
-- Treat `ansible/group_vars/all.yml` as the canonical source for managed component versions.
+- Treat the matching files under `ansible/group_vars/all/` as the canonical source for managed component versions.
 - Avoid embedding new hard-coded versions in role defaults or playbook commands.
-- Use inventory-specific overrides (for example `ansible/inventories/test-cluster/group_vars/all.yml`) when environment-specific version differences are required.
+- Use inventory-specific overrides (for example files under `../ansible-k3s-cluster-ops/ansible/inventories/test-cluster/group_vars/all/`) when environment-specific version differences are required.
 
-For multus VLAN networking, define secondary networks:
+For multus VLAN networking, define secondary networks in the private inventory:
 
 ```yaml
 # VLAN networks with DHCP-based IP assignment (default)
@@ -106,17 +122,24 @@ See the [Multus role documentation](ansible/roles/multus/README.md) for full con
 
 ```bash
 # Recommended: Unified playbook for install and upgrades (same command)
-ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
+ansible-playbook \
+  -i ansible/default-inventory.yml \
+  -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster \
+  ansible/playbooks/site.yml
 ```
 
 Alternatively, use individual playbooks for granular control:
 
 ```bash
 # Deploy k3s core cluster (control-plane + workers + kube-vip)
-ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-core.yml
+ansible-playbook -i ansible/default-inventory.yml \
+  -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster \
+  ansible/playbooks/cluster-core.yml
 
 # Deploy optional platform add-ons
-ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-addons.yml
+ansible-playbook -i ansible/default-inventory.yml \
+  -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster \
+  ansible/playbooks/cluster-addons.yml
 ```
 
 ### 5. Verify Cluster
@@ -131,15 +154,144 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
+## Private Configuration and Multi-Repository Workspace
+
+Use a **private** `ansible-k3s-cluster-ops` repository alongside this project.
+It is a configuration companion, not a standalone Ansible project: this
+repository provides the playbooks, roles, collection requirements, public
+defaults, and Ansible configuration.
+
+### Repository Layout and Overrides
+
+Clone your private repository beside the main checkout:
+
+```bash
+# Run from the ansible-k3s-cluster repository root
+git clone <your-private-ops-repository-url> ../ansible-k3s-cluster-ops
+```
+
+Keep the inventory layout in the private repository:
+
+```text
+ansible-k3s-cluster-ops/
+└── ansible/inventories/test-cluster/
+    ├── hosts.ini
+    ├── group_vars/all/       # Plaintext and encrypted component overrides
+    │   ├── kube-vip.yml      # Non-sensitive settings
+    │   └── kube-vip-sensitive.yml # Vault-encrypted sensitive settings
+    └── host_vars/           # Encrypted host connection details
+        └── k3s-server-01.yml
+```
+
+Use generic host aliases in `hosts.ini`, with membership in `k3s_servers`,
+`k3s_agents`, and their parent `k3s_cluster` group, as shown in the example
+inventories. Store each host's `ansible_host` and connection settings in its
+matching `host_vars/<alias>.yml` file.
+
+Keep sensitive values in the private repository, encrypted with Ansible Vault:
+
+- IP addresses, address ranges, ports, and hostnames (not repository names)
+- Email addresses and credentials
+- Multus VLAN network configuration, including interfaces and IPAM settings
+- Synology and NFS endpoints and storage class configuration
+
+The sensitive sections at the bottom of the public component files identify
+settings to override. Preserve public defaults unless your environment needs a
+different value; private overrides may also select add-ons or versions.
+
+Separate each component's private overrides into `<component>.yml` for
+non-sensitive settings (versions, enablement flags, replica counts) and
+`<component>-sensitive.yml` for Vault-encrypted sensitive values. Ansible loads
+both files automatically. Define each variable in only one file to avoid
+conflicting values. Keep host connection details encrypted in `host_vars/`.
+
+### Shared Vault Settings and Automatic Decryption
+
+Provide the matching Vault password in the main project's Git-ignored
+`.vault_pass` file, with access limited to its owner. Never commit it, copy it
+into the ops repository, or include it in logs or shared output. Ensure the
+private repository also ignores password files and other unencrypted secrets.
+
+Run Ansible and Vault commands from the **main repository root**.
+The main [ansible.cfg](ansible.cfg) defines
+`vault_identity_list = ansible-k3s-cluster@.vault_pass` and
+`vault_password_file = .vault_pass`. Ansible uses these settings for automatic
+decryption of the private inventory variables; no `--vault-id` or
+`--ask-vault-pass` option is needed.
+
+For example, create or edit an encrypted override from the main checkout:
+
+```bash
+mkdir -p ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster/group_vars/all
+ansible-vault create --encrypt-vault-id ansible-k3s-cluster \
+  ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster/group_vars/all/kube-vip-sensitive.yml
+
+# Use edit instead of create for an existing encrypted file
+ansible-vault edit \
+  ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster/group_vars/all/kube-vip-sensitive.yml
+```
+
+Encrypt existing plaintext variable files with `ansible-vault encrypt
+--encrypt-vault-id ansible-k3s-cluster <file>` before committing them.
+Do not commit a real environment's plaintext inventory addresses or credentials.
+
+### Combine Public Defaults with Private Inventory
+
+Pass both inventory sources, with the public defaults first:
+
+```bash
+ansible-playbook \
+  -i ansible/default-inventory.yml \
+  -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster \
+  ansible/playbooks/cluster-core.yml
+```
+
+[ansible/default-inventory.yml](ansible/default-inventory.yml) contains
+`all: {}`. Its location beside `ansible/group_vars` lets Ansible discover the
+public all/server/agent variables. The second inventory supplies hosts and
+inventory-scoped overrides, which take precedence over the corresponding
+public defaults. Do not pass `ansible/group_vars` itself as an inventory.
+
+Use the same two `-i` arguments for `site.yml`, `cluster-addons.yml`,
+`scale-nodes.yml`, and other lifecycle playbooks. To validate loading and
+playbook syntax without deploying:
+
+```bash
+ansible-playbook \
+  -i ansible/default-inventory.yml \
+  -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster \
+  ansible/playbooks/cluster-core.yml --syntax-check
+```
+
+`ansible-inventory --list` or `--host` with these sources can inspect merged
+variables, but prints decrypted sensitive values. Do not share that output.
+
+### Manage Both Repositories in VS Code
+
+Open [ansible-k3s-cluster.code-workspace](ansible-k3s-cluster.code-workspace)
+in VS Code with **File > Open Workspace from File**, or:
+
+```bash
+code ansible-k3s-cluster.code-workspace
+```
+
+The workspace includes this checkout (`.`) and the sibling
+`../ansible-k3s-cluster-ops` checkout. Both appear in Explorer and Source
+Control, so you can manage public automation and private overrides together.
+They remain separate Git repositories: review and commit changes to each
+independently, and never add private configuration to the public repository.
+Keep terminal working directories in the main checkout when running Ansible
+so its configuration and Vault password file are used.
+
 ## Project Structure
 
 ```
 ansible/
+├── default-inventory.yml # Inventory source for public defaults (all: {})
 ├── inventories/          # Inventory files
-│   ├── examples/        # Example HA and single-node inventories
-│   └── production/      # Your production inventory
+│   └── examples/        # Example HA and single-node inventories
 ├── group_vars/          # Cluster configuration
-│   ├── all.yml         # Cluster-wide settings
+│   ├── all/            # Component-specific public defaults
 │   ├── k3s_servers.yml # Control-plane config
 │   └── k3s_agents.yml  # Worker config
 ├── roles/               # Ansible roles
@@ -170,6 +322,12 @@ ansible/
 
 ## Usage
 
+For private deployments, use both inventory sources as described in
+[Combine Public Defaults with Private Inventory](#combine-public-defaults-with-private-inventory).
+The local `ansible/inventories/production` examples below are an alternative
+inventory location; include `-i ansible/default-inventory.yml` before that
+inventory to load the shared defaults, and do not commit sensitive values here.
+
 ### ssh
 
 ```bash
@@ -194,7 +352,9 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-cor
 ```
 
 ```bash
-ansible-playbook -i ansible/inventories/test-cluster ansible/playbooks/cluster-core.yml
+ansible-playbook -i ansible/default-inventory.yml \
+  -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster \
+  ansible/playbooks/cluster-core.yml
 ```
 
 ### Deploy Add-ons
@@ -204,7 +364,9 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-add
 ```
 
 ```bash
-ansible-playbook -i ansible/inventories/test-cluster ansible/playbooks/cluster-addons.yml
+ansible-playbook -i ansible/default-inventory.yml \
+  -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster \
+  ansible/playbooks/cluster-addons.yml
 ```
 
 
@@ -230,7 +392,7 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/scale-nodes
 
 ### Upgrade k3s Version
 
-Update `k3s_version` in `group_vars/all.yml`, then:
+Update `k3s_version` in `group_vars/all/k3s.yml`, then:
 
 ```bash
 # Recommended: Unified workflow (handles dependency ordering, cordon/drain, constraint validation)
@@ -240,7 +402,7 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
 To upgrade Rancher and k3s together (Rancher is upgraded first automatically):
 
 ```bash
-# Update rancher_version and k3s_version in group_vars/all.yml, then:
+# Update rancher_version in group_vars/all/rancher.yml and k3s_version in group_vars/all/k3s.yml, then:
 ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
 ```
 
@@ -313,7 +475,7 @@ ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-
 
 ### Add-ons Strategy
 
-- **Conditional Deployment**: Enable/disable via `*_enabled` flags in `group_vars/all.yml`
+- **Conditional Deployment**: Enable/disable via `*_enabled` flags in the corresponding files under `group_vars/all/`
 - **Helm-Based**: Rancher, rancher-monitoring use Helm charts
 - **kubectl-Based**: cert-manager, multus, kube-vip use manifests
 - **Provider-Agnostic**: cert-manager DNS-01 supports multiple providers via credentials
@@ -356,13 +518,17 @@ ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-
 
 ### Add-ons not deploying
 
-1. Check enablement flags in `group_vars/all.yml`
+1. Check enablement flags in the corresponding files under `group_vars/all/`
 2. Verify cluster is operational: `kubectl get nodes`
 3. Check pod status: `kubectl get pods -A`
 
 ## Development
 
 This project has been configured to use GitHub Spec Kit. The project includes a dev container with Spec Kit installed for this purpose so you can avoid installing any tooling locally on your machine.
+
+For environment-specific configuration, open the
+[multi-repository workspace](#manage-both-repositories-in-vs-code) to work on
+this project and your private ops repository together.
 
 ## Contributing
 
@@ -379,4 +545,3 @@ This project follows constitutional governance. See [.specify/memory/constitutio
 - [cert-manager](https://cert-manager.io/)
 - [Rancher](https://www.rancher.com/)
 - [Ansible Documentation](https://docs.ansible.com/)
-
