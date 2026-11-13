@@ -6,14 +6,17 @@ kube_vip_enabled: true
 # (required by kube_vip_egress_gateway_node_selector) -- v1.2.1+ required when kube_vip_egress_enabled: true
 # v1.2.3 fixes a leader-election deadlock for backend-less (zero-endpoint) LoadBalancer
 # Services such as egress-gateway-svc (kube-vip#1668, #1650)
+# kube_vip_version: "v1.3.1"
 kube_vip_version: "v1.2.4"
 # kube_vip_version: "v1.2.3"
 
 # https://github.com/kube-vip/kube-vip-cloud-provider/releases
+# kube_vip_cloud_provider_version: "v0.0.13"
 kube_vip_cloud_provider_version: "v0.0.12"
 
 # kubectl image (alpine/kubectl) used only by the label-reconciler CronJob
 # https://hub.docker.com/r/alpine/kubectl/tags
+# kube_vip_label_reconciler_kubectl_version: "1.37.2"
 kube_vip_label_reconciler_kubectl_version: "1.37.0"
 # kube_vip_label_reconciler_kubectl_version: "1.36.4"
 

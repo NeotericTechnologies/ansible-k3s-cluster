@@ -3,6 +3,7 @@
 # https://github.com/rancher/rancher/releases
 # https://www.suse.com/suse-rancher/support-matrix/all-supported-versions/rancher-v2-15-1/
 rancher_enabled: true
+# rancher_version: "2.15.3"
 rancher_version: "2.15.1"
 # rancher_version: "2.14.1"
 

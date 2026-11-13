@@ -5,6 +5,7 @@ cluster_name: "test-k3s-cluster"
 # k3s version (pinned for consistent upgrades)
 # https://docs.k3s.io/release-notes/v1.36.X
 # https://docs.k3s.io/release-notes/v1.35.X
+# k3s_version: "v1.36.6+k3s1"
 k3s_version: "v1.36.4+k3s1"
 # k3s_version: "v1.35.4+k3s1"
 

@@ -2,6 +2,7 @@
 # cert-manager DNS-01 configuration (when enabled)
 # https://github.com/cert-manager/cert-manager/releases
 cert_manager_enabled: true
+# cert_manager_version: "v1.21.3"
 cert_manager_version: "v1.21.2"
 # cert_manager_version: "v1.19.5"
 

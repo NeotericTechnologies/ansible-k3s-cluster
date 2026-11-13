@@ -1,0 +1,25 @@
+---
+# Usage: ansible-playbook -i localhost, -c local tests/ansible/smoke/traefik-values-test.yml
+
+- name: Validate Traefik service values
+  hosts: localhost
+  gather_facts: false
+  vars:
+    traefik_template: "{{ playbook_dir }}/../../../ansible/roles/traefik/templates/traefik-values.yaml.j2"
+  tasks:
+    - name: Verify default service type
+      ansible.builtin.assert:
+        that:
+          - rendered_values.service.spec.type == 'LoadBalancer'
+          - "'type' not in rendered_values.service"
+      vars:
+        rendered_values: "{{ lookup('ansible.builtin.template', traefik_template) | from_yaml }}"
+
+    - name: Verify configured service type
+      ansible.builtin.assert:
+        that:
+          - rendered_values.service.spec.type == 'ClusterIP'
+          - "'type' not in rendered_values.service"
+      vars:
+        traefik_service_type: ClusterIP
+        rendered_values: "{{ lookup('ansible.builtin.template', traefik_template) | from_yaml }}"

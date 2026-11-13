@@ -25,7 +25,8 @@
                 "redhat.vscode-yaml",
                 "redhat.ansible",
                 "yzhang.markdown-all-in-one",
-                "streetsidesoftware.code-spell-checker"
+                "streetsidesoftware.code-spell-checker",
+                "gera2ld.markmap-vscode"
             ]
          }
     },

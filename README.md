@@ -342,7 +342,7 @@ ssh-add <path to your private key here>
 
 ```bash
 ssh-agent bash
-ssh-add ./.ssh/Private\ SSH\ Key\ -\ Neoteric\ -\ wade.openssh
+ssh-add ./.ssh/Private\ SSH\ Key\ -\ Neoteric\ -\ ansible.openssh
 ```
 
 ### Provision Core Cluster

@@ -9,6 +9,7 @@ synology_csi_version: "v1.3.1"
 # synology_csi_version: "v1.2.1"
 
 # https://github.com/kubernetes-csi/external-snapshotter/releases
+# synology_csi_snapshotter_version: "v8.7.0"
 synology_csi_snapshotter_version: "v8.6.0"
 # synology_csi_snapshotter_version: "v8.5.0"
 
@@ -22,6 +23,7 @@ synology_csi_snapshots_enabled: false
 # See ansible/roles/synology-csi/defaults/main.yml for full variable reference
 # https://github.com/kubernetes-csi/csi-driver-nfs/releases
 csi_nfs_enabled: false
+# csi_nfs_version: "v4.13.6"
 csi_nfs_version: "v4.13.4"
 # csi_nfs_version: "v4.13.2"
 

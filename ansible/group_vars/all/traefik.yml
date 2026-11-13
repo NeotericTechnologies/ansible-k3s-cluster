@@ -2,6 +2,7 @@
 # Traefik ingress configuration (Traefik app/image version, not Helm chart version)
 # https://github.com/traefik/traefik/releases
 traefik_enabled: true  # k3s includes Traefik by default, role configures it
+# traefik_version: "v3.7.19" # Lastest as of 2026.11.13
 traefik_version: "v3.7.13" # Lastest as of 2026.09.19
 # traefik_version: "v3.7.7" # Latest as of 2026.07.11
 # traefik_version: "v3.7.4" # Default for K3S v1.35.6+k3s1

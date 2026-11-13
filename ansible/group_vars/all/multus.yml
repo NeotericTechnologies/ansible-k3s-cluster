@@ -4,6 +4,7 @@
 # https://github.com/k8snetworkplumbingwg/multus-cni/releases
 # https://github.com/k8snetworkplumbingwg/multus-cni/pkgs/container/multus-cni
 multus_enabled: true
+# multus_version: "v4.3.2-thick"
 multus_version: "v4.3.1-thick"
 # multus_version: "v4.3.0-thick"
 
@@ -13,11 +14,14 @@ multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based 
 
 # Image for DHCP daemon initContainer + main container
 # https://hub.docker.com/_/alpine/tags
+# multus_dhcp_daemon_image: "alpine:3.24.4"
 multus_dhcp_daemon_image: "alpine:3.24.2"
 # multus_dhcp_daemon_image: "alpine:3"
 
+# CNI plugins release (initContainer downloads tarball)
 # https://github.com/containernetworking/plugins/releases
-multus_cni_plugins_version: "v1.9.1"  # CNI plugins release (initContainer downloads tarball)
+# multus_cni_plugins_version: "v1.10.0"
+multus_cni_plugins_version: "v1.9.1"
 
 # Sensitive information: maintain actual values as overrides in your private
 # ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
