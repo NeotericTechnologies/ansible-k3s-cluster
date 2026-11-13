@@ -1,7 +1,7 @@
 ---
 # tests/ansible/smoke/egress-gateway-test.yml
 # Purpose: Smoke tests for Egress Gateway and Kube-VIP Enhancements (006-egress-gateway-kube-vip)
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/egress-gateway-test.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/egress-gateway-test.yml
 # Reference: FR-013, SC-001, SC-002, SC-003, SC-004
 
 - name: Egress Gateway and Kube-VIP Enhancements Smoke Tests
@@ -917,11 +917,16 @@
 
     # --- User Story 3: DHCP Mode (FR-007, FR-010) ---
     - name: Attempt playbook run with DHCP and static IP range both set (expected failure)
-      ansible.builtin.command: >-
-        ansible-playbook -i {{ dhcp_test_inventory | default('tests/ansible/inventories/local') }}
-        ansible/playbooks/cluster-core.yml
-        -e kube_vip_lb_dhcp_enabled=true -e kube_vip_lb_ip_range=192.168.1.200-192.168.1.220
-        --tags kube-vip
+      ansible.builtin.command:
+        cmd: >-
+          ansible-playbook
+          {% for source in ([dhcp_test_inventory] if dhcp_test_inventory is defined else ansible_inventory_sources) %}
+          -i {{ source | quote }}
+          {% endfor %}
+          ansible/playbooks/cluster-core.yml
+          -e kube_vip_lb_dhcp_enabled=true -e kube_vip_lb_ip_range=192.168.1.200-192.168.1.220
+          --tags kube-vip
+        chdir: "{{ playbook_dir }}/../../.."
       register: dhcp_conflict_run
       changed_when: false
       failed_when: false

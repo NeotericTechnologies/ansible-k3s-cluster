@@ -4,7 +4,7 @@
 # Reference: T035, SC-006, FR-007, specs/005-unified-upgrade-workflow
 #
 # Usage:
-#   ansible-playbook -i ansible/inventories/test-cluster tests/ansible/smoke/site-noop-test.yml
+#   ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/site-noop-test.yml
 #
 # Prerequisites:
 #   - k3s cluster already deployed via site.yml or cluster-core.yml + cluster-addons.yml
@@ -28,7 +28,7 @@
   hosts: localhost
   gather_facts: false
   vars:
-    inventory_path: "{{ lookup('env', 'TEST_INVENTORY') | default('ansible/inventories/test-cluster', true) }}"
+    test_inventory_sources: "{{ [lookup('env', 'TEST_INVENTORY')] if lookup('env', 'TEST_INVENTORY') else ansible_inventory_sources }}"
   tasks:
     - name: Record start time
       ansible.builtin.set_fact:
@@ -37,7 +37,10 @@
     - name: Run site.yml in check mode
       ansible.builtin.command:
         cmd: >-
-          ansible-playbook -i {{ inventory_path }}
+          ansible-playbook
+          {% for source in test_inventory_sources %}
+          -i {{ source | quote }}
+          {% endfor %}
           ansible/playbooks/site.yml
           --check
         chdir: "{{ playbook_dir }}/../../.."

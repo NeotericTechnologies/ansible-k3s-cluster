@@ -1,7 +1,7 @@
 ---
 # Synology CSI PVC Validation Smoke Test
 # Purpose: Validate PVC creation against Synology StorageClass (SC-005)
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/synology-pvc-test.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/synology-pvc-test.yml
 
 - name: Synology CSI PVC Smoke Test
   hosts: k3s_servers[0]

@@ -5,7 +5,7 @@
 # with all other components (k3s_servers, k3s_agents, kube-vip, etc.) skipped
 #
 # Usage:
-#   ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-priority-test.yml
+#   ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/upgrade-priority-test.yml
 #
 # Test Scenario (SC-003):
 # 1. Set ONLY rancher_version to a new value
@@ -58,25 +58,32 @@
 
     - name: Store original Rancher group_vars for restoration
       ansible.builtin.slurp:
-        src: "{{ playbook_dir }}/../../ansible/group_vars/all/rancher.yml"
+        src: "{{ playbook_dir }}/../../../ansible/group_vars/all/rancher.yml"
       register: original_rancher_vars
+      delegate_to: localhost
+      become: false
 
     - name: "Create temporary test inventory with isolated Rancher version override"
       block:
 
         - name: "Run site.yml with Rancher version override only"
           ansible.builtin.command:
-            cmd: |
-              ansible-playbook \
-                -i {{ playbook_dir }}/../../ansible/inventories/test-cluster \
-                {{ playbook_dir }}/../../ansible/playbooks/site.yml \
-                -e "rancher_version={{ test_rancher_version }}" \
-                -e "verbosity=2"
+            cmd: >-
+              ansible-playbook
+              {% for source in ansible_inventory_sources %}
+              -i {{ source | quote }}
+              {% endfor %}
+              ansible/playbooks/site.yml
+              -e "rancher_version={{ test_rancher_version }}"
+              -e "verbosity=2"
+            chdir: "{{ playbook_dir }}/../../.."
           register: site_run_output
           changed_when: false
           failed_when: false
           environment:
-            ANSIBLE_CONFIG: "{{ playbook_dir }}/../../ansible.cfg"
+            ANSIBLE_CONFIG: "{{ playbook_dir }}/../../../ansible.cfg"
+          delegate_to: localhost
+          become: false
 
     - name: "Parse site.yml output for component actions"
       block:

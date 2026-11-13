@@ -1,17 +1,12 @@
 ---
 # Smoke Test Playbook
 # Purpose: Basic smoke tests for k3s cluster validation
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/smoke.yml
 
 - name: k3s Cluster Smoke Tests
   hosts: k3s_servers[0]
   gather_facts: true
   tasks:
-    - name: Load shared cluster defaults used by smoke assertions
-      ansible.builtin.include_vars:
-        dir: "{{ playbook_dir }}/../../../ansible/inventories/test-cluster/group_vars/all"
-        name: smoke_defaults
-
     - name: Check if k3s is installed
       ansible.builtin.command: k3s --version
       register: k3s_version_output
@@ -70,46 +65,46 @@
       ansible.builtin.set_fact:
         smoke_version_checks:
           - name: k3s_version
-            desired: "{{ smoke_defaults.k3s_version }}"
+            desired: "{{ k3s_version }}"
             live: "{{ smoke_live_versions.k3s_version | trim }}"
           - name: kube_vip_version
-            desired: "{{ smoke_defaults.kube_vip_version }}"
+            desired: "{{ kube_vip_version }}"
             live: "{{ smoke_live_versions.kube_vip_version | trim }}"
           - name: kube_vip_cloud_provider_version
-            desired: "{{ smoke_defaults.kube_vip_cloud_provider_version }}"
+            desired: "{{ kube_vip_cloud_provider_version }}"
             live: "{{ smoke_live_versions.kube_vip_cloud_provider_version | trim }}"
           - name: kube_vip_label_reconciler_kubectl_version
-            desired: "{{ smoke_defaults.kube_vip_label_reconciler_kubectl_version }}"
+            desired: "{{ kube_vip_label_reconciler_kubectl_version }}"
             live: "{{ smoke_live_versions.kube_vip_label_reconciler_kubectl_version | trim }}"
           - name: cilium_version
-            desired: "{{ smoke_defaults.cilium_version }}"
+            desired: "{{ cilium_version }}"
             live: "{{ smoke_live_versions.cilium_version | trim }}"
           - name: cert_manager_version
-            desired: "{{ smoke_defaults.cert_manager_version }}"
+            desired: "{{ cert_manager_version }}"
             live: "{{ smoke_live_versions.cert_manager_version | trim }}"
           - name: multus_version
-            desired: "{{ smoke_defaults.multus_version }}"
+            desired: "{{ multus_version }}"
             live: "{{ smoke_live_versions.multus_version | trim }}"
           - name: multus_dhcp_daemon_image
-            desired: "{{ smoke_defaults.multus_dhcp_daemon_image }}"
+            desired: "{{ multus_dhcp_daemon_image }}"
             live: "{{ smoke_live_versions.multus_dhcp_daemon_image | trim }}"
           - name: multus_cni_plugins_version
-            desired: "{{ smoke_defaults.multus_cni_plugins_version }}"
+            desired: "{{ multus_cni_plugins_version }}"
             live: "{{ smoke_live_versions.multus_cni_plugins_version | trim }}"
           - name: rancher_version
-            desired: "{{ smoke_defaults.rancher_version }}"
+            desired: "{{ rancher_version }}"
             live: "{{ smoke_live_versions.rancher_version | trim }}"
           - name: traefik_version
-            desired: "{{ smoke_defaults.traefik_version }}"
+            desired: "{{ traefik_version }}"
             live: "{{ smoke_live_versions.traefik_version | trim }}"
           - name: synology_csi_version
-            desired: "{{ smoke_defaults.synology_csi_version }}"
+            desired: "{{ synology_csi_version }}"
             live: "{{ smoke_live_versions.synology_csi_version | trim }}"
           - name: synology_csi_snapshotter_version
-            desired: "{{ smoke_defaults.synology_csi_snapshotter_version }}"
+            desired: "{{ synology_csi_snapshotter_version }}"
             live: "{{ smoke_live_versions.synology_csi_snapshotter_version | trim }}"
           - name: csi_nfs_version
-            desired: "{{ smoke_defaults.csi_nfs_version }}"
+            desired: "{{ csi_nfs_version }}"
             live: "{{ smoke_live_versions.csi_nfs_version | trim }}"
 
     - name: Display desired versus live version summary
@@ -158,17 +153,17 @@
     - name: Verify HA targets are defined for enabled components
       ansible.builtin.assert:
         that:
-          - smoke_defaults.k3s_server_ha_min_replicas | default(0) | int >= 1
-          - smoke_defaults.kube_vip_ha_min_replicas | default(0) | int >= 1
-          - smoke_defaults.traefik_ha_min_replicas | default(0) | int >= 1
+          - k3s_server_ha_min_replicas | default(0) | int >= 1
+          - kube_vip_ha_min_replicas | default(0) | int >= 1
+          - traefik_ha_min_replicas | default(0) | int >= 1
         fail_msg: "Required HA target variables are missing or invalid"
 
     - name: Validate non-HA preservation branch behavior
       ansible.builtin.assert:
         that:
-          - smoke_defaults.k3s_server_non_ha_default_replicas | default(0) | int >= 1
-          - smoke_defaults.kube_vip_non_ha_default_replicas | default(0) | int >= 1
-          - smoke_defaults.traefik_non_ha_default_replicas | default(0) | int >= 1
+          - k3s_server_non_ha_default_replicas | default(0) | int >= 1
+          - kube_vip_non_ha_default_replicas | default(0) | int >= 1
+          - traefik_non_ha_default_replicas | default(0) | int >= 1
         fail_msg: "Required non-HA default target variables are missing or invalid"
 
     - name: Display topology-specific smoke context
@@ -176,7 +171,7 @@
         msg:
           - "Topology server count: {{ smoke_server_count }}"
           - "HA topology enabled: {{ smoke_is_ha }}"
-          - "Expected traefik target: {{ (smoke_defaults.traefik_ha_min_replicas if smoke_is_ha else smoke_defaults.traefik_non_ha_default_replicas) | int }}"
+          - "Expected traefik target: {{ (traefik_ha_min_replicas if smoke_is_ha else traefik_non_ha_default_replicas) | int }}"
 
     - name: Smoke test summary
       ansible.builtin.debug:

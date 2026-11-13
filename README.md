@@ -445,15 +445,25 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/cluster-cor
 
 ### Smoke Tests
 
+Run tests from this repository's root with the same two inventory sources used
+for deployment. Ansible loads shared defaults first, then the ops inventory's
+overrides; no separate local test inventory is needed.
+
 ```bash
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/smoke.yml
 ```
+
+Set `egress_run_failover_test`, `egress_run_real_reboot_failover_test`, and
+`dhcp_run_mutual_exclusion_test` under `[k3s_cluster:vars]` in the ops inventory's
+`hosts.ini`. The real-reboot test is destructive; keep it disabled unless an
+intentional disruption is planned. `smoke_test_image` and `kube_vip_lb_dhcp_enabled`
+already have shared defaults; override them in the ops inventory only when needed.
 
 ### Focused Feature Smoke Tests
 ```bash
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/multus-dhcp-test.yml
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/scale-test.yml
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-test.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/multus-dhcp-test.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/scale-test.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/upgrade-test.yml
 ```
 
 ## Architecture

@@ -1,7 +1,7 @@
 ---
 # Scale Operation Smoke Tests
 # Purpose: Validate scale-nodes.yml playbook functionality
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/scale-test.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/scale-test.yml
 #
 # Test Scenarios:
 # 1. Add a worker node to existing cluster

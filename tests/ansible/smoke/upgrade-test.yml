@@ -1,7 +1,7 @@
 ---
 # Upgrade Operation Smoke Tests
 # Purpose: Validate upgrade-k3s.yml playbook functionality
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-test.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/upgrade-test.yml
 #
 # Test Coverage:
 # 1. Pre-upgrade cluster validation

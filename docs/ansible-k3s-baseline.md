@@ -507,24 +507,28 @@ ansible-playbook ... --ask-vault-pass
 
 ### Smoke Tests
 
+Run from the repository root with shared defaults followed by the ops inventory,
+using the same inventory sources as deployment. Configure environment-specific
+test gates in the ops inventory's `hosts.ini` under `[k3s_cluster:vars]`.
+
 **Basic cluster health:**
 ```bash
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/smoke.yml
 ```
 
 **Idempotence validation:**
 ```bash
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/idempotence-test.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/idempotence-test.yml
 ```
 
 **Scale operations:**
 ```bash
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/scale-test.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/scale-test.yml
 ```
 
 **Upgrade procedures:**
 ```bash
-ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-test.yml
+ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/upgrade-test.yml
 ```
 
 ### Linting
