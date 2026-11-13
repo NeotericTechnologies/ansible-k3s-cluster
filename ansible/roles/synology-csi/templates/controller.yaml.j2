@@ -105,7 +105,7 @@ spec:
               mountPath: /csi
 {% if synology_csi_snapshots_enabled %}
         - name: csi-snapshotter
-          image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.3
+          image: registry.k8s.io/sig-storage/csi-snapshotter:{{ synology_csi_snapshotter_version }}
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
