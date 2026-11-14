@@ -1,0 +1,117 @@
+---
+# Usage: ansible-playbook -i localhost, -c local tests/ansible/smoke/reconciler-test.yml
+
+- name: Validate reconciler failure handling and ownership safety
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../../ansible/roles/kube-vip/defaults/main.yml
+    - ../../../ansible/roles/synology-csi/defaults/main.yml
+  vars:
+    repository_root: "{{ playbook_dir }}/../../.."
+    control_plane_vip: 192.0.2.8
+    alpine_kubectl_version: test
+    smoke_test_image: busybox:test
+    synology_csi_snapshots_enabled: true
+    cases:
+      - [vip_healthy, kube-vip, success]
+      - [vip_missing_holder, kube-vip, success]
+      - [vip_stale, kube-vip, success]
+      - [vip_handoff, kube-vip, failure]
+      - [vip_expired, kube-vip, failure]
+      - [vip_missing_renewal, kube-vip, failure]
+      - [vip_probe_failure, kube-vip, failure]
+      - [vip_api_failure, kube-vip, failure]
+      - [vip_label_read_failure, kube-vip, failure]
+      - [vip_label_failure, kube-vip, failure]
+      - [lease_api_failure, kube-vip, failure]
+      - [synology_healthy, synology-csi, success]
+      - [synology_healthy_no_snapshots, synology-csi, success]
+      - [synology_dsm_failure, synology-csi, success]
+      - [synology_api_failure, synology-csi, failure]
+      - [synology_log_failure, synology-csi, failure]
+      - [synology_empty, synology-csi, failure]
+      - [synology_expired, synology-csi, failure]
+      - [synology_missing_renewal, synology-csi, failure]
+      - [synology_missing_lease, synology-csi, failure]
+      - [synology_unready, synology-csi, failure]
+  tasks:
+    - name: Create temporary test directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: reconciler-test-
+      register: test_directory
+
+    - name: Exercise rendered scripts
+      block:
+        - name: Create mock command directory
+          ansible.builtin.file:
+            path: "{{ test_directory.path }}/bin"
+            state: directory
+            mode: '0700'
+
+        - name: Install kubectl fixture
+          ansible.builtin.copy:
+            src: "{{ repository_root }}/tests/ansible/fixtures/reconciler-kubectl.sh"
+            dest: "{{ test_directory.path }}/bin/kubectl"
+            mode: '0700'
+
+        - name: Skip retry delays in local failure tests
+          ansible.builtin.copy:
+            content: "#!/bin/sh\nexit 0\n"
+            dest: "{{ test_directory.path }}/bin/sleep"
+            mode: '0700'
+
+        - name: Extract scripts from rendered ConfigMaps
+          ansible.builtin.copy:
+            content: "{{ (lookup('ansible.builtin.template', item.template) | from_yaml_all | selectattr('kind', 'equalto', 'ConfigMap') | first).data['reconcile.sh'] }}"
+            dest: "{{ test_directory.path }}/{{ item.name }}.sh"
+            mode: '0700'
+          loop:
+            - name: kube-vip
+              template: "{{ repository_root }}/ansible/roles/kube-vip/templates/kube-vip-label-reconciler-cronjob.yaml.j2"
+            - name: synology-csi
+              template: "{{ repository_root }}/ansible/roles/synology-csi/templates/synology-csi-dsm-login-reconciler-cronjob.yaml.j2"
+
+        - name: Check rendered shell syntax
+          ansible.builtin.command:
+            argv: [/bin/sh, -n, "{{ test_directory.path }}/{{ item }}.sh"]
+          loop: [kube-vip, synology-csi]
+          changed_when: false
+
+        - name: Verify API timeout calls retain mounted service-account credentials
+          ansible.builtin.assert:
+            that:
+              - configuration.users[0].user.tokenFile == '/var/run/secrets/kubernetes.io/serviceaccount/token'
+              - configuration.clusters[0].cluster['certificate-authority'] == '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+              - "'/scripts/kubeconfig' in (container.env | selectattr('name', 'equalto', 'KUBECONFIG') | map(attribute='value') | list)"
+              - container.volumeMounts[0].mountPath == '/scripts'
+              - job.spec.jobTemplate.spec.template.spec.volumes[0].configMap.name == configmap.metadata.name
+          loop:
+            - kube-vip/templates/kube-vip-label-reconciler-cronjob.yaml.j2
+            - synology-csi/templates/synology-csi-dsm-login-reconciler-cronjob.yaml.j2
+          vars:
+            resources: "{{ lookup('ansible.builtin.template', repository_root ~ '/ansible/roles/' ~ item) | from_yaml_all | list }}"
+            configmap: "{{ resources | selectattr('kind', 'equalto', 'ConfigMap') | first }}"
+            configuration: "{{ configmap.data.kubeconfig | from_yaml }}"
+            job: "{{ resources | selectattr('kind', 'equalto', 'CronJob') | first }}"
+            container: "{{ job.spec.jobTemplate.spec.template.spec.containers[0] }}"
+
+        - name: Run focused reconciler behavior cases
+          ansible.builtin.command:
+            argv:
+              - /bin/bash
+              - "{{ repository_root }}/tests/ansible/fixtures/reconciler-tests.sh"
+              - "{{ test_directory.path }}"
+              - "{{ item[0] }}"
+              - "{{ item[1] }}"
+              - "{{ item[2] }}"
+          loop: "{{ cases }}"
+          loop_control:
+            label: "{{ item[0] }}"
+          changed_when: false
+      always:
+        - name: Remove temporary test directory
+          ansible.builtin.file:
+            path: "{{ test_directory.path }}"
+            state: absent

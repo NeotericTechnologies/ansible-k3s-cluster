@@ -29,12 +29,15 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["list", "get", "delete"]
+    verbs: ["list", "get", "watch", "delete"]
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
   - apiGroups: ["apps"]
     resources: ["statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -59,6 +62,24 @@ metadata:
   labels:
     app.kubernetes.io/name: synology-csi-dsm-login-reconciler
 data:
+  kubeconfig: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+      - name: in-cluster
+        cluster:
+          server: https://kubernetes.default.svc
+          certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    users:
+      - name: reconciler
+        user:
+          tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    contexts:
+      - name: in-cluster
+        context:
+          cluster: in-cluster
+          user: reconciler
+    current-context: in-cluster
   reconcile.sh: |
 {% raw %}
     #!/bin/sh
@@ -66,29 +87,98 @@ data:
 
     NS="${NAMESPACE:-synology-csi}"
     log() { echo "[synology-csi-dsm-login-reconciler] $*"; }
+    fail() { log "ERROR: $*" >&2; exit 1; }
+    END=$(( $(date -u +%s) + 480 ))
+    kubectl() {
+      remaining=$((END - $(date -u +%s)))
+      [ "${remaining}" -gt 0 ] || fail "reconciliation runtime budget exhausted"
+      command kubectl --request-timeout=10s \
+        --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}" "$@"
+    }
+
+    check_leader() (
+      lease="$1"
+      container="$2"
+      record=$(kubectl get lease "${lease}" -n "${NS}" --ignore-not-found \
+        -o jsonpath='{.spec.holderIdentity}{"|"}{.spec.renewTime}{"|"}{.spec.leaseDurationSeconds}') \
+        || fail "cannot read election Lease ${lease}"
+      [ -n "${record}" ] || { log "WARN: missing election Lease ${lease}" >&2; exit 1; }
+      IFS='|' read -r holder renewed duration <<EOF
+    ${record}
+    EOF
+      case "${duration}" in ''|*[!0-9]*) fail "invalid duration on Lease ${lease}";; esac
+      [ -n "${renewed}" ] || fail "Lease ${lease} has no renewTime"
+      timestamp=$(printf '%s' "${renewed}" | sed 's/T/ /; s/\.[0-9]*Z$//; s/Z$//')
+      renewed_epoch=$(date -u -d "${timestamp}" +%s) || fail "invalid renewTime on Lease ${lease}"
+      age=$(( $(date -u +%s) - renewed_epoch ))
+      if [ -z "${holder}" ] || [ "${age}" -ge "${duration}" ] || [ "${age}" -lt -5 ]; then
+        log "WARN: election Lease ${lease} has no current holder (age=${age}s)" >&2
+        exit 1
+      fi
+      ready=$(kubectl get pod "${holder}" -n "${NS}" --ignore-not-found \
+        -o "jsonpath={.metadata.deletionTimestamp}{\"|\"}{.status.containerStatuses[?(@.name==\"${container}\")].ready}") \
+        || fail "cannot read leader pod ${holder}"
+      if [ "${ready}" != '|true' ]; then
+        log "WARN: election Lease ${lease} holder ${holder}/${container} is unavailable" >&2
+        exit 1
+      fi
+      log "leader ${lease}: ${holder}/${container}, renewed ${age}s ago"
+    )
 
     log "$(date -u +%FT%TZ) checking synology-csi controller and node pods for failed one-shot DSM login"
 
     FIXED=0
     # Both the controller StatefulSet and node DaemonSet run the same driver binary, which
     # performs the identical one-shot DSM login at startup — check both prefixes.
-    for pod in $(kubectl get pods -n "${NS}" -o name | grep -E '^pod/synology-csi-(controller|node)-' | sed 's#pod/##'); do
-      # No pipefail: grep -q exits on first match, SIGPIPE-ing the still-writing `kubectl
-      # logs` upstream — under pipefail that would become the pipe's status instead of
-      # grep's own, masking a real match as "not found".
-      if kubectl logs "${pod}" -n "${NS}" -c csi-driver 2>/dev/null | grep -q 'Failed to add DSM'; then
+    pods=$(kubectl get pods -n "${NS}" -o name) || fail "cannot list CSI pods"
+    CHECKED=0
+    for ref in ${pods}; do
+      case "${ref}" in pod/synology-csi-controller-*|pod/synology-csi-node-*) ;; *) continue;; esac
+      pod="${ref#pod/}"
+      logs=$(kubectl logs "${pod}" -n "${NS}" -c csi-driver) || fail "cannot read driver logs for ${pod}"
+      CHECKED=$((CHECKED + 1))
+      if printf '%s\n' "${logs}" | grep -q 'Failed to add DSM'; then
         log "FIX ${pod}: one-shot DSM login failed at startup — restarting to retry"
-        kubectl delete pod "${pod}" -n "${NS}" --wait=true --timeout=120s
+        kubectl delete pod "${pod}" -n "${NS}" --wait=true --timeout=60s \
+          || fail "cannot restart ${pod}"
         FIXED=$((FIXED + 1))
       fi
     done
+    [ "${CHECKED}" -gt 0 ] || fail "no CSI controller or node pods found"
 
     if [ "${FIXED}" -gt 0 ]; then
-      kubectl rollout status statefulset/synology-csi-controller -n "${NS}" --timeout=180s
-      log "result: RESTARTED ${FIXED} pod(s) with failed DSM login"
-    else
-      log "result: NO ISSUE (all controller pods have a clean DSM login)"
+      kubectl rollout status statefulset/synology-csi-controller -n "${NS}" --timeout=180s \
+        || fail "CSI controller rollout did not complete"
+      pods=$(kubectl get pods -n "${NS}" -o name) || fail "cannot list CSI pods after restart"
+      for ref in ${pods}; do
+        case "${ref}" in pod/synology-csi-controller-*|pod/synology-csi-node-*) ;; *) continue;; esac
+        logs=$(kubectl logs "${ref#pod/}" -n "${NS}" -c csi-driver) || fail "cannot read restarted driver logs"
+        if printf '%s\n' "${logs}" | grep -q 'Failed to add DSM'; then
+          fail "${ref}: DSM login still failing after restart"
+        fi
+      done
     fi
+
+    # Election is owned by the sidecars. Observe it without modifying Leases or standby pods.
+    elections="csi-san-synology-com:csi-provisioner
+    external-attacher-leader-csi-san-synology-com:csi-attacher
+    external-resizer-csi-san-synology-com:csi-resizer"
+    if [ "${SNAPSHOTS_ENABLED:-false}" = true ]; then
+      elections="${elections}
+    external-snapshotter-leader-csi-san-synology-com:csi-snapshotter
+    snapshot-controller-leader:snapshot-controller"
+    fi
+    for election in ${elections}; do
+      lease="${election%:*}"
+      container="${election#*:}"
+      attempts=0
+      until check_leader "${lease}" "${container}"; do
+        attempts=$((attempts + 1))
+        [ "${attempts}" -lt 6 ] || fail "election ${lease} unhealthy; no Lease or standby pod changes made"
+        sleep 5
+      done
+    done
+    log "result: checked ${CHECKED} driver pod(s), restarted ${FIXED}; election Leases healthy"
 {% endraw %}
 ---
 apiVersion: batch/v1
@@ -106,7 +196,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
-      activeDeadlineSeconds: 240
+      activeDeadlineSeconds: 600
       template:
         metadata:
           labels:
@@ -117,10 +207,14 @@ spec:
           containers:
             - name: reconcile
               image: "{{ synology_csi_dsm_login_reconciler_image }}"
-              command: ["/bin/sh", "/scripts/reconcile.sh"]
+              command: ["timeout", "480", "/bin/sh", "/scripts/reconcile.sh"]
               env:
+                - name: KUBECONFIG
+                  value: /scripts/kubeconfig
                 - name: NAMESPACE
                   value: "{{ synology_csi_namespace }}"
+                - name: SNAPSHOTS_ENABLED
+                  value: "{{ synology_csi_snapshots_enabled | bool | ternary('true', 'false') }}"
               volumeMounts:
                 - name: script
                   mountPath: /scripts

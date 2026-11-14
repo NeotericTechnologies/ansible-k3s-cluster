@@ -28,10 +28,28 @@ metadata:
   labels:
     app.kubernetes.io/name: kube-vip-label-reconciler
 data:
+  kubeconfig: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+      - name: in-cluster
+        cluster:
+          server: https://kubernetes.default.svc
+          certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    users:
+      - name: reconciler
+        user:
+          tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    contexts:
+      - name: in-cluster
+        context:
+          cluster: in-cluster
+          user: reconciler
+    current-context: in-cluster
   reconcile.sh: |
 {% raw %}
     #!/bin/sh
-    set -u
+    set -eu
 
     LEASE_NAMESPACE="kube-system"
     CP_LABEL_KEY="kube-vip.io/has-ip"
@@ -39,8 +57,40 @@ data:
     CP_VALUE="${CONTROL_PLANE_VIP:-}"
 
     log() { echo "[kube-vip-label-reconciler] $*"; }
+    fail() { log "ERROR: $*" >&2; exit 1; }
+    kubectl() {
+      command kubectl --request-timeout=10s \
+        --server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}" "$@"
+    }
 
-    NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
+    NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}') || fail "cannot list nodes"
+    [ -n "${NODES}" ] || fail "no nodes returned"
+
+    fresh_lease() (
+      record=$(kubectl get lease -n "$1" "$2" --ignore-not-found \
+        -o jsonpath='{.spec.holderIdentity}{"|"}{.spec.leaseTransitions}{"|"}{.spec.renewTime}{"|"}{.spec.leaseDurationSeconds}') \
+        || fail "cannot read Lease $1/$2"
+      [ -n "${record}" ] || exit 0
+      IFS='|' read -r owner transitions renewed duration <<EOF
+    ${record}
+    EOF
+      case "${duration}" in ''|*[!0-9]*) fail "invalid duration on Lease $1/$2";; esac
+      [ -n "${owner}" ] || fail "Lease $1/$2 has no holder"
+      [ -n "${renewed}" ] || fail "Lease $1/$2 has no renewTime"
+      timestamp=$(printf '%s' "${renewed}" | sed 's/T/ /; s/\.[0-9]*Z$//; s/Z$//')
+      renewed_epoch=$(date -u -d "${timestamp}" +%s) || fail "invalid renewTime on Lease $1/$2"
+      age=$(( $(date -u +%s) - renewed_epoch ))
+      [ "${age}" -lt "${duration}" ] && [ "${age}" -ge -5 ] \
+        || fail "Lease $1/$2 expired or has invalid clock skew (age=${age}s)"
+      printf '%s|%s\n' "${owner}" "${transitions}"
+    )
+
+    assert_current_lease() {
+      current_lease=$(fresh_lease "${ACTIVE_LEASE_NS}" "${ACTIVE_LEASE_NAME}") \
+        || fail "cannot validate current VIP ownership"
+      [ "${current_lease}" = "${EXPECTED_LEASE}" ] \
+        || fail "VIP ownership changed during reconciliation; retry on next run"
+    }
 
     CHECKED=0
     FIXED=0
@@ -59,7 +109,8 @@ data:
       lease_name="$3"
       desired_value="$4"
 
-      holder=$(kubectl get lease -n "${lease_ns}" "${lease_name}" -o jsonpath='{.spec.holderIdentity}' 2>/dev/null)
+      EXPECTED_LEASE=$(fresh_lease "${lease_ns}" "${lease_name}") || fail "cannot resolve ${label_key}"
+      holder="${EXPECTED_LEASE%%|*}"
       LAST_HOLDER="${holder}"
       if [ -z "${holder}" ]; then
         log "skip ${label_key}: no Lease ${lease_ns}/${lease_name} (leader election not active for this label)"
@@ -67,11 +118,26 @@ data:
         return
       fi
       if [ -z "${desired_value}" ]; then
-        log "skip ${label_key}: no target value resolved (Lease ${lease_ns}/${lease_name} holder=${holder})"
-        SKIPPED=$((SKIPPED + 1))
-        return
+        fail "${label_key}: no VIP value resolved for active Lease ${lease_ns}/${lease_name}"
       fi
 
+      ACTIVE_LEASE_NS="${lease_ns}"
+      ACTIVE_LEASE_NAME="${lease_name}"
+      case " ${NODES} " in *" ${holder} "*) ;; *) fail "Lease holder ${holder} is not a known node";; esac
+      presence=$(vip_present_on_node "${holder}" "${desired_value}") || fail "cannot check holder VIP"
+      if [ "${presence}" = CLEAN ]; then
+        assert_current_lease
+        log "FIX ${holder}: elected holder is missing VIP ${desired_value}; restarting kube-vip"
+        restart_kube_vip "${holder}"
+        sleep "${STALE_VIP_RECHECK_DELAY:-10}"
+        EXPECTED_LEASE=$(fresh_lease "${lease_ns}" "${lease_name}") || fail "cannot resolve VIP owner after restart"
+        [ -n "${EXPECTED_LEASE}" ] || fail "VIP Lease disappeared after restart"
+        holder="${EXPECTED_LEASE%%|*}"
+        LAST_HOLDER="${holder}"
+        presence=$(vip_present_on_node "${holder}" "${desired_value}") || fail "cannot recheck holder VIP"
+        [ "${presence}" = PRESENT ] || fail "VIP ${desired_value} still missing from elected holder ${holder}"
+      fi
+      assert_current_lease
       CHECKED=$((CHECKED + 1))
       labeled_node="<none>"
       # kubectl jsonpath does not resolve quoted bracket map keys (e.g. ['a.b/c']) for keys
@@ -79,18 +145,22 @@ data:
       # plain dotted path must instead be individually backslash-escaped.
       label_key_jsonpath=$(echo "${label_key}" | sed 's/\./\\./g')
       for node in ${NODES}; do
-        current=$(kubectl get node "${node}" -o jsonpath="{.metadata.labels.${label_key_jsonpath}}" 2>/dev/null)
+        current=$(kubectl get node "${node}" -o jsonpath="{.metadata.labels.${label_key_jsonpath}}") \
+          || fail "cannot read ${node} label ${label_key}"
         if [ "${node}" = "${holder}" ]; then
           if [ "${current}" != "${desired_value}" ]; then
             log "FIX ${node}: setting ${label_key}=${desired_value} (current lease holder, was '${current}')"
-            kubectl label node "${node}" "${label_key}=${desired_value}" --overwrite
+            assert_current_lease
+            kubectl label node "${node}" "${label_key}=${desired_value}" --overwrite \
+              || fail "cannot set ${node} label ${label_key}"
             FIXED=$((FIXED + 1))
           fi
           labeled_node="${node}"
         else
           if [ -n "${current}" ]; then
             log "FIX ${node}: removing stale ${label_key} (was '${current}', holder is ${holder})"
-            kubectl label node "${node}" "${label_key}-"
+            assert_current_lease
+            kubectl label node "${node}" "${label_key}-" || fail "cannot remove ${node} label ${label_key}"
             REMOVED=$((REMOVED + 1))
           fi
         fi
@@ -102,11 +172,11 @@ data:
     # vip_present_on_node <node> <vip> -> prints PRESENT or CLEAN
     # Read-only check, run via a short-lived privileged hostNetwork pod pinned to <node> since
     # this reconciler pod itself doesn't have host network access.
-    vip_present_on_node() {
+    vip_present_on_node() (
       node="$1"
       vip="$2"
-      pod="kube-vip-vip-check-$$-${node}"
-      cat <<PODEOF | kubectl apply -f - >/dev/null 2>&1
+      pod="vip-check-${HOSTNAME##*-}-$$-${node}"
+      manifest=$(cat <<PODEOF
     apiVersion: v1
     kind: Pod
     metadata:
@@ -123,24 +193,43 @@ data:
       containers:
         - name: check
           image: ${VIP_CHECK_IMAGE:?VIP_CHECK_IMAGE must be set}
-          command: ["sh", "-c", "ip addr show dev ${VIP_IFACE} | grep -q ' ${vip}/32' && echo PRESENT || echo CLEAN"]
+          env:
+            - name: VIP_IFACE
+              value: "${VIP_IFACE}"
+            - name: VIP_ADDRESS
+              value: "${vip}"
+          command:
+            - sh
+            - -c
+            - |
+              addresses=\$(ip -o -4 addr show dev "\$VIP_IFACE") || exit 1
+              printf '%s\n' "\$addresses" | grep -Fq " \$VIP_ADDRESS/32 " && echo PRESENT || echo CLEAN
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
     PODEOF
-      kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/"${pod}" -n kube-system --timeout=30s >/dev/null 2>&1
-      kubectl logs "${pod}" -n kube-system 2>/dev/null
-      kubectl delete pod "${pod}" -n kube-system --wait=false >/dev/null 2>&1
-    }
+      )
+      printf '%s\n' "${manifest}" | kubectl create -f - >/dev/null || fail "cannot create VIP checker ${pod}"
+      trap 'kubectl delete pod "${pod}" -n kube-system --ignore-not-found --wait=false >/dev/null || log "ERROR: checker cleanup failed for ${pod}" >&2' 0
+      kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/"${pod}" -n kube-system --timeout=30s >/dev/null \
+        || fail "VIP checker ${pod} did not succeed"
+      result=$(kubectl logs "${pod}" -n kube-system) || fail "cannot read VIP checker ${pod}"
+      case "${result}" in PRESENT|CLEAN) ;; *) fail "invalid VIP check result from ${pod}: ${result}";; esac
+      kubectl delete pod "${pod}" -n kube-system --ignore-not-found --wait=false >/dev/null \
+        || fail "cannot clean up VIP checker ${pod}"
+      trap - 0
+      printf '%s\n' "${result}"
+    )
 
     # force_clear_vip_on_node <node> <vip> -> prints REMOVED or FAILED
     # Last resort: directly removes the address at the network level. Only called after a
     # kube-vip pod restart has already been tried and failed to clear it.
-    force_clear_vip_on_node() {
+    force_clear_vip_on_node() (
       node="$1"
       vip="$2"
-      pod="kube-vip-vip-clear-$$-${node}"
-      cat <<PODEOF | kubectl apply -f - >/dev/null 2>&1
+      pod="vip-clear-${HOSTNAME##*-}-$$-${node}"
+      assert_current_lease
+      manifest=$(cat <<PODEOF
     apiVersion: v1
     kind: Pod
     metadata:
@@ -157,14 +246,39 @@ data:
       containers:
         - name: clear
           image: ${VIP_CHECK_IMAGE:?VIP_CHECK_IMAGE must be set}
-          command: ["sh", "-c", "ip addr del ${vip}/32 dev ${VIP_IFACE} && echo REMOVED || echo FAILED"]
+          env:
+            - name: VIP_IFACE
+              value: "${VIP_IFACE}"
+            - name: VIP_ADDRESS
+              value: "${vip}"
+          command: ["sh", "-c", "ip addr del \${VIP_ADDRESS}/32 dev \${VIP_IFACE} && echo REMOVED"]
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
     PODEOF
-      kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/"${pod}" -n kube-system --timeout=30s >/dev/null 2>&1
-      kubectl logs "${pod}" -n kube-system 2>/dev/null
-      kubectl delete pod "${pod}" -n kube-system --wait=false >/dev/null 2>&1
+      )
+      printf '%s\n' "${manifest}" | kubectl create -f - >/dev/null || fail "cannot create VIP cleanup ${pod}"
+      trap 'kubectl delete pod "${pod}" -n kube-system --ignore-not-found --wait=false >/dev/null || log "ERROR: cleanup failed for ${pod}" >&2' 0
+      kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/"${pod}" -n kube-system --timeout=30s >/dev/null \
+        || fail "VIP cleanup ${pod} did not succeed"
+      result=$(kubectl logs "${pod}" -n kube-system) || fail "cannot read VIP cleanup ${pod}"
+      [ "${result}" = REMOVED ] || fail "invalid VIP cleanup result from ${pod}: ${result}"
+      kubectl delete pod "${pod}" -n kube-system --ignore-not-found --wait=false >/dev/null \
+        || fail "cannot delete VIP cleanup pod ${pod}"
+      trap - 0
+      printf '%s\n' "${result}"
+    )
+
+    restart_kube_vip() {
+      restart_node="$1"
+      restart_pod=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=kube-vip \
+        --field-selector "spec.nodeName=${restart_node}" -o jsonpath='{.items[0].metadata.name}') \
+        || fail "cannot find kube-vip pod on ${restart_node}"
+      [ -n "${restart_pod}" ] || fail "no kube-vip pod found on ${restart_node}"
+      assert_current_lease
+      kubectl delete pod "${restart_pod}" -n kube-system --wait=true --timeout=60s >/dev/null \
+        || fail "cannot restart kube-vip pod ${restart_pod}"
+      STALE_RESTARTS=$((STALE_RESTARTS + 1))
     }
 
     # check_and_clear_stale_vip <vip_address> <holder_node>
@@ -184,35 +298,33 @@ data:
       for node in ${NODES}; do
         [ "${node}" = "${holder_node}" ] && continue
 
-        if ! vip_present_on_node "${node}" "${vip}" | grep -q PRESENT; then
+        assert_current_lease
+        presence=$(vip_present_on_node "${node}" "${vip}") || fail "cannot check VIP on ${node}"
+        if [ "${presence}" = CLEAN ]; then
           continue
         fi
         log "DETECTED stale VIP ${vip}/32 on ${node} (not the current Lease holder ${holder_node})"
 
         log "ESCALATION step 1/2: restarting kube-vip pod on ${node} to let it release the address itself"
-        stale_pod=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=kube-vip \
-          --field-selector "spec.nodeName=${node}" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-        if [ -n "${stale_pod}" ]; then
-          kubectl delete pod "${stale_pod}" -n kube-system --wait=true --timeout=60s >/dev/null 2>&1
-          STALE_RESTARTS=$((STALE_RESTARTS + 1))
-          sleep "${STALE_VIP_RECHECK_DELAY:-10}"
-        else
-          log "WARN: no kube-vip pod found on ${node} — skipping straight to force-clear"
-        fi
+        restart_kube_vip "${node}"
+        sleep "${STALE_VIP_RECHECK_DELAY:-10}"
 
-        if ! vip_present_on_node "${node}" "${vip}" | grep -q PRESENT; then
+        assert_current_lease
+        presence=$(vip_present_on_node "${node}" "${vip}") || fail "cannot recheck VIP on ${node}"
+        if [ "${presence}" = CLEAN ]; then
           log "RESOLVED ${node}: kube-vip pod restart cleared stale VIP ${vip}/32 on its own"
           continue
         fi
 
         log "ESCALATION step 2/2: pod restart did not clear it — force-removing ${vip}/32 from ${node} directly"
-        if force_clear_vip_on_node "${node}" "${vip}" | grep -q REMOVED; then
-          log "FIX ${node}: force-removed stale VIP ${vip}/32 still bound to ${VIP_IFACE}"
-          STALE_ADDR_REMOVED=$((STALE_ADDR_REMOVED + 1))
-        else
-          log "ERROR ${node}: failed to force-remove stale VIP ${vip}/32 — manual intervention required"
-        fi
+        force_clear_vip_on_node "${node}" "${vip}" >/dev/null || fail "cannot remove stale VIP on ${node}"
+        log "FIX ${node}: force-removed stale VIP ${vip}/32 still bound to ${VIP_IFACE}"
+        STALE_ADDR_REMOVED=$((STALE_ADDR_REMOVED + 1))
       done
+      assert_current_lease
+      presence=$(vip_present_on_node "${holder_node}" "${vip}") || fail "cannot verify final holder VIP"
+      [ "${presence}" = PRESENT ] || fail "VIP ${vip} missing from holder ${holder_node} after reconciliation"
+      assert_current_lease
     }
 
     log "$(date -u +%FT%TZ) starting reconciliation"
@@ -223,16 +335,19 @@ data:
     check_and_clear_stale_vip "${CP_VALUE}" "${LAST_HOLDER}"
 
     # Per-service labels: one per LoadBalancer Service with per-service leader election active.
-    SVC_REFS=$(kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}')
+    SVC_REFS=$(kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}') \
+      || fail "cannot list LoadBalancer Services"
     for ref in ${SVC_REFS}; do
       ns="${ref%%/*}"
       name="${ref##*/}"
       label_key="service-provided.kube-vip.io/${name}.${ns}"
       lease_name="kubevip-${name}"
 
-      value=$(kubectl get svc -n "${ns}" "${name}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+      value=$(kubectl get svc -n "${ns}" "${name}" -o jsonpath='{.status.loadBalancer.ingress[0].ip}') \
+        || fail "cannot read VIP for Service ${ns}/${name}"
       if [ -z "${value}" ]; then
-        value=$(kubectl get svc -n "${ns}" "${name}" -o jsonpath='{.spec.loadBalancerIP}' 2>/dev/null)
+        value=$(kubectl get svc -n "${ns}" "${name}" -o jsonpath='{.spec.loadBalancerIP}') \
+          || fail "cannot read configured VIP for Service ${ns}/${name}"
       fi
 
       reconcile_label "${label_key}" "${LEASE_NAMESPACE}" "${lease_name}" "${value}"
@@ -246,12 +361,16 @@ data:
       log "  (no managed labels found — leader election not yet active for any tracked Lease)"
     else
       printf '%s\n' "${FINAL_STATE}" | while IFS= read -r line; do
-        [ -n "${line}" ] && log "  ${line}"
+        if [ -n "${line}" ]; then
+          log "  ${line}"
+        fi
       done
     fi
 
     if [ "${FIXED}" -gt 0 ] || [ "${REMOVED}" -gt 0 ] || [ "${STALE_RESTARTS}" -gt 0 ] || [ "${STALE_ADDR_REMOVED}" -gt 0 ]; then
       log "result: DRIFT CORRECTED (fixed=${FIXED} removed=${REMOVED} stale_vip_restarts=${STALE_RESTARTS} stale_addresses_force_removed=${STALE_ADDR_REMOVED})"
+    elif [ "${SKIPPED}" -gt 0 ]; then
+      log "result: CHECKED ${CHECKED} managed labels; skipped ${SKIPPED} labels without active Leases"
     else
       log "result: NO DRIFT (all managed labels and VIP addresses already correct)"
     fi
@@ -291,8 +410,10 @@ spec:
           containers:
             - name: reconcile
               image: "{{ kube_vip_label_reconciler_image }}"
-              command: ["/bin/sh", "/scripts/reconcile.sh"]
+              command: ["timeout", "540", "/bin/sh", "/scripts/reconcile.sh"]
               env:
+                - name: KUBECONFIG
+                  value: /scripts/kubeconfig
                 - name: CONTROL_PLANE_VIP
                   value: "{{ control_plane_vip }}"
                 - name: STALE_VIP_RECHECK_DELAY

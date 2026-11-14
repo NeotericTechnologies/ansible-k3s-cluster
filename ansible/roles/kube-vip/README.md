@@ -167,6 +167,19 @@ external, cluster-wide reconciler can.
 - Every run logs a summary (`labels_checked`/`fixed`/`removed`/`skipped` counts) and the final
   reconciled state — holder node, expected value, and which node (if any) carries the label —
   for every managed label; view with `kubectl logs -n kube-system job/<job-name>`.
+- Before reconciling labels, the job requires an unexpired Lease and verifies that its
+  holder actually has the VIP. If the VIP is missing, it restarts that holder's kube-vip
+  pod, then re-reads ownership and verifies the address before proceeding. It rechecks
+  the holder and Lease transition count before mutations and verifies the holder's
+  address again after reconciliation. An observed ownership change aborts the run.
+  Lease checks and host-network mutations are not atomic.
+- API, checker, mutation, and cleanup failures are reported explicitly and fail the job.
+  Services without a per-service Lease are skipped rather than reported as verified.
+  Individual API requests are bounded to 10 seconds; script runtime is bounded to
+  540 seconds within the Job's 600-second deadline.
+- API calls explicitly load the mounted service-account CA and rotating token file.
+  They use the Kubernetes service IP from pod environment variables, without relying
+  on DNS to reach the API while repairing VIP ownership.
 - Only meaningful when `kube_vip_enable_node_labeling: true` — the CronJob is not applied
   otherwise.
 - Runs as a dedicated `kube-vip-label-reconciler` ServiceAccount bound to the same consolidated
