@@ -40,6 +40,17 @@ Deploys the Synology CSI driver for persistent storage on k3s clusters, with opt
 | `synology_csi_snapshots_enabled` | `false` | Deploy snapshot controller and CRDs |
 | `synology_csi_storage_classes` | *(see below)* | List of StorageClass definitions |
 
+#### CSI sidecar versions
+
+| Variable | Description |
+|----------|-------------|
+| `synology_csi_node_driver_registrar_version` | CSI node-driver-registrar image tag |
+| `synology_csi_provisioner_version` | CSI provisioner image tag |
+| `synology_csi_attacher_version` | CSI attacher image tag |
+| `synology_csi_resizer_version` | CSI resizer image tag |
+| `synology_csi_snapshotter_version` | CSI snapshotter and snapshot-controller image tag, plus snapshot CRD release |
+| `synology_csi_dsm_login_reconciler_kubectl_version` | kubectl tag for the DSM login reconciler |
+
 #### `synology_csi_storage_classes` entries
 
 ```yaml

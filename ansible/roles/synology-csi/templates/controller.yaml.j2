@@ -58,7 +58,7 @@ spec:
               mountPath: /etc/synology
               readOnly: true
         - name: csi-provisioner
-          image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.3
+          image: registry.k8s.io/sig-storage/csi-provisioner:{{ synology_csi_provisioner_version }}
           args:
             - --csi-address=/csi/csi.sock
             - --timeout=60s
@@ -74,7 +74,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-attacher
-          image: registry.k8s.io/sig-storage/csi-attacher:v4.4.3
+          image: registry.k8s.io/sig-storage/csi-attacher:{{ synology_csi_attacher_version }}
           args:
             - --csi-address=/csi/csi.sock
             - --v=5
@@ -89,7 +89,7 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-resizer
-          image: registry.k8s.io/sig-storage/csi-resizer:v1.9.3
+          image: registry.k8s.io/sig-storage/csi-resizer:{{ synology_csi_resizer_version }}
           args:
             - --csi-address=/csi/csi.sock
             - --v=5

@@ -8,6 +8,12 @@ multus_enabled: true
 multus_version: "v4.3.1-thick"
 # multus_version: "v4.3.0-thick"
 
+
+# CNI spec version written to generated CNI configs; this is not an image version.
+# https://www.cni.dev/docs/spec/#version-considerations
+# https://github.com/containernetworking/cni/releases/tag/spec-v0.3.1
+multus_cni_config_version: "0.3.1"
+
 multus_ha_min_replicas: 2
 multus_non_ha_default_replicas: 1
 multus_dhcp_daemon_enabled: true  # Deploy DHCP daemon DaemonSet for DHCP-based IPAM

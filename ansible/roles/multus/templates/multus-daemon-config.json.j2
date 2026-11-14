@@ -1,6 +1,6 @@
 {
     "chrootDir": "/hostroot",
-    "cniVersion": "0.3.1",
+    "cniVersion": "{{ multus_cni_config_version }}",
     "logLevel": "{{ multus_log_level }}",
     "logToStderr": {{ multus_log_to_stderr | lower }},
     "binDir": "{{ multus_cni_bin_dir }}",

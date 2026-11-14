@@ -58,12 +58,17 @@ synology_csi_dsm_ready_delay: 15         # seconds between ansible-level retries
 # for and self-heals the same failure signature independently of ansible runs.
 synology_csi_dsm_login_reconciler_enabled: true
 synology_csi_dsm_login_reconciler_schedule: "*/5 * * * *"
-synology_csi_dsm_login_reconciler_image: "alpine/kubectl:1.36.4"
+synology_csi_dsm_login_reconciler_kubectl_version: "1.36.4"
+synology_csi_dsm_login_reconciler_image: "alpine/kubectl:{{ synology_csi_dsm_login_reconciler_kubectl_version }}"
 synology_csi_dsm_login_reconciler_history_limit: 3
 
 # Snapshot support
 synology_csi_snapshots_enabled: false
 synology_csi_snapshotter_version: "v8.5.0"
+synology_csi_node_driver_registrar_version: "v2.9.3"
+synology_csi_provisioner_version: "v3.6.3"
+synology_csi_attacher_version: "v4.4.3"
+synology_csi_resizer_version: "v1.9.3"
 
 # Storage classes — list of definitions supporting iSCSI and/or NFS
 # Each entry:

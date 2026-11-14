@@ -122,7 +122,7 @@ data:
         - operator: Exists
       containers:
         - name: check
-          image: ${VIP_CHECK_IMAGE:-busybox:1.36}
+          image: ${VIP_CHECK_IMAGE:?VIP_CHECK_IMAGE must be set}
           command: ["sh", "-c", "ip addr show dev ${VIP_IFACE} | grep -q ' ${vip}/32' && echo PRESENT || echo CLEAN"]
           securityContext:
             capabilities:
@@ -156,7 +156,7 @@ data:
         - operator: Exists
       containers:
         - name: clear
-          image: ${VIP_CHECK_IMAGE:-busybox:1.36}
+          image: ${VIP_CHECK_IMAGE:?VIP_CHECK_IMAGE must be set}
           command: ["sh", "-c", "ip addr del ${vip}/32 dev ${VIP_IFACE} && echo REMOVED || echo FAILED"]
           securityContext:
             capabilities:

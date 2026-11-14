@@ -197,7 +197,7 @@ kube_vip_lb_ip_range: "192.168.1.200-192.168.1.220"
 # Label reconciliation (see "Label Reconciliation" above)
 kube_vip_label_reconciler_enabled: true
 kube_vip_label_reconciler_schedule: "*/5 * * * *"
-kube_vip_label_reconciler_image: "alpine/kubectl:1.36.4"
+kube_vip_label_reconciler_kubectl_version: "1.37.0"
 kube_vip_label_reconciler_history_limit: 3
 ```
 

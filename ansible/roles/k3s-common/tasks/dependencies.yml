@@ -65,7 +65,8 @@
   changed_when: false
 
 - name: Install helm-diff plugin for reliable Helm idempotency checks
-  ansible.builtin.command: helm plugin install https://github.com/databus23/helm-diff --version v3.9.12
+  ansible.builtin.command: >-
+    helm plugin install https://github.com/databus23/helm-diff --version {{ helm_diff_plugin_version }}
   when: not (helm_plugin_list.stdout is search('(?m)^diff\s'))
 
 - name: Ensure k3s containerd config fragment directory exists

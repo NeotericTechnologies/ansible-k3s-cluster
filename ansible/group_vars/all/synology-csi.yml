@@ -18,6 +18,27 @@ synology_csi_non_ha_default_replicas: 1
 synology_csi_namespace: "synology-csi"
 synology_csi_snapshots_enabled: false
 
+# https://kubernetes-csi.github.io/docs/node-driver-registrar.html
+# https://github.com/kubernetes-csi/node-driver-registrar/releases
+# synology_csi_node_driver_registrar_version: "v2.18.0"
+synology_csi_node_driver_registrar_version: "v2.9.3"
+
+# https://kubernetes-csi.github.io/docs/external-provisioner.html
+# https://github.com/kubernetes-csi/external-provisioner/releases
+# synology_csi_provisioner_version: "v6.4.0"
+synology_csi_provisioner_version: "v3.6.3"
+
+# https://kubernetes-csi.github.io/docs/external-attacher.html
+# https://github.com/kubernetes-csi/external-attacher/releases
+# synology_csi_attacher_version: "v4.13.0"
+synology_csi_attacher_version: "v4.4.3"
+
+# https://kubernetes-csi.github.io/docs/external-resizer.html
+# https://github.com/kubernetes-csi/external-resizer/releases
+# synology_csi_resizer_version: "v2.3.0"
+synology_csi_resizer_version: "v1.9.3"
+synology_csi_dsm_login_reconciler_kubectl_version: "1.36.4"
+
 # csi-driver-nfs configuration (NFS sub-directory provisioning via kubernetes-csi/csi-driver-nfs)
 # Deploys nfs.csi.k8s.io driver via Helm; creates sub-directories in a pre-existing NFS share per PVC
 # See ansible/roles/synology-csi/defaults/main.yml for full variable reference

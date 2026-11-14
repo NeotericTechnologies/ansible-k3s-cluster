@@ -397,7 +397,7 @@
       ansible.builtin.command:
         cmd: >-
           kubectl run cilium-overlay-probe -n kube-system --restart=Never
-          --image=busybox:1.36.1
+          --image={{ smoke_test_image }}
           --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
           -- sleep 300
       environment:
@@ -470,7 +470,7 @@
       ansible.builtin.command:
         cmd: >-
           kubectl run cilium-overlay-probe -n kube-system --restart=Never
-          --image=busybox:1.36.1
+          --image={{ smoke_test_image }}
           --overrides='{"spec":{"nodeName":"{{ cilium_overlay_probe_source_node }}","tolerations":[{"operator":"Exists"}]}}'
           -- sleep 300
       environment:
