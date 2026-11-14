@@ -12,6 +12,7 @@ multus_version: "v4.3.1-thick"
 # CNI spec version written to generated CNI configs; this is not an image version.
 # https://www.cni.dev/docs/spec/#version-considerations
 # https://github.com/containernetworking/cni/releases/tag/spec-v0.3.1
+# multus_cni_spec_version: "1.3.1"
 multus_cni_config_version: "0.3.1"
 
 multus_ha_min_replicas: 2
