@@ -6,7 +6,7 @@
 # Each registered component MUST have an explicit entry (even if empty {})
 component_compatibility:
   rancher:
-    k3s_max_version: "v1.36.4+k3s1"
+    k3s_max_version: "v1.36.6+k3s1"
     k3s_min_version: "v1.34.1+k3s1"
   cert_manager:
     k3s_min_version: "v1.19.5"

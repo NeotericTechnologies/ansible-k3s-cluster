@@ -37,8 +37,6 @@ synology_csi_attacher_version: "v4.4.3"
 # https://github.com/kubernetes-csi/external-resizer/releases
 # synology_csi_resizer_version: "v2.3.0"
 synology_csi_resizer_version: "v1.9.3"
-synology_csi_dsm_login_reconciler_kubectl_version: "1.36.4"
-
 # csi-driver-nfs configuration (NFS sub-directory provisioning via kubernetes-csi/csi-driver-nfs)
 # Deploys nfs.csi.k8s.io driver via Helm; creates sub-directories in a pre-existing NFS share per PVC
 # See ansible/roles/synology-csi/defaults/main.yml for full variable reference

@@ -26,8 +26,7 @@ kube_vip_enable_node_labeling: false
 # Reconciliation"). Only meaningful when kube_vip_enable_node_labeling is true.
 kube_vip_label_reconciler_enabled: true
 kube_vip_label_reconciler_schedule: "*/5 * * * *"
-kube_vip_label_reconciler_kubectl_version: "1.36.4"
-kube_vip_label_reconciler_image: "alpine/kubectl:{{ kube_vip_label_reconciler_kubectl_version }}"
+kube_vip_label_reconciler_image: "alpine/kubectl:{{ alpine_kubectl_version }}"
 kube_vip_label_reconciler_history_limit: 3
 
 # Same CronJob also detects a stale VIP address left bound on a node that is no longer the

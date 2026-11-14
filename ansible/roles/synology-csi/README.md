@@ -49,7 +49,8 @@ Deploys the Synology CSI driver for persistent storage on k3s clusters, with opt
 | `synology_csi_attacher_version` | CSI attacher image tag |
 | `synology_csi_resizer_version` | CSI resizer image tag |
 | `synology_csi_snapshotter_version` | CSI snapshotter and snapshot-controller image tag, plus snapshot CRD release |
-| `synology_csi_dsm_login_reconciler_kubectl_version` | kubectl tag for the DSM login reconciler |
+
+The DSM login reconciler uses the shared `alpine_kubectl_version` tag configured in `ansible/group_vars/all/00_defaults.yml`.
 
 #### `synology_csi_storage_classes` entries
 

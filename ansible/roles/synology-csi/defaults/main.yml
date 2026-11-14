@@ -58,8 +58,7 @@ synology_csi_dsm_ready_delay: 15         # seconds between ansible-level retries
 # for and self-heals the same failure signature independently of ansible runs.
 synology_csi_dsm_login_reconciler_enabled: true
 synology_csi_dsm_login_reconciler_schedule: "*/5 * * * *"
-synology_csi_dsm_login_reconciler_kubectl_version: "1.36.4"
-synology_csi_dsm_login_reconciler_image: "alpine/kubectl:{{ synology_csi_dsm_login_reconciler_kubectl_version }}"
+synology_csi_dsm_login_reconciler_image: "alpine/kubectl:{{ alpine_kubectl_version }}"
 synology_csi_dsm_login_reconciler_history_limit: 3
 
 # Snapshot support

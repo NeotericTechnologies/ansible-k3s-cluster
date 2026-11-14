@@ -137,7 +137,7 @@
             live: "{{ smoke_live_versions.kube_vip_cloud_provider_version | trim }}"
           - name: kube_vip_label_reconciler_kubectl_version
             enabled: "{{ kube_vip_enabled | default(true) | bool and (kube_vip_enable_node_labeling | default(false) | bool or kube_vip_egress_enabled | default(false) | bool) and kube_vip_label_reconciler_enabled | default(true) | bool }}"
-            desired: "{{ kube_vip_label_reconciler_kubectl_version }}"
+            desired: "{{ alpine_kubectl_version }}"
             live: "{{ smoke_live_versions.kube_vip_label_reconciler_kubectl_version | trim }}"
           - name: smoke_test_image
             enabled: "{{ kube_vip_enabled | default(true) | bool and (kube_vip_enable_node_labeling | default(false) | bool or kube_vip_egress_enabled | default(false) | bool) and kube_vip_label_reconciler_enabled | default(true) | bool }}"
@@ -216,7 +216,7 @@
             live: "{{ smoke_live_versions.synology_csi_snapshotter_version | trim }}"
           - name: synology_csi_dsm_login_reconciler_kubectl_version
             enabled: "{{ synology_csi_enabled | default(false) | bool and synology_csi_dsm_login_reconciler_enabled | default(true) | bool }}"
-            desired: "{{ synology_csi_dsm_login_reconciler_kubectl_version }}"
+            desired: "{{ alpine_kubectl_version }}"
             live: "{{ smoke_live_versions.synology_csi_dsm_login_reconciler_kubectl_version | trim }}"
           - name: csi_nfs_version
             enabled: "{{ synology_csi_enabled | default(false) | bool and csi_nfs_enabled | default(false) | bool }}"
