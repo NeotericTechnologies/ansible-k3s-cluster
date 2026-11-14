@@ -5,11 +5,14 @@
   hosts: localhost
   gather_facts: false
   vars:
-    smoke_tasks: "{{ (lookup('ansible.builtin.file', playbook_dir ~ '/smoke.yml') | from_yaml)[0].tasks }}"
+    smoke_tasks: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../../ansible/playbooks/includes/audit-component-versions.yml') | from_yaml }}"
+    smoke_report_task: "{{ (lookup('ansible.builtin.file', playbook_dir ~ '/smoke.yml') | from_yaml)[0].tasks | selectattr('name', 'equalto', 'Display final human-readable version report') | first }}"
+    expected_helm_diff_version: "{{ helm_diff_plugin_version | regex_replace('^v', '') }}"
     version_task_names:
       - Collect Helm plugins as the install user
       - Build live version map
       - Build desired versus live version checks
+      - Attach probe results to version checks
       - Apply component install selection to version checks
     smoke_health_checks: []
     kubectl_nodes:
@@ -27,7 +30,7 @@
         multus_dhcp_daemon_enabled: false
         synology_csi_enabled: false
         smoke_test_image: "registry.example.test/smoke/very-long-image-name:1.36.1"
-        smoke_version_results:
+        version_audit_probe_results:
           results: >-
             {%- set results = [] -%}
             {%- for item in (smoke_tasks | selectattr('name', 'equalto', 'Collect live component versions') | first).loop -%}
@@ -52,7 +55,7 @@
               test "$1 $2" = "plugin list" || exit 1
               printf 'NAME\tVERSION\tDESCRIPTION\n'
               if [ "$(id -u)" = 0 ]; then
-                printf 'diff\tv3.9.12\tPreview release changes\n'
+                printf 'diff\tv{{ expected_helm_diff_version }}\tPreview release changes\n'
               fi
 
         - name: Extract version reporting tasks with mock Helm binary
@@ -65,8 +68,7 @@
               {%- endif -%}
               {%- set _ = tasks.append(task) -%}
               {%- endfor -%}
-              {%- set report = smoke_tasks | selectattr('name', 'equalto', 'Display final human-readable version report') | first -%}
-              {%- set _ = tasks.append(report | combine({'register': 'smoke_report'})) -%}
+              {%- set _ = tasks.append(smoke_report_task | combine({'register': 'smoke_report'})) -%}
               {{- tasks -}}
 
         - name: Write extracted reporting tasks
@@ -81,14 +83,14 @@
         - name: Verify Helm install-user detection and disabled component handling
           ansible.builtin.assert:
             that:
-              - smoke_live_versions.helm_diff_plugin_version == '3.9.12'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'helm_diff_plugin_version') | first).status == 'OK'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'smoke_test_image') | first).status == 'DIFF'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'rancher_monitoring_version') | first).live == 'Not selected for install'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'rancher_monitoring_version') | first).status == 'SKIP'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'multus_version') | first).status == 'DIFF'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'multus_dhcp_daemon_image') | first).status == 'SKIP'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'synology_csi_node_driver_version') | first).status == 'SKIP'
+              - version_audit_live_versions.helm_diff_plugin_version == expected_helm_diff_version
+              - (version_audit_checks | selectattr('name', 'equalto', 'helm_diff_plugin_version') | first).status == 'OK'
+              - (version_audit_checks | selectattr('name', 'equalto', 'smoke_test_image') | first).status == 'DIFF'
+              - (version_audit_checks | selectattr('name', 'equalto', 'rancher_monitoring_version') | first).live == 'Not selected for install'
+              - (version_audit_checks | selectattr('name', 'equalto', 'rancher_monitoring_version') | first).status == 'SKIP'
+              - (version_audit_checks | selectattr('name', 'equalto', 'multus_version') | first).status == 'DIFF'
+              - (version_audit_checks | selectattr('name', 'equalto', 'multus_dhcp_daemon_image') | first).status == 'SKIP'
+              - (version_audit_checks | selectattr('name', 'equalto', 'synology_csi_node_driver_version') | first).status == 'SKIP'
 
         - name: Extract rendered version table
           ansible.builtin.set_fact:
@@ -97,7 +99,7 @@
         - name: Verify every row aligns with headings even with long names and images
           ansible.builtin.assert:
             that:
-              - version_lines | length == smoke_version_checks | length + 1
+              - version_lines | length == version_audit_checks | length + 1
               - row[:7] | trim == item.status
               - row[header.index('COMPONENT'):header.index('DESIRED')] | trim == item.name
               - row[header.index('DESIRED'):header.index('LIVE')] | trim == item.desired | string
@@ -105,7 +107,7 @@
           vars:
             header: "{{ version_lines[0] }}"
             row: "{{ version_lines[version_index + 1] }}"
-          loop: "{{ smoke_version_checks }}"
+          loop: "{{ version_audit_checks }}"
           loop_control:
             index_var: version_index
             label: "{{ item.name }}"
@@ -116,7 +118,7 @@
             mode: "0755"
             content: |
               #!/bin/sh
-              printf 'NAME VERSION DESCRIPTION\ndiff 3.9.12 Preview release changes\n'
+              printf 'NAME VERSION DESCRIPTION\ndiff {{ expected_helm_diff_version }} Preview release changes\n'
 
         - name: Verify unprefixed Helm version
           ansible.builtin.include_tasks: "{{ fixture_dir.path }}/versions.yml"
@@ -124,7 +126,7 @@
         - name: Check unprefixed Helm version matches
           ansible.builtin.assert:
             that:
-              - smoke_live_versions.helm_diff_plugin_version == '3.9.12'
+              - version_audit_live_versions.helm_diff_plugin_version == expected_helm_diff_version
 
         - name: Replace Helm fixture with missing plugin
           ansible.builtin.copy:
@@ -140,8 +142,8 @@
         - name: Check missing selected plugin remains a mismatch
           ansible.builtin.assert:
             that:
-              - smoke_live_versions.helm_diff_plugin_version == 'Not installed'
-              - (smoke_version_checks | selectattr('name', 'equalto', 'helm_diff_plugin_version') | first).status == 'DIFF'
+              - version_audit_live_versions.helm_diff_plugin_version == 'Not installed'
+              - (version_audit_checks | selectattr('name', 'equalto', 'helm_diff_plugin_version') | first).status == 'DIFF'
       always:
         - name: Remove temporary version reporting fixture
           ansible.builtin.file:

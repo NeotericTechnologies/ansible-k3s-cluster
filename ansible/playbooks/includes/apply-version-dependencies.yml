@@ -1,0 +1,52 @@
+---
+- name: Initialize version dependency trigger map
+  ansible.builtin.set_fact:
+    version_dependency_trigger_map: {}
+
+- name: Collect enabled dependency version drift by parent
+  ansible.builtin.set_fact:
+    version_dependency_trigger_map: >-
+      {{ version_dependency_trigger_map | combine({
+        item.parent_component:
+          (version_dependency_trigger_map[item.parent_component] | default([])) + [item.name]
+      }) }}
+  loop: >-
+    {{ version_audit_checks | default([])
+       | selectattr('enabled', 'equalto', true)
+       | selectattr('status', 'equalto', 'DIFF')
+       | selectattr('parent_component', 'defined')
+       | list }}
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate version dependency parents
+  ansible.builtin.assert:
+    that:
+      - item.key == 'common_dependencies' or item.key in component_plan
+    fail_msg: "Version check {{ item.value | join(', ') }} references unknown parent {{ item.key }}."
+  loop: "{{ version_dependency_trigger_map | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Schedule parent components for dependency drift
+  ansible.builtin.set_fact:
+    component_plan: >-
+      {{ component_plan | combine({
+        item.key: component_plan[item.key] | combine({
+          'action': (
+            component_plan[item.key].action
+            if component_plan[item.key].action != 'none'
+            else 'upgrade'
+          ),
+          'dependency_triggered_by': item.value
+        })
+      }, recursive=true) }}
+  loop: "{{ version_dependency_trigger_map | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: item.key != 'common_dependencies'
+
+- name: Record common dependency drift
+  ansible.builtin.set_fact:
+    common_dependencies_changed: "{{ version_dependency_trigger_map.get('common_dependencies', []) | length > 0 }}"
+    common_dependencies_triggered_by: "{{ version_dependency_trigger_map.get('common_dependencies', []) }}"
