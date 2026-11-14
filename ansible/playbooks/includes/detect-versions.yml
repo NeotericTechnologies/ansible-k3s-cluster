@@ -34,6 +34,8 @@
         ))
       }) }}
   loop: "{{ k3s_version_checks.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
 
 - name: Build k3s version lists by role
   ansible.builtin.set_fact:

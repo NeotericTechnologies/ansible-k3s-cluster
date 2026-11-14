@@ -95,6 +95,7 @@
         - name: "Display captured output"
           ansible.builtin.debug:
             msg: "{{ site_output_lines | join('\n') }}"
+            verbosity: 1
           when: site_output_lines is defined
 
         - name: "Verify Rancher action is 'upgrade'"
@@ -105,6 +106,7 @@
             fail_msg: |
               FAIL: Rancher action not detected in site.yml output.
               Expected to see component_plan showing Rancher with action='upgrade'
+              Re-run with -v to inspect the captured output.
             success_msg: "✓ PASS: Rancher component found in execution plan"
 
         - name: "Verify other components have 'none' action"
@@ -116,6 +118,7 @@
             fail_msg: |
               FAIL: Other components should be skipped (action='none').
               Only Rancher should execute when only rancher_version is changed.
+              Re-run with -v to inspect the captured output.
             success_msg: "✓ PASS: Other components correctly skipped"
 
     - name: Test result summary

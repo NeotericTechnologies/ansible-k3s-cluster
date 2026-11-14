@@ -328,6 +328,15 @@ The local `ansible/inventories/production` examples below are an alternative
 inventory location; include `-i ansible/default-inventory.yml` before that
 inventory to load the shared defaults, and do not commit sensitive values here.
 
+Normal output summarizes task status and loop labels. Add `-v` for full task
+results when troubleshooting; verbose output may contain sensitive data. Explicit
+diagnostic messages and failures remain visible.
+
+The smoke test component version report aligns columns to the longest values.
+Disabled components show `SKIP` with `Not selected for install` in the `LIVE`
+column, rather than a version mismatch. Helm plugins are queried with privilege
+escalation, matching the user used to install helm-diff.
+
 ### ssh
 
 ```bash

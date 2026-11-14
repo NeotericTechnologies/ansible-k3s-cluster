@@ -37,9 +37,6 @@
           command: "kubectl get cronjob kube-vip-label-reconciler -n kube-system -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name==\"VIP_CHECK_IMAGE\")].value}'"
         - key: cilium_version
           command: "kubectl get ds cilium -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: helm_diff_plugin_version
-          command: >-
-            helm plugin list | awk '$1 == "diff" {print $2}' | sed 's/^v//'
         - key: cert_manager_version
           command: "kubectl get deploy cert-manager -n cert-manager -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
         - key: multus_version
@@ -109,9 +106,20 @@
       changed_when: false
       failed_when: false
 
+    - name: Collect Helm plugins as the install user
+      ansible.builtin.command: helm plugin list
+      become: true
+      register: smoke_helm_plugins
+      changed_when: false
+
     - name: Build live version map
       ansible.builtin.set_fact:
-        smoke_live_versions: "{{ dict(smoke_version_results.results | map(attribute='item.key') | zip(smoke_version_results.results | map(attribute='stdout'))) }}"
+        smoke_live_versions: >-
+          {{ dict(smoke_version_results.results | map(attribute='item.key') | zip(smoke_version_results.results | map(attribute='stdout')))
+             | combine({'helm_diff_plugin_version': smoke_helm_plugins.stdout_lines
+                 | select('match', '^diff\s')
+                 | map('regex_replace', '^diff\s+v?(\S+).*$', '\1')
+                 | first | default('Not installed')}) }}
 
     - name: Build desired versus live version checks
       ansible.builtin.set_fact:
@@ -120,81 +128,117 @@
             desired: "{{ k3s_version }}"
             live: "{{ smoke_live_versions.k3s_version | trim }}"
           - name: kube_vip_version
+            enabled: "{{ kube_vip_enabled | default(true) | bool }}"
             desired: "{{ kube_vip_version }}"
             live: "{{ smoke_live_versions.kube_vip_version | trim }}"
           - name: kube_vip_cloud_provider_version
+            enabled: "{{ kube_vip_enabled | default(true) | bool and kube_vip_lb_enable | default(true) | bool }}"
             desired: "{{ kube_vip_cloud_provider_version }}"
             live: "{{ smoke_live_versions.kube_vip_cloud_provider_version | trim }}"
           - name: kube_vip_label_reconciler_kubectl_version
+            enabled: "{{ kube_vip_enabled | default(true) | bool and (kube_vip_enable_node_labeling | default(false) | bool or kube_vip_egress_enabled | default(false) | bool) and kube_vip_label_reconciler_enabled | default(true) | bool }}"
             desired: "{{ kube_vip_label_reconciler_kubectl_version }}"
             live: "{{ smoke_live_versions.kube_vip_label_reconciler_kubectl_version | trim }}"
           - name: smoke_test_image
+            enabled: "{{ kube_vip_enabled | default(true) | bool and (kube_vip_enable_node_labeling | default(false) | bool or kube_vip_egress_enabled | default(false) | bool) and kube_vip_label_reconciler_enabled | default(true) | bool }}"
             desired: "{{ smoke_test_image }}"
             live: "{{ smoke_live_versions.smoke_test_image | trim }}"
           - name: cilium_version
+            enabled: "{{ cilium_enabled | default(true) | bool }}"
             desired: "{{ cilium_version }}"
             live: "{{ smoke_live_versions.cilium_version | trim }}"
           - name: helm_diff_plugin_version
             desired: "{{ helm_diff_plugin_version | regex_replace('^v', '') }}"
             live: "{{ smoke_live_versions.helm_diff_plugin_version | trim }}"
           - name: cert_manager_version
+            enabled: "{{ cert_manager_enabled | default(false) | bool }}"
             desired: "{{ cert_manager_version }}"
             live: "{{ smoke_live_versions.cert_manager_version | trim }}"
           - name: multus_version
+            enabled: "{{ multus_enabled | default(false) | bool }}"
             desired: "{{ multus_version }}"
             live: "{{ smoke_live_versions.multus_version | trim }}"
           - name: multus_cni_config_version
+            enabled: "{{ multus_enabled | default(false) | bool }}"
             desired: "{{ multus_cni_config_version }}"
             live: "{{ smoke_live_versions.multus_cni_config_version | trim }}"
           - name: multus_dhcp_daemon_image
+            enabled: "{{ multus_enabled | default(false) | bool and multus_dhcp_daemon_enabled | default(true) | bool }}"
             desired: "{{ multus_dhcp_daemon_image }}"
             live: "{{ smoke_live_versions.multus_dhcp_daemon_image | trim }}"
           - name: multus_cni_plugins_version
+            enabled: "{{ multus_enabled | default(false) | bool and multus_dhcp_daemon_enabled | default(true) | bool }}"
             desired: "{{ multus_cni_plugins_version }}"
             live: "{{ smoke_live_versions.multus_cni_plugins_version | trim }}"
           - name: rancher_version
+            enabled: "{{ rancher_enabled | default(false) | bool }}"
             desired: "{{ rancher_version }}"
             live: "{{ smoke_live_versions.rancher_version | trim }}"
           - name: rancher_monitoring_version
+            enabled: "{{ rancher_monitoring_enabled | default(false) | bool }}"
             desired: "{{ rancher_monitoring_version }}"
             live: "{{ smoke_live_versions.rancher_monitoring_version | trim }}"
           - name: traefik_version
+            enabled: "{{ traefik_enabled | default(true) | bool }}"
             desired: "{{ traefik_version }}"
             live: "{{ smoke_live_versions.traefik_version | trim }}"
           - name: synology_csi_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_version }}"
             live: "{{ smoke_live_versions.synology_csi_version | trim }}"
           - name: synology_csi_node_driver_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_version }}"
             live: "{{ smoke_live_versions.synology_csi_node_driver_version | trim }}"
           - name: synology_csi_node_driver_registrar_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_node_driver_registrar_version | regex_replace('^v', '') }}"
             live: "{{ smoke_live_versions.synology_csi_node_driver_registrar_version | trim }}"
           - name: synology_csi_provisioner_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_provisioner_version | regex_replace('^v', '') }}"
             live: "{{ smoke_live_versions.synology_csi_provisioner_version | trim }}"
           - name: synology_csi_attacher_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_attacher_version | regex_replace('^v', '') }}"
             live: "{{ smoke_live_versions.synology_csi_attacher_version | trim }}"
           - name: synology_csi_resizer_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_resizer_version | regex_replace('^v', '') }}"
             live: "{{ smoke_live_versions.synology_csi_resizer_version | trim }}"
           - name: synology_csi_snapshotter_sidecar_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool and synology_csi_snapshots_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_snapshotter_version | regex_replace('^v', '') }}"
             live: "{{ smoke_live_versions.synology_csi_snapshotter_sidecar_version | trim }}"
           - name: synology_csi_snapshotter_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool and synology_csi_snapshots_enabled | default(false) | bool }}"
             desired: "{{ synology_csi_snapshotter_version }}"
             live: "{{ smoke_live_versions.synology_csi_snapshotter_version | trim }}"
           - name: synology_csi_dsm_login_reconciler_kubectl_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool and synology_csi_dsm_login_reconciler_enabled | default(true) | bool }}"
             desired: "{{ synology_csi_dsm_login_reconciler_kubectl_version }}"
             live: "{{ smoke_live_versions.synology_csi_dsm_login_reconciler_kubectl_version | trim }}"
           - name: csi_nfs_version
+            enabled: "{{ synology_csi_enabled | default(false) | bool and csi_nfs_enabled | default(false) | bool }}"
             desired: "{{ csi_nfs_version }}"
             live: "{{ smoke_live_versions.csi_nfs_version | trim }}"
 
+    - name: Apply component install selection to version checks
+      ansible.builtin.set_fact:
+        smoke_version_checks: >-
+          {%- set checks = [] -%}
+          {%- for item in smoke_version_checks -%}
+          {%- set enabled = item.enabled | default(true) | bool -%}
+          {%- set _ = checks.append(item | combine({
+            'live': item.live if enabled else 'Not selected for install',
+            'status': ('OK' if item.desired == item.live else 'DIFF') if enabled else 'SKIP'
+          })) -%}
+          {%- endfor -%}
+          {{- checks -}}
+
     - name: Display desired versus live version summary
       ansible.builtin.debug:
-        msg: "{{ 'DIFF' if item.desired != item.live else 'OK' }} {{ item.name }}: desired={{ item.desired }}, live={{ item.live }}"
+        msg: "{{ item.status }} {{ item.name }}: desired={{ item.desired }}, live={{ item.live }}"
       loop: "{{ smoke_version_checks }}"
       loop_control:
         label: "{{ item.name }}"
@@ -253,10 +297,10 @@
 
     - name: Display topology-specific smoke context
       ansible.builtin.debug:
-        msg:
-          - "Topology server count: {{ smoke_server_count }}"
-          - "HA topology enabled: {{ smoke_is_ha }}"
-          - "Expected traefik target: {{ (traefik_ha_min_replicas if smoke_is_ha else traefik_non_ha_default_replicas) | int }}"
+        msg: |
+          Topology server count: {{ smoke_server_count }}
+          HA topology enabled: {{ smoke_is_ha }}
+          Expected traefik target: {{ (traefik_ha_min_replicas if smoke_is_ha else traefik_non_ha_default_replicas) | int }}
 
     - name: Smoke test summary
       ansible.builtin.debug:
@@ -296,7 +340,10 @@
 
           Component version summary
           ========================
-          STATUS  COMPONENT                                      DESIRED                 LIVE
+          {% set component_width = ([9] + (smoke_version_checks | map(attribute='name') | map('length') | list)) | max %}
+          {% set desired_width = ([7] + (smoke_version_checks | map(attribute='desired') | map('string') | map('length') | list)) | max %}
+          {% set row_format = '%-7s %-' ~ component_width ~ 's %-' ~ desired_width ~ 's %s' %}
+          {{ row_format | format('STATUS', 'COMPONENT', 'DESIRED', 'LIVE') }}
           {% for item in smoke_version_checks %}
-          {{ '%-7s %-45s %-23s %s' | format('OK' if item.desired == item.live else 'DIFF', item.name, item.desired, item.live) }}
+          {{ row_format | format(item.status, item.name, item.desired, item.live) }}
           {% endfor %}

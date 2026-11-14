@@ -109,12 +109,12 @@
 
     - name: Show smoke test feature gates
       ansible.builtin.debug:
-        msg:
-          - "service_election_checks_enabled={{ smoke_kube_vip_svc_election_enabled | bool }}"
-          - "egress_checks_enabled={{ smoke_kube_vip_egress_enabled | bool }}"
-          - "failover_test_enabled={{ egress_run_failover_test | default(false) | bool }}"
-          - "dhcp_conflict_test_enabled={{ dhcp_run_mutual_exclusion_test | default(false) | bool }}"
-          - "dhcp_mode_assert_enabled={{ kube_vip_lb_dhcp_enabled | default(false) | bool }}"
+        msg: |
+          service_election_checks_enabled={{ smoke_kube_vip_svc_election_enabled | bool }}
+          egress_checks_enabled={{ smoke_kube_vip_egress_enabled | bool }}
+          failover_test_enabled={{ egress_run_failover_test | default(false) | bool }}
+          dhcp_conflict_test_enabled={{ dhcp_run_mutual_exclusion_test | default(false) | bool }}
+          dhcp_mode_assert_enabled={{ kube_vip_lb_dhcp_enabled | default(false) | bool }}
 
     - name: Assert svc_election env var present when service election is enabled
       ansible.builtin.assert:

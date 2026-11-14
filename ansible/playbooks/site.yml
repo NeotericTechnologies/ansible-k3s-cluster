@@ -215,6 +215,7 @@
       loop: "{{ components_to_upgrade }}"
       loop_control:
         loop_var: component
+        label: "{{ component.name }}"
       when:
         - components_to_upgrade is defined
         - components_to_upgrade | length > 0

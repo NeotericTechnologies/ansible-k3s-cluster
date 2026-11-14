@@ -90,6 +90,8 @@
     - { kind: deployment, name: metrics-server, namespace: kube-system }
     - { kind: deployment, name: local-path-provisioner, namespace: kube-system }
     - { kind: daemonset, name: kube-vip, namespace: kube-system }
+  loop_control:
+    label: "{{ item.namespace }}/{{ item.kind }}/{{ item.name }}"
   when:
     - _node_needs_upgrade | bool
     - node_role == 'server'
