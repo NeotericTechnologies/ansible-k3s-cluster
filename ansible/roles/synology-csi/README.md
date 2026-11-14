@@ -9,6 +9,13 @@ Deploys the Synology CSI driver for persistent storage on k3s clusters, with opt
 | Synology CSI (`csi.san.synology.com`) | iSCSI and NFS volumes provisioned directly by the Synology DSM API |
 | csi-driver-nfs (`nfs.csi.k8s.io`) | Sub-directory provisioning within a pre-existing NFS share (via Helm) |
 
+Synology controller sidecars (provisioner, attacher, resizer, and optional snapshotter)
+and the optional snapshot controller use namespace-scoped Lease leader election.
+Each component elects one active replica, preventing concurrent storage operations
+when `synology_csi_replicas` is greater than one. The role grants Lease access to
+`csi-controller-sa` through a namespaced Role and RoleBinding. Leader election is
+also enabled for single-replica deployments.
+
 ## Requirements
 
 - k3s cluster with `kubernetes.core` Ansible collection available

@@ -89,6 +89,40 @@
           resources: ["volumesnapshots/status"]
           verbs: ["update", "patch"]
 
+- name: Create CSI leader election Role
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: synology-csi-leader-election
+        namespace: "{{ synology_csi_namespace }}"
+      rules:
+        - apiGroups: ["coordination.k8s.io"]
+          resources: ["leases"]
+          verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+- name: Create CSI leader election RoleBinding
+  kubernetes.core.k8s:
+    state: present
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: synology-csi-leader-election
+        namespace: "{{ synology_csi_namespace }}"
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: synology-csi-leader-election
+      subjects:
+        - kind: ServiceAccount
+          name: csi-controller-sa
+          namespace: "{{ synology_csi_namespace }}"
+
 - name: Create CSI controller ClusterRoleBinding
   kubernetes.core.k8s:
     state: present
