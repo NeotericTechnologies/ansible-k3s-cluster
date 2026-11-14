@@ -33,24 +33,76 @@
           command: "kubectl get deploy kube-vip-cloud-controller -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
         - key: kube_vip_label_reconciler_kubectl_version
           command: "kubectl get cronjob kube-vip-label-reconciler -n kube-system -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].image}' | sed -E 's/.*:([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: smoke_test_image
+          command: "kubectl get cronjob kube-vip-label-reconciler -n kube-system -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name==\"VIP_CHECK_IMAGE\")].value}'"
         - key: cilium_version
           command: "kubectl get ds cilium -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: helm_diff_plugin_version
+          command: >-
+            helm plugin list | awk '$1 == "diff" {print $2}' | sed 's/^v//'
         - key: cert_manager_version
           command: "kubectl get deploy cert-manager -n cert-manager -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
         - key: multus_version
           command: "kubectl get ds kube-multus-ds -n kube-system -o jsonpath='{.spec.template.spec.initContainers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+-thick).*/\\1/'"
+        - key: multus_cni_config_version
+          command: >-
+            { kubectl get configmap multus-daemon-config -n kube-system
+            -o jsonpath='{.data.daemon-config\.json}'; printf '\n';
+            kubectl get network-attachment-definitions --all-namespaces
+            -o jsonpath='{range .items[*]}{.spec.config}{"\n"}{end}'; }
+            | sed -n 's/.*"cniVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+            | sort -u | paste -sd, -
         - key: multus_dhcp_daemon_image
           command: "kubectl get ds multus-dhcp-daemon -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}'"
         - key: multus_cni_plugins_version
           command: "kubectl get ds multus-dhcp-daemon -n kube-system -o jsonpath='{.spec.template.spec.initContainers[0].command[2]}' | sed -n 's/.*DESIRED_VERSION=\"\\([^\"]*\\)\".*/\\1/p'"
         - key: rancher_version
           command: "kubectl get deploy rancher -n cattle-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:v?([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: rancher_monitoring_version
+          command: >-
+            helm list -n cattle-monitoring-system -o json
+            | python3 -c 'import json,sys; print(next((r["chart"].replace("rancher-monitoring-", "", 1) for r in json.load(sys.stdin) if r["name"] == "rancher-monitoring"), ""))'
         - key: traefik_version
           command: "kubectl get deploy traefik -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
         - key: synology_csi_version
           command: "kubectl get sts synology-csi-controller -n synology-csi -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: synology_csi_node_driver_version
+          command: >-
+            kubectl get ds synology-csi-node -n synology-csi
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="csi-driver")].image}'
+            | sed -E 's/.*:(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+        - key: synology_csi_node_driver_registrar_version
+          command: >-
+            kubectl get ds synology-csi-node -n synology-csi
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="csi-node-driver-registrar")].image}'
+            | sed -E 's/.*:v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+        - key: synology_csi_provisioner_version
+          command: >-
+            kubectl get sts synology-csi-controller -n synology-csi
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="csi-provisioner")].image}'
+            | sed -E 's/.*:v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+        - key: synology_csi_attacher_version
+          command: >-
+            kubectl get sts synology-csi-controller -n synology-csi
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="csi-attacher")].image}'
+            | sed -E 's/.*:v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+        - key: synology_csi_resizer_version
+          command: >-
+            kubectl get sts synology-csi-controller -n synology-csi
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="csi-resizer")].image}'
+            | sed -E 's/.*:v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+        - key: synology_csi_snapshotter_sidecar_version
+          command: >-
+            kubectl get sts synology-csi-controller -n synology-csi
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="csi-snapshotter")].image}'
+            | sed -E 's/.*:v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
         - key: synology_csi_snapshotter_version
           command: "kubectl get deploy synology-csi-snapshotter -n synology-csi -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
+        - key: synology_csi_dsm_login_reconciler_kubectl_version
+          command: >-
+            kubectl get cronjob synology-csi-dsm-login-reconciler -n synology-csi
+            -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[?(@.name=="reconcile")].image}'
+            | sed -E 's/.*:([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
         - key: csi_nfs_version
           command: "kubectl get deploy csi-nfs-controller -n kube-system -o jsonpath='{range .spec.template.spec.containers[*]}{.image}{\"\\n\"}{end}' | sed -n 's/.*nfsplugin:\\(v[0-9.]*\\).*/\\1/p'"
       register: smoke_version_results
@@ -76,15 +128,24 @@
           - name: kube_vip_label_reconciler_kubectl_version
             desired: "{{ kube_vip_label_reconciler_kubectl_version }}"
             live: "{{ smoke_live_versions.kube_vip_label_reconciler_kubectl_version | trim }}"
+          - name: smoke_test_image
+            desired: "{{ smoke_test_image }}"
+            live: "{{ smoke_live_versions.smoke_test_image | trim }}"
           - name: cilium_version
             desired: "{{ cilium_version }}"
             live: "{{ smoke_live_versions.cilium_version | trim }}"
+          - name: helm_diff_plugin_version
+            desired: "{{ helm_diff_plugin_version | regex_replace('^v', '') }}"
+            live: "{{ smoke_live_versions.helm_diff_plugin_version | trim }}"
           - name: cert_manager_version
             desired: "{{ cert_manager_version }}"
             live: "{{ smoke_live_versions.cert_manager_version | trim }}"
           - name: multus_version
             desired: "{{ multus_version }}"
             live: "{{ smoke_live_versions.multus_version | trim }}"
+          - name: multus_cni_config_version
+            desired: "{{ multus_cni_config_version }}"
+            live: "{{ smoke_live_versions.multus_cni_config_version | trim }}"
           - name: multus_dhcp_daemon_image
             desired: "{{ multus_dhcp_daemon_image }}"
             live: "{{ smoke_live_versions.multus_dhcp_daemon_image | trim }}"
@@ -94,15 +155,39 @@
           - name: rancher_version
             desired: "{{ rancher_version }}"
             live: "{{ smoke_live_versions.rancher_version | trim }}"
+          - name: rancher_monitoring_version
+            desired: "{{ rancher_monitoring_version }}"
+            live: "{{ smoke_live_versions.rancher_monitoring_version | trim }}"
           - name: traefik_version
             desired: "{{ traefik_version }}"
             live: "{{ smoke_live_versions.traefik_version | trim }}"
           - name: synology_csi_version
             desired: "{{ synology_csi_version }}"
             live: "{{ smoke_live_versions.synology_csi_version | trim }}"
+          - name: synology_csi_node_driver_version
+            desired: "{{ synology_csi_version }}"
+            live: "{{ smoke_live_versions.synology_csi_node_driver_version | trim }}"
+          - name: synology_csi_node_driver_registrar_version
+            desired: "{{ synology_csi_node_driver_registrar_version | regex_replace('^v', '') }}"
+            live: "{{ smoke_live_versions.synology_csi_node_driver_registrar_version | trim }}"
+          - name: synology_csi_provisioner_version
+            desired: "{{ synology_csi_provisioner_version | regex_replace('^v', '') }}"
+            live: "{{ smoke_live_versions.synology_csi_provisioner_version | trim }}"
+          - name: synology_csi_attacher_version
+            desired: "{{ synology_csi_attacher_version | regex_replace('^v', '') }}"
+            live: "{{ smoke_live_versions.synology_csi_attacher_version | trim }}"
+          - name: synology_csi_resizer_version
+            desired: "{{ synology_csi_resizer_version | regex_replace('^v', '') }}"
+            live: "{{ smoke_live_versions.synology_csi_resizer_version | trim }}"
+          - name: synology_csi_snapshotter_sidecar_version
+            desired: "{{ synology_csi_snapshotter_version | regex_replace('^v', '') }}"
+            live: "{{ smoke_live_versions.synology_csi_snapshotter_sidecar_version | trim }}"
           - name: synology_csi_snapshotter_version
             desired: "{{ synology_csi_snapshotter_version }}"
             live: "{{ smoke_live_versions.synology_csi_snapshotter_version | trim }}"
+          - name: synology_csi_dsm_login_reconciler_kubectl_version
+            desired: "{{ synology_csi_dsm_login_reconciler_kubectl_version }}"
+            live: "{{ smoke_live_versions.synology_csi_dsm_login_reconciler_kubectl_version | trim }}"
           - name: csi_nfs_version
             desired: "{{ csi_nfs_version }}"
             live: "{{ smoke_live_versions.csi_nfs_version | trim }}"
