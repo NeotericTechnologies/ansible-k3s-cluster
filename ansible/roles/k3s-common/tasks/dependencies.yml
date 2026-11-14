@@ -64,10 +64,89 @@
   register: helm_plugin_list
   changed_when: false
 
-- name: Install helm-diff plugin for reliable Helm idempotency checks
+- name: Read installed helm-diff plugin version
+  ansible.builtin.set_fact:
+    helm_diff_installed_plugin: >-
+      {{
+        helm_plugin_list.stdout_lines
+        | select('match', '^diff\s')
+        | list
+        | first
+        | default('')
+      }}
+    helm_diff_installed_version: >-
+      {{
+        (
+          helm_plugin_list.stdout_lines
+          | select('match', '^diff\s')
+          | list
+          | first
+          | default('')
+        ).split()[1]
+        | default('')
+        | regex_replace('^v', '')
+      }}
+  changed_when: false
+
+- name: Validate detected helm-diff plugin version
+  ansible.builtin.assert:
+    that:
+      - helm_diff_installed_plugin == '' or helm_diff_installed_plugin.split() | first == 'diff'
+      - helm_diff_installed_plugin == '' or helm_diff_installed_version != ''
+    fail_msg: Unable to determine installed helm-diff plugin version from helm plugin list.
+
+- name: Uninstall helm-diff when installed version differs
+  ansible.builtin.command: helm plugin uninstall diff
+  when:
+    - helm_diff_installed_plugin != ''
+    - helm_diff_installed_version != (helm_diff_plugin_version | regex_replace('^v', ''))
+
+- name: Install helm-diff plugin at configured version
   ansible.builtin.command: >-
     helm plugin install https://github.com/databus23/helm-diff --version {{ helm_diff_plugin_version }}
-  when: not (helm_plugin_list.stdout is search('(?m)^diff\s'))
+  when: helm_diff_installed_version != (helm_diff_plugin_version | regex_replace('^v', ''))
+
+- name: Verify installed helm-diff plugin version
+  ansible.builtin.command: helm plugin list
+  register: helm_plugin_list_verified
+  changed_when: false
+
+- name: Read verified helm-diff plugin version
+  ansible.builtin.set_fact:
+    helm_diff_verified_version: >-
+      {{
+        (
+          helm_plugin_list_verified.stdout_lines
+          | select('match', '^diff\s')
+          | list
+          | first
+          | default('')
+        ).split()[1]
+        | default('')
+        | regex_replace('^v', '')
+      }}
+    helm_diff_verified_plugin: >-
+      {{
+        (
+          helm_plugin_list_verified.stdout_lines
+          | select('match', '^diff')
+          | list
+          | first
+          | default('')
+        ).split()
+        | first
+        | default('')
+      }}
+  changed_when: false
+
+- name: Ensure helm-diff plugin matches configured version
+  ansible.builtin.assert:
+    that:
+      - helm_diff_verified_plugin == 'diff'
+      - helm_diff_verified_version == (helm_diff_plugin_version | regex_replace('^v', ''))
+    fail_msg: >-
+      helm-diff version mismatch: desired {{ helm_diff_plugin_version }},
+      installed {{ helm_diff_verified_version | default('Not installed') }}.
 
 - name: Ensure k3s containerd config fragment directory exists
   ansible.builtin.file:

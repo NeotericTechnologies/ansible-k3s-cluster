@@ -153,7 +153,24 @@
         - not (auto_approve_plan | default(false) | bool)
 
 # =============================================================================
-# Play 2b: Synology CSI host prerequisites (all nodes)
+# Play 2b: Common dependencies (all nodes)
+# =============================================================================
+- name: Ensure common dependencies on all nodes
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Install or update common dependencies
+      ansible.builtin.include_role:
+        name: k3s-common
+        tasks_from: dependencies.yml
+      when: >-
+        (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+        or
+        (hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool)
+
+# =============================================================================
+# Play 2c: Synology CSI host prerequisites (all nodes)
 #
 # The dynamic per-component orchestration below (Play 3) runs entirely on
 # hosts: k3s_servers[0] via the generic includes/upgrade-addon.yml -> include_role

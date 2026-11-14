@@ -26,7 +26,7 @@
         - name: Fresh install prerequisites on k3s_servers
           ansible.builtin.include_role:
             name: k3s-common
-            tasks_from: main.yml
+            tasks_from: prerequisites.yml
             apply:
               delegate_to: "{{ server_node }}"
           vars:
@@ -251,7 +251,7 @@
           # (hosts: k3s_cluster) runs for every node, servers and agents alike.
           ansible.builtin.include_role:
             name: k3s-common
-            tasks_from: main.yml
+            tasks_from: prerequisites.yml
             apply:
               delegate_to: "{{ agent_node }}"
           vars:
