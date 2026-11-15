@@ -38,6 +38,8 @@ Install and configure k3s control-plane (server) nodes with embedded etcd high a
 ```yaml
 k3s_version: "<managed in ansible/group_vars/all/k3s.yml>"
 control_plane_vip: "192.168.1.100"
+# Optional; defaults to control_plane_vip.
+k3s_api_server_fqdn: "api.example.com"
 api_port: 6443
 ha_mode: "embedded-etcd-ha"  # or "single-node"
 ```

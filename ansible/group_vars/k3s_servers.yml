@@ -27,3 +27,4 @@ k3s_server_extra_args: >-
   {{ '--flannel-backend=none --disable-network-policy' if (cilium_enabled | default(false) | bool) else '--flannel-backend=vxlan' }}
   --write-kubeconfig-mode=644
   --tls-san={{ control_plane_vip }}
+  --tls-san={{ k3s_api_server_fqdn }}

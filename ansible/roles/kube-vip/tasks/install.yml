@@ -214,7 +214,7 @@
 
 - name: Verify control-plane VIP is reachable
   ansible.builtin.wait_for:
-    host: "{{ control_plane_vip }}"
+    host: "{{ k3s_api_server_fqdn }}"
     port: "{{ api_port }}"
     timeout: 60
   delegate_to: localhost

@@ -114,7 +114,7 @@
     - name: Verify control-plane VIP is accessible
       ansible.builtin.command: >-
         kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml
-        --server https://{{ control_plane_vip }}:{{ api_port }}
+        --server https://{{ k3s_api_server_fqdn }}:{{ api_port }}
         get --raw /healthz
       register: vip_health
       retries: 3
@@ -148,7 +148,7 @@
         msg: |
           ===== Cluster Deployment Complete =====
           ✓ k3s core cluster is operational
-          ✓ Control-plane VIP accessible at https://{{ control_plane_vip }}:{{ api_port }}
+          ✓ Control-plane API accessible at https://{{ k3s_api_server_fqdn }}:{{ api_port }}
           ✓ All nodes are ready
 
           Next steps:
