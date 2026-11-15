@@ -24,6 +24,7 @@ Deploys [Multus CNI](https://github.com/k8snetworkplumbingwg/multus-cni) as a th
 | `multus_kubeconfig` | `/etc/rancher/k3s/k3s.yaml` | Path to kubeconfig for kubectl commands |
 | `multus_image` | `ghcr.io/k8snetworkplumbingwg/multus-cni` | Multus thick plugin container image |
 | `multus_version` | `v4.3.0-thick` | Multus image tag (thick plugin variant) |
+| `multus_cni_config_version` | `0.3.1` | CNI config format version rendered in Multus configuration |
 | `multus_cni_conf_dir` | `/var/lib/rancher/k3s/agent/etc/cni/net.d` | k3s CNI config directory |
 | `multus_cni_bin_dir` | `/var/lib/rancher/k3s/data/current/bin` | k3s CNI binary directory |
 | `multus_log_level` | `error` | Multus log verbosity |
@@ -129,7 +130,7 @@ Setting `multus_dhcp_daemon_enabled: false` and re-running the playbook will cle
 ### Enable multus in group_vars
 
 ```yaml
-# ansible/group_vars/all.yml (or inventory group_vars)
+# ansible/group_vars/all/multus.yml (or inventory group_vars)
 multus_enabled: true
 
 multus_vlan_networks:

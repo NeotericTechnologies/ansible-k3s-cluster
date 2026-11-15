@@ -16,6 +16,7 @@ multus_cni_bin_dir: "/var/lib/rancher/k3s/data/current/bin"
 # Multus daemon configuration
 multus_log_level: "error"
 multus_log_to_stderr: true
+multus_cni_config_version: "0.3.1"
 multus_requests_memory: "128Mi"
 multus_limits_memory: "256Mi"
 

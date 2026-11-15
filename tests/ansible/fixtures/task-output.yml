@@ -1,0 +1,152 @@
+---
+- name: Exercise task output
+  hosts: localhost
+  gather_facts: false
+  vars:
+    sentinel: RAW_TASK_PAYLOAD_MUST_NOT_BE_PRINTED
+    cilium_k3s_svc:
+      results:
+        - item: node-a
+          content: "{{ ('--flannel-backend=none ' ~ sentinel) | b64encode }}"
+    cilium_runtime_info:
+      results:
+        - item: node-a
+          rc: 0
+          stdout: "{{ {'cniconfig': sentinel} | to_json }}"
+    multus_active_config:
+      results:
+        - item: node-a
+          stat: {exists: true, extra: "{{ sentinel }}"}
+    multus_socket:
+      results:
+        - item: node-a
+          stat: {exists: true, extra: "{{ sentinel }}"}
+    ha_validation_scope: [component-a, component-b]
+    ha_enable_policy_validation: true
+    ha_is_enabled: true
+    ha_component_policies:
+      component-a: {enabled: true, expected_target: 2, extra: "{{ sentinel }}"}
+      component-b: {enabled: false, expected_target: 2, extra: "{{ sentinel }}"}
+    ha_component_observations: {component-a: 2, component-b: 0}
+  tasks:
+    - name: Create temporary task files
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .yml
+      loop: [cilium, multus, ha]
+      register: task_files
+
+    - name: Exercise real validation tasks
+      block:
+        - name: Select Cilium assertions
+          ansible.builtin.copy:
+            dest: "{{ task_files.results[0].path }}"
+            mode: "0600"
+            content: >-
+              {{ lookup('ansible.builtin.file', playbook_dir ~ '/../../../ansible/roles/cilium/tasks/install.yml')
+                 | from_yaml
+                 | selectattr('name', 'in', [
+                     'Assert k3s is configured with --flannel-backend=none on all nodes',
+                     'Assert runtime CNI metadata is readable on all nodes'
+                   ]) | list | to_nice_yaml }}
+
+        - name: Run successful Cilium assertions
+          ansible.builtin.include_tasks: "{{ task_files.results[0].path }}"
+
+        - name: Run failing flannel assertion
+          block:
+            - name: Check enabled flannel
+              ansible.builtin.include_tasks: "{{ task_files.results[0].path }}"
+              vars:
+                cilium_k3s_svc:
+                  results:
+                    - item: node-a
+                      content: "{{ sentinel | b64encode }}"
+          rescue:
+            - name: Report flannel failure
+              ansible.builtin.debug:
+                msg: "Flannel failure detected"
+
+        - name: Run failing runtime assertion
+          block:
+            - name: Check missing runtime metadata
+              ansible.builtin.include_tasks: "{{ task_files.results[0].path }}"
+              vars:
+                cilium_runtime_info:
+                  results:
+                    - item: node-a
+                      rc: 0
+                      stdout: "{{ {'other': sentinel} | to_json }}"
+          rescue:
+            - name: Report runtime failure
+              ansible.builtin.debug:
+                msg: "Runtime failure detected"
+
+        - name: Select Multus assertion
+          ansible.builtin.copy:
+            dest: "{{ task_files.results[1].path }}"
+            mode: "0600"
+            content: >-
+              {{ lookup('ansible.builtin.file', playbook_dir ~ '/../../../ansible/roles/multus/tasks/install.yml')
+                 | from_yaml
+                 | selectattr('name', 'equalto', 'Assert Multus CNI handoff is complete on every node')
+                 | list | to_nice_yaml }}
+
+        - name: Run successful Multus assertion
+          ansible.builtin.include_tasks: "{{ task_files.results[1].path }}"
+
+        - name: Run failing Multus assertion
+          block:
+            - name: Check missing Multus socket
+              ansible.builtin.include_tasks: "{{ task_files.results[1].path }}"
+              vars:
+                multus_socket:
+                  results:
+                    - item: node-a
+                      stat: {exists: false, extra: "{{ sentinel }}"}
+          rescue:
+            - name: Report Multus failure
+              ansible.builtin.debug:
+                msg: "Multus failure detected"
+
+        - name: Select HA policy assertions
+          ansible.builtin.copy:
+            dest: "{{ task_files.results[2].path }}"
+            mode: "0600"
+            content: >-
+              {{ lookup('ansible.builtin.file', playbook_dir ~ '/../../../ansible/roles/k3s-common/tasks/validate-ha-targets.yml')
+                 | from_yaml
+                 | selectattr('name', 'in', [
+                     'Validate all policy targets are positive integers',
+                     'Enforce component targets for enabled components in HA topology'
+                   ]) | list | to_nice_yaml }}
+
+        - name: Run successful HA assertions
+          ansible.builtin.include_tasks: "{{ task_files.results[2].path }}"
+
+        - name: Run failing HA assertion
+          block:
+            - name: Check unmet HA target
+              ansible.builtin.include_tasks: "{{ task_files.results[2].path }}"
+              vars:
+                ha_component_observations: {component-a: 1, component-b: 0}
+          rescue:
+            - name: Report HA failure
+              ansible.builtin.debug:
+                msg: "HA failure detected"
+
+        - name: Run command with raw output
+          ansible.builtin.command: "echo {{ sentinel }}"
+          changed_when: false
+
+        - name: Print explicit summary
+          ansible.builtin.debug:
+            msg: "Explicit summary remains visible"
+      always:
+        - name: Remove temporary task files
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ task_files.results }}"
+          loop_control:
+            label: "{{ item.item }}"

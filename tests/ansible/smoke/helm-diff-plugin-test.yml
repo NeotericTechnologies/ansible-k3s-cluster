@@ -1,0 +1,146 @@
+---
+# Usage: ansible-playbook -i localhost, -c local tests/ansible/smoke/helm-diff-plugin-test.yml
+
+- name: Verify Helm diff plugin version reconciliation
+  hosts: localhost
+  gather_facts: false
+  vars:
+    helm_diff_plugin_version: "3.15.15"
+    dependencies_tasks: >-
+      {{
+        lookup(
+          'ansible.builtin.file',
+          playbook_dir ~ '/../../../ansible/roles/k3s-common/tasks/dependencies.yml'
+        ) | from_yaml
+      }}
+    helm_diff_task_names:
+      - Check installed Helm plugins
+      - Read installed helm-diff plugin version
+      - Validate detected helm-diff plugin version
+      - Uninstall helm-diff when installed version differs
+      - Install helm-diff plugin at configured version
+      - Verify installed helm-diff plugin version
+      - Read verified helm-diff plugin version
+      - Ensure helm-diff plugin matches configured version
+  tasks:
+    - name: Create temporary Helm fixture
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: helm-diff-
+      register: fixture_dir
+
+    - name: Verify Helm diff reconciliation tasks
+      block:
+        - name: Create mock Helm executable
+          ansible.builtin.copy:
+            dest: "{{ fixture_dir.path }}/helm"
+            mode: "0755"
+            content: |
+              #!/bin/sh
+              set -eu
+              if [ "$1 $2" = "plugin list" ]; then
+                printf 'NAME\tVERSION\tDESCRIPTION\n'
+                if [ -f "$HELM_DIFF_FIXTURE_STATE" ]; then
+                  printf 'diff\t%s\tFixture plugin\n' "$(cat "$HELM_DIFF_FIXTURE_STATE")"
+                fi
+              elif [ "$1 $2" = "plugin uninstall" ]; then
+                rm -f "$HELM_DIFF_FIXTURE_STATE"
+                printf 'uninstall\n' >> "$HELM_DIFF_FIXTURE_LOG"
+              elif [ "$1 $2" = "plugin install" ]; then
+                shift 2
+                while [ "$#" -gt 0 ]; do
+                  if [ "$1" = "--version" ]; then
+                    version="$2"
+                    shift 2
+                  else
+                    shift
+                  fi
+                done
+                printf '%s\n' "$version" > "$HELM_DIFF_FIXTURE_STATE"
+                printf 'install:%s\n' "$version" >> "$HELM_DIFF_FIXTURE_LOG"
+              else
+                exit 1
+              fi
+
+        - name: Create fixture state files
+          ansible.builtin.copy:
+            dest: "{{ fixture_dir.path }}/{{ item.name }}"
+            mode: "0600"
+            content: "{{ item.content }}"
+          loop:
+            - name: state
+              content: "v3.15.15\n"
+            - name: log
+              content: ""
+
+        - name: Extract Helm diff reconciliation tasks with mock binary
+          ansible.builtin.set_fact:
+            fixture_tasks: >-
+              {%- set tasks = [] -%}
+              {%- for task in dependencies_tasks | selectattr('name', 'in', helm_diff_task_names) -%}
+              {%- if 'ansible.builtin.command' in task -%}
+              {%- set command = task['ansible.builtin.command'] | regex_replace('^helm ', fixture_dir.path ~ '/helm ') -%}
+              {%- set environment = {
+                'HELM_DIFF_FIXTURE_STATE': fixture_dir.path ~ '/state',
+                'HELM_DIFF_FIXTURE_LOG': fixture_dir.path ~ '/log'
+              } -%}
+              {%- set task = task | combine({
+                'ansible.builtin.command': command,
+                'environment': environment
+              }) -%}
+              {%- endif -%}
+              {%- set _ = tasks.append(task) -%}
+              {%- endfor -%}
+              {{- tasks -}}
+
+        - name: Write extracted reconciliation tasks
+          ansible.builtin.copy:
+            dest: "{{ fixture_dir.path }}/reconcile.yml"
+            mode: "0600"
+            content: "{{ fixture_tasks | to_nice_yaml }}"
+
+        - name: Keep already matching helm-diff version
+          ansible.builtin.include_tasks: "{{ fixture_dir.path }}/reconcile.yml"
+
+        - name: Verify matching version was not reinstalled
+          ansible.builtin.assert:
+            that:
+              - lookup('ansible.builtin.file', fixture_dir.path ~ '/state') | trim == 'v3.15.15'
+              - lookup('ansible.builtin.file', fixture_dir.path ~ '/log') | trim == ''
+
+        - name: Set older installed helm-diff version
+          ansible.builtin.copy:
+            dest: "{{ fixture_dir.path }}/state"
+            mode: "0600"
+            content: "v3.9.12\n"
+
+        - name: Upgrade older helm-diff version
+          ansible.builtin.include_tasks: "{{ fixture_dir.path }}/reconcile.yml"
+
+        - name: Verify older version was replaced
+          ansible.builtin.assert:
+            that:
+              - lookup('ansible.builtin.file', fixture_dir.path ~ '/state') | trim == helm_diff_plugin_version
+              - lookup('ansible.builtin.file', fixture_dir.path ~ '/log') | trim == 'uninstall\ninstall:3.15.15'
+
+        - name: Remove installed helm-diff version and clear fixture log
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ fixture_dir.path }}/state"
+            - "{{ fixture_dir.path }}/log"
+
+        - name: Install missing helm-diff version
+          ansible.builtin.include_tasks: "{{ fixture_dir.path }}/reconcile.yml"
+
+        - name: Verify missing version was installed
+          ansible.builtin.assert:
+            that:
+              - lookup('ansible.builtin.file', fixture_dir.path ~ '/state') | trim == helm_diff_plugin_version
+              - lookup('ansible.builtin.file', fixture_dir.path ~ '/log') | trim == 'install:3.15.15'
+      always:
+        - name: Remove temporary Helm fixture
+          ansible.builtin.file:
+            path: "{{ fixture_dir.path }}"
+            state: absent

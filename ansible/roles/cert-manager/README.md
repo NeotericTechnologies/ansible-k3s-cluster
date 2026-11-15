@@ -35,7 +35,7 @@ Deploy and configure cert-manager for automated TLS certificate management using
 
 ## Role Variables
 
-### Required (from group_vars/all.yml)
+### Required (from group_vars/all/cert-manager.yml)
 
 ```yaml
 cert_manager_enabled: true
@@ -48,7 +48,7 @@ cert_manager_dns_provider_credentials:
 ### Optional
 
 ```yaml
-# Set in ansible/group_vars/all.yml as canonical source
+# Set in ansible/group_vars/all/cert-manager.yml as canonical source
 cert_manager_version: "{{ cert_manager_version }}"
 cert_manager_staging_issuer: "letsencrypt-staging"
 cert_manager_production_issuer: "letsencrypt-production"

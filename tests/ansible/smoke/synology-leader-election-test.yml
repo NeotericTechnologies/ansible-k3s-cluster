@@ -1,0 +1,56 @@
+---
+# Usage: ansible-playbook -i localhost, -c local tests/ansible/smoke/synology-leader-election-test.yml
+
+- name: Validate Synology CSI leader election
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../../../ansible/roles/synology-csi/defaults/main.yml
+  vars:
+    synology_role_path: "{{ playbook_dir }}/../../../ansible/roles/synology-csi"
+  tasks:
+    - name: Configure a custom namespace and HA replicas
+      ansible.builtin.set_fact:
+        synology_csi_namespace: storage-test
+        synology_csi_replicas: 2
+
+    - name: Verify controller sidecars elect leaders with and without snapshots
+      ansible.builtin.assert:
+        that:
+          - sidecars | length == (4 if item else 3)
+          - sidecars | selectattr('args', 'contains', '--leader-election=true') | list | length == sidecars | length
+          - sidecars | selectattr('args', 'contains', '--leader-election-namespace=storage-test') | list | length == sidecars | length
+          - rendered_controller.spec.template.spec.serviceAccountName == 'csi-controller-sa'
+      loop: [false, true]
+      vars:
+        synology_csi_snapshots_enabled: "{{ item }}"
+        rendered_controller: "{{ lookup('ansible.builtin.template', synology_role_path ~ '/templates/controller.yaml.j2') | from_yaml }}"
+        sidecars: "{{ rendered_controller.spec.template.spec.containers | rejectattr('name', 'equalto', 'csi-driver') | list }}"
+
+    - name: Verify standalone snapshot controller elects a leader
+      ansible.builtin.assert:
+        that:
+          - "'--leader-election=true' in snapshot_controller.args"
+          - "'--leader-election-namespace=storage-test' in snapshot_controller.args"
+          - rendered_snapshotter.spec.template.spec.serviceAccountName == 'csi-controller-sa'
+      vars:
+        rendered_snapshotter: "{{ lookup('ansible.builtin.template', synology_role_path ~ '/templates/snapshotter.yaml.j2') | from_yaml }}"
+        snapshot_controller: "{{ rendered_snapshotter.spec.template.spec.containers[0] }}"
+
+    - name: Verify Lease permissions are bound to the controller in its namespace
+      ansible.builtin.assert:
+        that:
+          - election_role.kind == 'Role'
+          - election_role.metadata.namespace | length > 0
+          - election_role.rules[0].apiGroups == ['coordination.k8s.io']
+          - election_role.rules[0].resources == ['leases']
+          - "['get', 'create', 'update'] | difference(election_role.rules[0].verbs) | length == 0"
+          - election_binding.metadata.namespace == election_role.metadata.namespace
+          - election_binding.roleRef.kind == election_role.kind
+          - election_binding.roleRef.name == election_role.metadata.name
+          - election_binding.subjects[0].name == 'csi-controller-sa'
+          - election_binding.subjects[0].namespace == election_role.metadata.namespace
+      vars:
+        installation_tasks: "{{ lookup('ansible.builtin.file', synology_role_path ~ '/tasks/install.yml') | from_yaml }}"
+        election_role: "{{ (installation_tasks | selectattr('name', 'equalto', 'Create CSI leader election Role') | first)['kubernetes.core.k8s'].definition }}"
+        election_binding: "{{ (installation_tasks | selectattr('name', 'equalto', 'Create CSI leader election RoleBinding') | first)['kubernetes.core.k8s'].definition }}"

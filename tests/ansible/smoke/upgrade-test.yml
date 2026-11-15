@@ -1,7 +1,7 @@
 ---
 # Upgrade Operation Smoke Tests
 # Purpose: Validate upgrade-k3s.yml playbook functionality
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/upgrade-test.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/upgrade-test.yml
 #
 # Test Coverage:
 # 1. Pre-upgrade cluster validation
@@ -69,34 +69,34 @@
   tasks:
     - name: Display upgrade test procedure
       ansible.builtin.debug:
-        msg:
-          - "====== Upgrade Test Procedure ======"
-          - ""
-          - "To test the upgrade functionality:"
-          - ""
-          - "1. BACKUP ETCD DATA (critical!):"
-          - "   On control-plane: tar -czf etcd-backup.tar.gz /var/lib/rancher/k3s/server/db/"
-          - ""
-          - "2. Set target version in group_vars/all.yml or use extra-vars:"
-          - "   k3s_version: v1.28.6+k3s1"
-          - ""
-          - "3. Run upgrade playbook:"
-          - "   ansible-playbook -i <inventory> playbooks/upgrade-k3s.yml"
-          - ""
-          - "4. Monitor upgrade progress:"
-          - "   - Watch for each node to complete"
-          - "   - Verify nodes return to Ready state"
-          - "   - Check application pod status"
-          - ""
-          - "5. Post-upgrade validation:"
-          - "   - Run: kubectl get nodes"
-          - "   - Verify all nodes show new version"
-          - "   - Test application functionality"
-          - ""
-          - "6. If issues occur:"
-          - "   - Check logs: journalctl -u k3s -f"
-          - "   - Rollback: Reinstall previous version"
-          - "   - Restore etcd backup if needed"
+        msg: |
+          ====== Upgrade Test Procedure ======
+
+          To test the upgrade functionality:
+
+          1. BACKUP ETCD DATA (critical!):
+             On control-plane: tar -czf etcd-backup.tar.gz /var/lib/rancher/k3s/server/db/
+
+          2. Set target version in group_vars/all/k3s.yml or use extra-vars:
+             k3s_version: v1.28.6+k3s1
+
+          3. Run upgrade playbook:
+             ansible-playbook -i <inventory> playbooks/upgrade-k3s.yml
+
+          4. Monitor upgrade progress:
+             - Watch for each node to complete
+             - Verify nodes return to Ready state
+             - Check application pod status
+
+          5. Post-upgrade validation:
+             - Run: kubectl get nodes
+             - Verify all nodes show new version
+             - Test application functionality
+
+          6. If issues occur:
+             - Check logs: journalctl -u k3s -f
+             - Rollback: Reinstall previous version
+             - Restore etcd backup if needed
 
 - name: Simulated Upgrade Validation
   hosts: k3s_servers[0]
@@ -112,12 +112,12 @@
 
     - name: Test version compatibility check
       ansible.builtin.debug:
-        msg:
-          - "Version compatibility checks:"
-          - "- k3s supports upgrades within the same minor version (e.g. 1.28.5 → 1.28.6)"
-          - "- Minor version upgrades require testing (e.g. 1.27.x → 1.28.x)"
-          - "- Major version upgrades need careful planning"
-          - "- Always check k3s release notes for breaking changes"
+        msg: |
+          Version compatibility checks:
+          - k3s supports upgrades within the same minor version (e.g. 1.28.5 → 1.28.6)
+          - Minor version upgrades require testing (e.g. 1.27.x → 1.28.x)
+          - Major version upgrades need careful planning
+          - Always check k3s release notes for breaking changes
 
 - name: Post-Upgrade Health Checks
   hosts: k3s_servers[0]
@@ -195,33 +195,33 @@
   tasks:
     - name: Display rollback procedure
       ansible.builtin.debug:
-        msg:
-          - "====== Rollback Procedure (if needed) ======"
-          - ""
-          - "If upgrade causes issues:"
-          - ""
-          - "1. IMMEDIATE ROLLBACK:"
-          - "   On each node (control-plane first, then workers):"
-          - "   export PREVIOUS_VERSION=v1.28.5+k3s1"
-          - "   curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=$PREVIOUS_VERSION sh -"
-          - ""
-          - "2. VERIFY ROLLBACK:"
-          - "   k3s --version"
-          - "   kubectl get nodes"
-          - ""
-          - "3. RESTORE ETCD (if data corruption):"
-          - "   systemctl stop k3s"
-          - "   rm -rf /var/lib/rancher/k3s/server/db/"
-          - "   tar -xzf etcd-backup.tar.gz -C /"
-          - "   systemctl start k3s"
-          - ""
-          - "4. CHECK CLUSTER HEALTH:"
-          - "   kubectl get nodes"
-          - "   kubectl get pods --all-namespaces"
-          - ""
-          - "5. REPORT ISSUE:"
-          - "   Collect logs: journalctl -u k3s > k3s-upgrade-failure.log"
-          - "   Check k3s GitHub issues"
+        msg: |
+          ====== Rollback Procedure (if needed) ======
+
+          If upgrade causes issues:
+
+          1. IMMEDIATE ROLLBACK:
+             On each node (control-plane first, then workers):
+             export PREVIOUS_VERSION=v1.28.5+k3s1
+             curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=$PREVIOUS_VERSION sh -
+
+          2. VERIFY ROLLBACK:
+             k3s --version
+             kubectl get nodes
+
+          3. RESTORE ETCD (if data corruption):
+             systemctl stop k3s
+             rm -rf /var/lib/rancher/k3s/server/db/
+             tar -xzf etcd-backup.tar.gz -C /
+             systemctl start k3s
+
+          4. CHECK CLUSTER HEALTH:
+             kubectl get nodes
+             kubectl get pods --all-namespaces
+
+          5. REPORT ISSUE:
+             Collect logs: journalctl -u k3s > k3s-upgrade-failure.log
+             Check k3s GitHub issues
 
 - name: Upgrade Test Summary
   hosts: localhost
@@ -229,19 +229,19 @@
   tasks:
     - name: Display summary
       ansible.builtin.debug:
-        msg:
-          - "====== Upgrade Test Complete ======"
-          - ""
-          - "Pre-upgrade validation: ✓"
-          - "Procedure documentation: ✓"
-          - "Health check framework: ✓"
-          - "Rollback guidance: ✓"
-          - ""
-          - "Ready for production upgrades."
-          - ""
-          - "Remember:"
-          - "- ALWAYS backup etcd before upgrading"
-          - "- Test upgrades in non-production first"
-          - "- Review k3s release notes"
-          - "- Monitor cluster during upgrade"
-          - "- Have rollback plan ready"
+        msg: |
+          ====== Upgrade Test Complete ======
+
+          Pre-upgrade validation: ✓
+          Procedure documentation: ✓
+          Health check framework: ✓
+          Rollback guidance: ✓
+
+          Ready for production upgrades.
+
+          Remember:
+          - ALWAYS backup etcd before upgrading
+          - Test upgrades in non-production first
+          - Review k3s release notes
+          - Monitor cluster during upgrade
+          - Have rollback plan ready

@@ -86,13 +86,15 @@
     msg: "{{ constraint_violations | join('\n') }}"
   when: constraint_violations | length > 0
 
+- name: Apply dependency version drift to component plan
+  ansible.builtin.include_tasks: apply-version-dependencies.yml
+
 # --- Compute final upgrade plan with context-aware ordering ---
-# Lifecycle choice: if there are NO upgrades (only installs/no-change), use fresh-install priorities
-# If partial install (core component missing), also use fresh-install priorities
-# Otherwise if any upgrades, use upgrade priorities
+# Fresh installs, partial installs, and no-op runs use fresh-install priorities.
+# Component upgrades and dependency-only updates use upgrade context.
 - name: Determine install context (fresh or partial-fresh)
   ansible.builtin.set_fact:
-    # Fresh install if: is_fresh_install OR is_partial_install OR no upgrades happening
+    # A common-dependency-only update is not a fresh-install run.
     execution_is_fresh_install: >-
       {{
         (is_fresh_install | default(false) | bool)
@@ -103,6 +105,7 @@
           (component_plan | dict2items
            | selectattr('value.action', 'in', ['upgrade', 'downgrade'])
            | list | length) == 0
+          and not (common_dependencies_changed | default(false) | bool)
         )
       }}
 
@@ -168,7 +171,9 @@
 
 - name: Set has_changes flag
   ansible.builtin.set_fact:
-    has_changes: "{{ components_to_upgrade | length > 0 }}"
+    has_changes: >-
+      {{ (components_to_upgrade | length > 0)
+         or (common_dependencies_changed | default(false) | bool) }}
 
 - name: Build upgrade plan summary
   ansible.builtin.set_fact:
@@ -179,6 +184,9 @@
       constraint_violations: "{{ constraint_violations }}"
       is_fresh_install: "{{ execution_is_fresh_install }}"
       has_changes: "{{ has_changes }}"
+      common_dependencies:
+        changed: "{{ common_dependencies_changed | default(false) | bool }}"
+        triggered_by: "{{ common_dependencies_triggered_by | default([]) }}"
 
 # --- T010: Print upgrade plan summary (FR-014) ---
 - name: Display upgrade plan summary
@@ -191,8 +199,11 @@
       {% else %}
         Components:
       {% for comp in components_to_upgrade %}
-          - {{ comp.name }}: {{ component_plan[comp.name].live_version }} → {{ component_plan[comp.name].desired_version }} ({{ component_plan[comp.name].action }})
+          - {{ comp.name }}: {{ component_plan[comp.name].live_version }} → {{ component_plan[comp.name].desired_version }} ({{ component_plan[comp.name].action }}{% if component_plan[comp.name].dependency_triggered_by is defined %}; triggered by dependency: {{ component_plan[comp.name].dependency_triggered_by | join(', ') }}{% endif %})
       {% endfor %}
+      {% if common_dependencies_changed | default(false) | bool %}
+        Common dependencies (before components): triggered by {{ common_dependencies_triggered_by | join(', ') }}
+      {% endif %}
         Execution order:
       {% for comp in components_to_upgrade %}
           {{ loop.index }}. {{ comp.name }} (priority {{ comp._context_priority }})

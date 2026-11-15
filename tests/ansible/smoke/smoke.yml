@@ -1,17 +1,12 @@
 ---
 # Smoke Test Playbook
 # Purpose: Basic smoke tests for k3s cluster validation
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/smoke.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/smoke.yml
 
 - name: k3s Cluster Smoke Tests
   hosts: k3s_servers[0]
   gather_facts: true
   tasks:
-    - name: Load shared cluster defaults used by smoke assertions
-      ansible.builtin.include_vars:
-        file: "{{ playbook_dir }}/../../../ansible/inventories/test-cluster/group_vars/all.yml"
-        name: smoke_defaults
-
     - name: Check if k3s is installed
       ansible.builtin.command: k3s --version
       register: k3s_version_output
@@ -23,99 +18,13 @@
         msg: "k3s version: {{ k3s_version_output.stdout }}"
       when: k3s_version_output.rc == 0
 
-    - name: Collect live component versions
-      ansible.builtin.shell: "{{ item.command }}"
-      args:
-        executable: /bin/bash
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-      loop:
-        - key: k3s_version
-          command: "k3s --version | head -n1 | awk '{print $3}'"
-        - key: kube_vip_version
-          command: "kubectl get ds kube-vip -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: kube_vip_cloud_provider_version
-          command: "kubectl get deploy kube-vip-cloud-controller -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: kube_vip_label_reconciler_kubectl_version
-          command: "kubectl get cronjob kube-vip-label-reconciler -n kube-system -o jsonpath='{.spec.jobTemplate.spec.template.spec.containers[0].image}' | sed -E 's/.*:([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: cilium_version
-          command: "kubectl get ds cilium -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: cert_manager_version
-          command: "kubectl get deploy cert-manager -n cert-manager -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: multus_version
-          command: "kubectl get ds kube-multus-ds -n kube-system -o jsonpath='{.spec.template.spec.initContainers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+-thick).*/\\1/'"
-        - key: multus_dhcp_daemon_image
-          command: "kubectl get ds multus-dhcp-daemon -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}'"
-        - key: multus_cni_plugins_version
-          command: "kubectl get ds multus-dhcp-daemon -n kube-system -o jsonpath='{.spec.template.spec.initContainers[0].command[2]}' | sed -n 's/.*DESIRED_VERSION=\"\\([^\"]*\\)\".*/\\1/p'"
-        - key: rancher_version
-          command: "kubectl get deploy rancher -n cattle-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:v?([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: traefik_version
-          command: "kubectl get deploy traefik -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: synology_csi_version
-          command: "kubectl get sts synology-csi-controller -n synology-csi -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: synology_csi_snapshotter_version
-          command: "kubectl get deploy synology-csi-snapshotter -n synology-csi -o jsonpath='{.spec.template.spec.containers[0].image}' | sed -E 's/.*:(v[0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/'"
-        - key: csi_nfs_version
-          command: "kubectl get deploy csi-nfs-controller -n kube-system -o jsonpath='{range .spec.template.spec.containers[*]}{.image}{\"\\n\"}{end}' | sed -n 's/.*nfsplugin:\\(v[0-9.]*\\).*/\\1/p'"
-      register: smoke_version_results
-      changed_when: false
-      failed_when: false
-
-    - name: Build live version map
-      ansible.builtin.set_fact:
-        smoke_live_versions: "{{ dict(smoke_version_results.results | map(attribute='item.key') | zip(smoke_version_results.results | map(attribute='stdout'))) }}"
-
-    - name: Build desired versus live version checks
-      ansible.builtin.set_fact:
-        smoke_version_checks:
-          - name: k3s_version
-            desired: "{{ smoke_defaults.k3s_version }}"
-            live: "{{ smoke_live_versions.k3s_version | trim }}"
-          - name: kube_vip_version
-            desired: "{{ smoke_defaults.kube_vip_version }}"
-            live: "{{ smoke_live_versions.kube_vip_version | trim }}"
-          - name: kube_vip_cloud_provider_version
-            desired: "{{ smoke_defaults.kube_vip_cloud_provider_version }}"
-            live: "{{ smoke_live_versions.kube_vip_cloud_provider_version | trim }}"
-          - name: kube_vip_label_reconciler_kubectl_version
-            desired: "{{ smoke_defaults.kube_vip_label_reconciler_kubectl_version }}"
-            live: "{{ smoke_live_versions.kube_vip_label_reconciler_kubectl_version | trim }}"
-          - name: cilium_version
-            desired: "{{ smoke_defaults.cilium_version }}"
-            live: "{{ smoke_live_versions.cilium_version | trim }}"
-          - name: cert_manager_version
-            desired: "{{ smoke_defaults.cert_manager_version }}"
-            live: "{{ smoke_live_versions.cert_manager_version | trim }}"
-          - name: multus_version
-            desired: "{{ smoke_defaults.multus_version }}"
-            live: "{{ smoke_live_versions.multus_version | trim }}"
-          - name: multus_dhcp_daemon_image
-            desired: "{{ smoke_defaults.multus_dhcp_daemon_image }}"
-            live: "{{ smoke_live_versions.multus_dhcp_daemon_image | trim }}"
-          - name: multus_cni_plugins_version
-            desired: "{{ smoke_defaults.multus_cni_plugins_version }}"
-            live: "{{ smoke_live_versions.multus_cni_plugins_version | trim }}"
-          - name: rancher_version
-            desired: "{{ smoke_defaults.rancher_version }}"
-            live: "{{ smoke_live_versions.rancher_version | trim }}"
-          - name: traefik_version
-            desired: "{{ smoke_defaults.traefik_version }}"
-            live: "{{ smoke_live_versions.traefik_version | trim }}"
-          - name: synology_csi_version
-            desired: "{{ smoke_defaults.synology_csi_version }}"
-            live: "{{ smoke_live_versions.synology_csi_version | trim }}"
-          - name: synology_csi_snapshotter_version
-            desired: "{{ smoke_defaults.synology_csi_snapshotter_version }}"
-            live: "{{ smoke_live_versions.synology_csi_snapshotter_version | trim }}"
-          - name: csi_nfs_version
-            desired: "{{ smoke_defaults.csi_nfs_version }}"
-            live: "{{ smoke_live_versions.csi_nfs_version | trim }}"
+    - name: Audit component versions
+      ansible.builtin.include_tasks: ../../../ansible/playbooks/includes/audit-component-versions.yml
 
     - name: Display desired versus live version summary
       ansible.builtin.debug:
-        msg: "{{ 'DIFF' if item.desired != item.live else 'OK' }} {{ item.name }}: desired={{ item.desired }}, live={{ item.live }}"
-      loop: "{{ smoke_version_checks }}"
+        msg: "{{ item.status }} {{ item.name }}: desired={{ item.desired }}, live={{ item.live }}"
+      loop: "{{ version_audit_checks }}"
       loop_control:
         label: "{{ item.name }}"
 
@@ -158,25 +67,25 @@
     - name: Verify HA targets are defined for enabled components
       ansible.builtin.assert:
         that:
-          - smoke_defaults.k3s_server_ha_min_replicas | default(0) | int >= 1
-          - smoke_defaults.kube_vip_ha_min_replicas | default(0) | int >= 1
-          - smoke_defaults.traefik_ha_min_replicas | default(0) | int >= 1
+          - k3s_server_ha_min_replicas | default(0) | int >= 1
+          - kube_vip_ha_min_replicas | default(0) | int >= 1
+          - traefik_ha_min_replicas | default(0) | int >= 1
         fail_msg: "Required HA target variables are missing or invalid"
 
     - name: Validate non-HA preservation branch behavior
       ansible.builtin.assert:
         that:
-          - smoke_defaults.k3s_server_non_ha_default_replicas | default(0) | int >= 1
-          - smoke_defaults.kube_vip_non_ha_default_replicas | default(0) | int >= 1
-          - smoke_defaults.traefik_non_ha_default_replicas | default(0) | int >= 1
+          - k3s_server_non_ha_default_replicas | default(0) | int >= 1
+          - kube_vip_non_ha_default_replicas | default(0) | int >= 1
+          - traefik_non_ha_default_replicas | default(0) | int >= 1
         fail_msg: "Required non-HA default target variables are missing or invalid"
 
     - name: Display topology-specific smoke context
       ansible.builtin.debug:
-        msg:
-          - "Topology server count: {{ smoke_server_count }}"
-          - "HA topology enabled: {{ smoke_is_ha }}"
-          - "Expected traefik target: {{ (smoke_defaults.traefik_ha_min_replicas if smoke_is_ha else smoke_defaults.traefik_non_ha_default_replicas) | int }}"
+        msg: |
+          Topology server count: {{ smoke_server_count }}
+          HA topology enabled: {{ smoke_is_ha }}
+          Expected traefik target: {{ (traefik_ha_min_replicas if smoke_is_ha else traefik_non_ha_default_replicas) | int }}
 
     - name: Smoke test summary
       ansible.builtin.debug:
@@ -216,7 +125,10 @@
 
           Component version summary
           ========================
-          STATUS  COMPONENT                                      DESIRED                 LIVE
-          {% for item in smoke_version_checks %}
-          {{ '%-7s %-45s %-23s %s' | format('OK' if item.desired == item.live else 'DIFF', item.name, item.desired, item.live) }}
+          {% set component_width = ([9] + (version_audit_checks | map(attribute='name') | map('length') | list)) | max %}
+          {% set desired_width = ([7] + (version_audit_checks | map(attribute='desired') | map('string') | map('length') | list)) | max %}
+          {% set row_format = '%-7s %-' ~ component_width ~ 's %-' ~ desired_width ~ 's %s' %}
+          {{ row_format | format('STATUS', 'COMPONENT', 'DESIRED', 'LIVE') }}
+          {% for item in version_audit_checks %}
+          {{ row_format | format(item.status, item.name, item.desired, item.live) }}
           {% endfor %}

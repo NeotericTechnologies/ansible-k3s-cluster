@@ -27,10 +27,10 @@ Install and configure k3s worker (agent) nodes that join an existing k3s cluster
 
 ## Role Variables
 
-### Required (from group_vars/all.yml)
+### Required (from group_vars/all/k3s.yml)
 
 ```yaml
-k3s_version: "<managed in ansible/group_vars/all.yml>"
+k3s_version: "<managed in ansible/group_vars/all/k3s.yml>"
 control_plane_vip: "192.168.1.100"
 api_port: 6443
 ```

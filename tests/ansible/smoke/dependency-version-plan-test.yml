@@ -1,0 +1,162 @@
+---
+# Usage: ansible-playbook -i localhost, -c local tests/ansible/smoke/dependency-version-plan-test.yml
+
+- name: Verify dependency drift schedules parent roles
+  hosts: localhost
+  gather_facts: false
+  vars:
+    dependency_plan_tasks: "{{ playbook_dir }}/../../../ansible/playbooks/includes/apply-version-dependencies.yml"
+    compute_plan_tasks: "{{ playbook_dir }}/../../../ansible/playbooks/includes/compute-plan.yml"
+  tasks:
+    - name: Set dependency drift fixtures
+      ansible.builtin.set_fact:
+        component_plan:
+          k3s:
+            live_version: v1.36.6+k3s1
+            desired_version: v1.36.6+k3s1
+            action: none
+            enabled: true
+          k3s_servers:
+            live_version: v1.36.6+k3s1
+            desired_version: v1.36.6+k3s1
+            action: none
+            enabled: true
+          rancher:
+            live_version: 2.15.3
+            desired_version: 2.15.3
+            action: none
+            enabled: true
+          synology_csi:
+            live_version: v1.3.1
+            desired_version: v1.3.1
+            action: none
+            enabled: true
+          multus:
+            live_version: v4.3.2-thick
+            desired_version: v4.3.2-thick
+            action: upgrade
+            enabled: true
+        version_audit_checks:
+          - name: csi_nfs_version
+            enabled: true
+            status: DIFF
+            parent_component: synology_csi
+          - name: multus_cni_config_version
+            enabled: true
+            status: DIFF
+            parent_component: multus
+          - name: disabled_child_version
+            enabled: false
+            status: SKIP
+            parent_component: synology_csi
+          - name: helm_diff_plugin_version
+            enabled: true
+            status: DIFF
+            parent_component: common_dependencies
+        upgrade_components:
+          - name: multus
+            fresh_install_priority: 21
+            upgrade_priority: 31
+          - name: synology_csi
+            fresh_install_priority: 25
+            upgrade_priority: 34
+        component_compatibility:
+          rancher:
+            k3s_max_version: v1.99.0
+            k3s_min_version: v1.30.0
+        allow_downgrade: false
+        is_fresh_install: false
+        is_partial_install: false
+
+    - name: Apply dependency drift to plan
+      ansible.builtin.include_tasks: "{{ dependency_plan_tasks }}"
+
+    - name: Verify parents and common dependencies are scheduled
+      ansible.builtin.assert:
+        that:
+          - component_plan.synology_csi.action == 'upgrade'
+          - component_plan.synology_csi.dependency_triggered_by == ['csi_nfs_version']
+          - component_plan.multus.action == 'upgrade'
+          - component_plan.multus.dependency_triggered_by == ['multus_cni_config_version']
+          - common_dependencies_changed | bool
+          - common_dependencies_triggered_by == ['helm_diff_plugin_version']
+
+    - name: Run full plan with dependency-triggered parents
+      ansible.builtin.include_tasks: "{{ compute_plan_tasks }}"
+
+    - name: Verify parent roles enter component execution order
+      ansible.builtin.assert:
+        that:
+          - components_to_upgrade | map(attribute='name') | list == ['multus', 'synology_csi']
+          - component_plan.synology_csi.dependency_triggered_by == ['csi_nfs_version']
+          - component_plan.multus.dependency_triggered_by == ['multus_cni_config_version']
+
+    - name: Reset plan to common-dependency-only drift
+      ansible.builtin.set_fact:
+        component_plan:
+          k3s:
+            live_version: v1.36.6+k3s1
+            desired_version: v1.36.6+k3s1
+            action: none
+            enabled: true
+          k3s_servers:
+            live_version: v1.36.6+k3s1
+            desired_version: v1.36.6+k3s1
+            action: none
+            enabled: true
+          rancher:
+            live_version: 2.15.3
+            desired_version: 2.15.3
+            action: none
+            enabled: true
+          synology_csi:
+            live_version: v1.3.1
+            desired_version: v1.3.1
+            action: none
+            enabled: true
+        version_audit_checks:
+          - name: csi_nfs_version
+            enabled: true
+            status: OK
+            parent_component: synology_csi
+          - name: helm_diff_plugin_version
+            enabled: true
+            status: DIFF
+            parent_component: common_dependencies
+
+    - name: Run full plan with common dependency drift only
+      ansible.builtin.include_tasks: "{{ compute_plan_tasks }}"
+
+    - name: Verify common dependency drift is a planned change without parent roles
+      ansible.builtin.assert:
+        that:
+          - component_plan.synology_csi.action == 'none'
+          - components_to_upgrade | length == 0
+          - common_dependencies_changed | bool
+          - common_dependencies_triggered_by == ['helm_diff_plugin_version']
+          - has_changes | bool
+          - not (execution_is_fresh_install | bool)
+
+    - name: Reset plan to a no-drift fixture
+      ansible.builtin.set_fact:
+        version_audit_checks:
+          - name: csi_nfs_version
+            enabled: true
+            status: OK
+            parent_component: synology_csi
+          - name: helm_diff_plugin_version
+            enabled: true
+            status: OK
+            parent_component: common_dependencies
+
+    - name: Run full plan with no dependency drift
+      ansible.builtin.include_tasks: "{{ compute_plan_tasks }}"
+
+    - name: Verify no dependency-only changes are scheduled
+      ansible.builtin.assert:
+        that:
+          - component_plan.synology_csi.action == 'none'
+          - component_plan.synology_csi.dependency_triggered_by is not defined
+          - components_to_upgrade | length == 0
+          - not (common_dependencies_changed | bool)
+          - not (has_changes | bool)

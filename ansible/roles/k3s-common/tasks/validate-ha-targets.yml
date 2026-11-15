@@ -16,9 +16,9 @@
 - name: Validate all policy targets are positive integers
   ansible.builtin.assert:
     that:
-      - item.value.expected_target | int >= 1
-    fail_msg: "Invalid target for {{ item.key }}: {{ item.value.expected_target }}"
-  loop: "{{ ha_component_policies | dict2items | selectattr('key', 'in', ha_validation_scope) | list }}"
+      - ha_component_policies[item].expected_target | int >= 1
+    fail_msg: "Invalid target for {{ item }}: {{ ha_component_policies[item].expected_target }}"
+  loop: "{{ ha_component_policies | dict2items | selectattr('key', 'in', ha_validation_scope) | map(attribute='key') | list }}"
   when: ha_enable_policy_validation | bool
 
 - name: Skip strict target checks when HA topology is disabled
@@ -31,19 +31,19 @@
 - name: Enforce component targets for enabled components in HA topology
   ansible.builtin.assert:
     that:
-      - (ha_component_observations[item.key] | default(item.value.expected_target | int)) | int >= item.value.expected_target | int
+      - (ha_component_observations[item] | default(ha_component_policies[item].expected_target | int)) | int >= ha_component_policies[item].expected_target | int
     fail_msg: >-
-      HA target unmet for {{ item.key }}: observed={{ ha_component_observations[item.key] | default('missing') }},
-      expected>={{ item.value.expected_target }}
+      HA target unmet for {{ item }}: observed={{ ha_component_observations[item] | default('missing') }},
+      expected>={{ ha_component_policies[item].expected_target }}
     success_msg: >-
-      HA target met for {{ item.key }}: observed={{ ha_component_observations[item.key] | default(item.value.expected_target | int) }},
-      expected>={{ item.value.expected_target }}
-  loop: "{{ ha_component_policies | dict2items | selectattr('key', 'in', ha_validation_scope) | list }}"
+      HA target met for {{ item }}: observed={{ ha_component_observations[item] | default(ha_component_policies[item].expected_target | int) }},
+      expected>={{ ha_component_policies[item].expected_target }}
+  loop: "{{ ha_component_policies | dict2items | selectattr('key', 'in', ha_validation_scope) | map(attribute='key') | list }}"
   when:
     - ha_enable_policy_validation | bool
     - ha_fail_on_unmet_targets | default(true) | bool
     - ha_is_enabled | bool
-    - item.value.enabled | bool
+    - ha_component_policies[item].enabled | bool
 
 - name: Enforce critical subset presence in policy map
   ansible.builtin.assert:

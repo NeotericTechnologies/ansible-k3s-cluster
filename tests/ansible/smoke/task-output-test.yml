@@ -1,0 +1,55 @@
+---
+# Usage: ansible-playbook -i localhost, -c local tests/ansible/smoke/task-output-test.yml
+
+- name: Verify concise task output
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Run output fixture with project configuration
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - -i
+          - localhost,
+          - -c
+          - local
+          - "{{ playbook_dir }}/../fixtures/task-output.yml"
+      environment:
+        ANSIBLE_CONFIG: "{{ playbook_dir }}/../../../ansible.cfg"
+        ANSIBLE_FORCE_COLOR: "false"
+      register: fixture
+      changed_when: false
+
+    - name: Run output fixture with verbose output
+      ansible.builtin.command:
+        argv:
+          - ansible-playbook
+          - -v
+          - -i
+          - localhost,
+          - -c
+          - local
+          - "{{ playbook_dir }}/../fixtures/task-output.yml"
+      environment:
+        ANSIBLE_CONFIG: "{{ playbook_dir }}/../../../ansible.cfg"
+        ANSIBLE_FORCE_COLOR: "false"
+      register: verbose_fixture
+      changed_when: false
+
+    - name: Check summaries and actionable failures without raw payloads
+      ansible.builtin.assert:
+        that:
+          - "'RAW_TASK_PAYLOAD_MUST_NOT_BE_PRINTED' not in fixture.stdout"
+          - "'RAW_TASK_PAYLOAD_MUST_NOT_BE_PRINTED' not in fixture.stderr"
+          - "'RAW_TASK_PAYLOAD_MUST_NOT_BE_PRINTED' in verbose_fixture.stdout"
+          - "'(item=node-a)' in fixture.stdout"
+          - "'Flannel failure detected' in fixture.stdout"
+          - "'k3s on node-a still has flannel enabled' in fixture.stdout"
+          - "'Runtime failure detected' in fixture.stdout"
+          - "'Unable to read runtime CNI metadata on node-a' in fixture.stdout"
+          - "'Multus failure detected' in fixture.stdout"
+          - "'Multus CNI handoff incomplete on node-a' in fixture.stdout"
+          - "'HA target met for component-a: observed=2, expected>=2' in fixture.stdout"
+          - "'HA failure detected' in fixture.stdout"
+          - "'HA target unmet for component-a: observed=1, expected>=2' in fixture.stdout"
+          - "'Explicit summary remains visible' in fixture.stdout"

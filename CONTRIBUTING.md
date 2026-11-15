@@ -2,6 +2,23 @@
 
 Thank you for considering contributing to this project! This document provides guidelines for contributions.
 
+## Private Configuration and Workspace
+
+Keep network-specific inventories and sensitive overrides in your private
+`ansible-k3s-cluster-ops` repository, encrypted with Ansible Vault. This public
+repository owns the automation and shared defaults; the ops repository is a
+configuration companion, not a separate Ansible implementation.
+
+Open [ansible-k3s-cluster.code-workspace](ansible-k3s-cluster.code-workspace)
+to manage both sibling checkouts in VS Code. Review and commit changes in each
+repository separately, and never include private values, Vault password files,
+or decrypted inventory output in public pull requests.
+
+See [Private Configuration and Multi-Repository Workspace](README.md#private-configuration-and-multi-repository-workspace)
+for the directory layout, shared Vault settings, automatic decryption, and
+combined-inventory commands. Run Ansible from the main checkout so it uses the
+main project's `ansible.cfg` and Git-ignored `.vault_pass`.
+
 ## Code of Conduct
 
 - Be respectful and inclusive
@@ -264,7 +281,7 @@ api_token: "my_secret_token_123"
 
 ## Cleanup and Version Management Rules
 
-- Treat `ansible/group_vars/all.yml` as the canonical source for managed component versions.
+- Treat the matching file under `ansible/group_vars/all/` as the canonical source for each managed component's version.
 - Avoid adding new hard-coded version literals in playbooks, templates, or role defaults when a central variable exists.
 - When removing or deprecating repository artifacts, run reference scans across `ansible/`, `docs/`, and `tests/` and update stale references in the same change.
 - Record cleanup rationale and validation evidence in `docs/cleanup-decision-record.md` for cleanup-focused features.

@@ -7,7 +7,7 @@
 
 - Ansible control host with access to cluster nodes (SSH keys configured)
 - Inventory file with `k3s_servers` and `k3s_agents` groups defined
-- `group_vars/all.yml` with component versions and `component_compatibility` defined
+- Component versions in their files under `ansible/group_vars/all/`, with `component_compatibility` in `upgrade.yml`
 - For upgrade scenarios: an existing cluster deployed via this project's playbooks
 
 ## Scenario 1: Fresh Install via Unified Playbook
@@ -15,7 +15,7 @@
 **Purpose**: Verify the single playbook handles initial deployment (SC-001).
 
 ```bash
-# Set desired versions in group_vars/all.yml (already done by default)
+# Set desired component versions in ansible/group_vars/all/ (already done by default)
 # Run the unified playbook
 ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
 ```
@@ -45,9 +45,10 @@ ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml
 **Purpose**: Verify correct ordering — Rancher before k3s (SC-002).
 
 ```bash
-# Update versions in group_vars/all.yml:
-#   rancher_version: "2.9.0"
-#   k3s_version: "v1.29.2+k3s1"
+# Update versions in the component files under ansible/group_vars/all/:
+#   ansible/group_vars/all/rancher.yml: rancher_version: "2.9.0"
+#   ansible/group_vars/all/k3s.yml: k3s_version: "v1.29.2+k3s1"
+# Update component_compatibility in ansible/group_vars/all/upgrade.yml:
 # Ensure component_compatibility.rancher.k3s_max_version >= v1.29.2+k3s1
 
 ansible-playbook -i ansible/inventories/production ansible/playbooks/site.yml

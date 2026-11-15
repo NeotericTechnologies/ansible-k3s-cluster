@@ -77,7 +77,7 @@ spec:
             - name: host-root
               mountPath: /host
         - name: csi-node-driver-registrar
-          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.9.3
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:{{ synology_csi_node_driver_registrar_version }}
           args:
             - --csi-address=/csi/csi.sock
             - --kubelet-registration-path=/var/lib/kubelet/plugins/csi.san.synology.com/csi.sock

@@ -44,6 +44,9 @@
 
 - name: Display resolved HA policy
   ansible.builtin.debug:
-    msg:
-      - "HA topology enabled: {{ ha_is_enabled }} (servers={{ ha_server_count }})"
-      - "Resolved component policies: {{ ha_component_policies }}"
+    msg: |
+      HA topology enabled: {{ ha_is_enabled }} (servers={{ ha_server_count }})
+      Resolved component policies:
+      {% for name, policy in ha_component_policies | dictsort %}
+        - {{ name }}: enabled={{ policy.enabled }}, expected_target={{ policy.expected_target }}
+      {% endfor %}

@@ -60,6 +60,8 @@
     creates: "{{ multus_cni_conf_dir }}/00-multus.conf"
   delegate_to: "{{ item.item }}"
   loop: "{{ multus_preserved_config.results }}"
+  loop_control:
+    label: "{{ item.item }}"
   when: item.stat.exists
 
 - name: Verify active Multus CNI configuration exists on every node
@@ -79,15 +81,18 @@
 - name: Assert Multus CNI handoff is complete on every node
   ansible.builtin.assert:
     that:
-      - item.0.stat.exists
-      - item.1.stat.exists
+      - _multus_node_config.stat.exists
+      - _multus_node_socket.stat.exists
     fail_msg: >-
-      Multus CNI handoff incomplete on {{ item.0.item }}:
-      active_config={{ item.0.stat.exists }}, socket={{ item.1.stat.exists }}
-    success_msg: "Multus CNI config and socket are ready on {{ item.0.item }}"
-  loop: "{{ multus_active_config.results | zip(multus_socket.results) | list }}"
+      Multus CNI handoff incomplete on {{ _multus_node_config.item }}:
+      active_config={{ _multus_node_config.stat.exists }}, socket={{ _multus_node_socket.stat.exists }}
+    quiet: true
+  vars:
+    _multus_node_config: "{{ multus_active_config.results[item] }}"
+    _multus_node_socket: "{{ multus_socket.results[item] }}"
+  loop: "{{ range([multus_active_config.results | length, multus_socket.results | length] | min) | list }}"
   loop_control:
-    label: "{{ item.0.item }}"
+    label: "{{ _multus_node_config.item }}"
 
 - name: Validate DHCP daemon is enabled when VLAN networks require DHCP IPAM
   ansible.builtin.assert:
@@ -109,6 +114,8 @@
     state: present
     kubeconfig: "{{ multus_kubeconfig }}"
   loop: "{{ multus_vlan_networks }}"
+  loop_control:
+    label: "{{ item.name }}"
   register: multus_nad_apply
   when: multus_vlan_networks | default([]) | length > 0
 

@@ -9,12 +9,12 @@ This guide validates topology-aware HA behavior for repository-managed component
   - HA topology (`k3s_servers` count >= 3)
   - Non-HA topology (`k3s_servers` count < 3)
 - Configured top-level component versions and corresponding HA minimum target variables in:
-  - `ansible/group_vars/all.yml`
+  - component files under `ansible/group_vars/all/`
   - optional inventory overrides in inventory `group_vars/all.yml`
 
 ## 1) Confirm Policy Inputs
 
-1. Verify component version variables are present in top-level `group_vars`.
+1. Verify component version variables are present in their files under `ansible/group_vars/all/`.
 2. Verify each managed component has a component-specific HA minimum target variable at the same top-level scope.
 3. Verify optional operator overrides are defined only where intended.
 

@@ -1,0 +1,16 @@
+---
+# Generic defaults shared by cluster components
+
+# Shared smoke/functional test image used in playbook runtime checks
+# https://hub.docker.com/_/busybox/tags
+smoke_test_image: "busybox:1.38.0"
+# smoke_test_image: "busybox:1.36.1"
+
+# Shared kubectl image tag for component reconciliation jobs
+# https://hub.docker.com/r/alpine/kubectl/tags
+alpine_kubectl_version: "1.37.2"
+# alpine_kubectl_version: "1.37.0"
+
+# https://github.com/databus23/helm-diff/releases
+helm_diff_plugin_version: "3.15.15"
+# helm_diff_plugin_version: "v3.9.12"

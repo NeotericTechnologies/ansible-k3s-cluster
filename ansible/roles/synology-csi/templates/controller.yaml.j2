@@ -58,10 +58,12 @@ spec:
               mountPath: /etc/synology
               readOnly: true
         - name: csi-provisioner
-          image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.3
+          image: registry.k8s.io/sig-storage/csi-provisioner:{{ synology_csi_provisioner_version }}
           args:
             - --csi-address=/csi/csi.sock
             - --timeout=60s
+            - --leader-election=true
+            - --leader-election-namespace={{ synology_csi_namespace }}
             - --v=5
           resources:
             requests:
@@ -74,9 +76,11 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-attacher
-          image: registry.k8s.io/sig-storage/csi-attacher:v4.4.3
+          image: registry.k8s.io/sig-storage/csi-attacher:{{ synology_csi_attacher_version }}
           args:
             - --csi-address=/csi/csi.sock
+            - --leader-election=true
+            - --leader-election-namespace={{ synology_csi_namespace }}
             - --v=5
           resources:
             requests:
@@ -89,9 +93,11 @@ spec:
             - name: socket-dir
               mountPath: /csi
         - name: csi-resizer
-          image: registry.k8s.io/sig-storage/csi-resizer:v1.9.3
+          image: registry.k8s.io/sig-storage/csi-resizer:{{ synology_csi_resizer_version }}
           args:
             - --csi-address=/csi/csi.sock
+            - --leader-election=true
+            - --leader-election-namespace={{ synology_csi_namespace }}
             - --v=5
           resources:
             requests:
@@ -105,9 +111,11 @@ spec:
               mountPath: /csi
 {% if synology_csi_snapshots_enabled %}
         - name: csi-snapshotter
-          image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.3
+          image: registry.k8s.io/sig-storage/csi-snapshotter:{{ synology_csi_snapshotter_version }}
           args:
             - --csi-address=/csi/csi.sock
+            - --leader-election=true
+            - --leader-election-namespace={{ synology_csi_namespace }}
             - --v=5
           resources:
             requests:

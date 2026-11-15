@@ -13,11 +13,13 @@
 #
 # 1. DETECTION (Play 2):
 #    - Gathers live versions from k3s binary, Helm releases, and pod images
+#    - Audits dependent images, configuration, and host plugins
 #    - Detects k3s_servers and k3s_agents separately (both tracked independently)
 #    - Sets is_fresh_install flag if k3s not yet installed
 #
 # 2. PLANNING (Play 2):
 #    - Computes desired versions from group_vars
+#    - Schedules parent roles when an enabled dependent version has drifted
 #    - Validates constraints (k3s vs Rancher compatibility)
 #    - Determines per-component action: install/upgrade/downgrade/none
 #    - Builds components_to_upgrade list
@@ -82,6 +84,7 @@
 #    For each component in components_to_upgrade (sorted by priority):
 #    - Display execution context (action, version change)
 #    - Skip if action is 'none' (no version change)
+#    - Re-run parent roles for dependency drift and report triggering versions
 #    - Execute component's role/task file
 #    - Pass node_role variable for k3s components (server vs agent)
 #
@@ -140,6 +143,12 @@
     - name: Detect live component versions
       ansible.builtin.include_tasks: includes/detect-versions.yml
 
+    - name: Audit live versions of dependent components
+      ansible.builtin.include_tasks: includes/audit-component-versions.yml
+      vars:
+        version_audit_fail_on_probe_errors: true
+      when: not (is_fresh_install | default(false) | bool)
+
     - name: Compute upgrade plan and validate constraints
       ansible.builtin.include_tasks: includes/compute-plan.yml
 
@@ -153,7 +162,24 @@
         - not (auto_approve_plan | default(false) | bool)
 
 # =============================================================================
-# Play 2b: Synology CSI host prerequisites (all nodes)
+# Play 2b: Common dependencies (all nodes)
+# =============================================================================
+- name: Ensure common dependencies on all nodes
+  hosts: k3s_cluster
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Install or update common dependencies
+      ansible.builtin.include_role:
+        name: k3s-common
+        tasks_from: dependencies.yml
+      when: >-
+        (hostvars[groups['k3s_servers'][0]].is_fresh_install | default(false) | bool)
+        or
+        (hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool)
+
+# =============================================================================
+# Play 2c: Synology CSI host prerequisites (all nodes)
 #
 # The dynamic per-component orchestration below (Play 3) runs entirely on
 # hosts: k3s_servers[0] via the generic includes/upgrade-addon.yml -> include_role
@@ -215,6 +241,7 @@
       loop: "{{ components_to_upgrade }}"
       loop_control:
         loop_var: component
+        label: "{{ component.name }}"
       when:
         - components_to_upgrade is defined
         - components_to_upgrade | length > 0
@@ -241,7 +268,7 @@
           {% if hostvars[groups['k3s_servers'][0]].execution_is_fresh_install | default(false) | bool %}
             Action: Fresh cluster deployment
           {% elif hostvars[groups['k3s_servers'][0]].has_changes | default(false) | bool %}
-            Action: Component upgrades applied
+            Action: Component or dependency updates applied
           {% else %}
             Action: No changes needed (all components at desired versions)
           {% endif %}

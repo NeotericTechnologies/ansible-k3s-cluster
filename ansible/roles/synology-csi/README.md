@@ -9,6 +9,13 @@ Deploys the Synology CSI driver for persistent storage on k3s clusters, with opt
 | Synology CSI (`csi.san.synology.com`) | iSCSI and NFS volumes provisioned directly by the Synology DSM API |
 | csi-driver-nfs (`nfs.csi.k8s.io`) | Sub-directory provisioning within a pre-existing NFS share (via Helm) |
 
+Synology controller sidecars (provisioner, attacher, resizer, and optional snapshotter)
+and the optional snapshot controller use namespace-scoped Lease leader election.
+Each component elects one active replica, preventing concurrent storage operations
+when `synology_csi_replicas` is greater than one. The role grants Lease access to
+`csi-controller-sa` through a namespaced Role and RoleBinding. Leader election is
+also enabled for single-replica deployments.
+
 ## Requirements
 
 - k3s cluster with `kubernetes.core` Ansible collection available
@@ -39,6 +46,33 @@ Deploys the Synology CSI driver for persistent storage on k3s clusters, with opt
 | `synology_csi_password` | `""` | DSM credentials (use Ansible Vault) |
 | `synology_csi_snapshots_enabled` | `false` | Deploy snapshot controller and CRDs |
 | `synology_csi_storage_classes` | *(see below)* | List of StorageClass definitions |
+
+#### CSI sidecar versions
+
+| Variable | Description |
+|----------|-------------|
+| `synology_csi_node_driver_registrar_version` | CSI node-driver-registrar image tag |
+| `synology_csi_provisioner_version` | CSI provisioner image tag |
+| `synology_csi_attacher_version` | CSI attacher image tag |
+| `synology_csi_resizer_version` | CSI resizer image tag |
+| `synology_csi_snapshotter_version` | CSI snapshotter and snapshot-controller image tag, plus snapshot CRD release |
+
+The DSM login reconciler uses the shared `alpine_kubectl_version` tag configured in `ansible/group_vars/all/00_defaults.yml`.
+
+The reconciler checks driver startup logs on both active and standby controller pods
+and on node pods. API/log-read failures fail the job instead of reporting a clean login.
+After restarting a failed-login pod, it rechecks startup logs. It also monitors the
+controller sidecars' election Leases and, when snapshots are enabled, the snapshot
+controller's Lease: renewal must be current and the holder's corresponding container
+must be ready and not terminating. It allows a short election grace period, then fails
+the job if election health remains invalid. Monitoring never rewrites Leases or restarts
+healthy standby pods, and does not require all components to elect the same replica.
+
+Individual API requests are bounded to 10 seconds. Script runtime is bounded to
+480 seconds within a 600-second Job deadline, leaving startup headroom; pod deletion
+waits are bounded to 60 seconds and controller rollout waits to 180 seconds.
+API calls explicitly load the mounted service-account CA and rotating token file,
+and use the Kubernetes service IP from pod environment variables rather than DNS.
 
 #### `synology_csi_storage_classes` entries
 
@@ -113,7 +147,7 @@ csi_nfs_storage_classes:
 Enable in your inventory group vars:
 
 ```yaml
-# group_vars/all.yml or host_vars
+# group_vars/all/synology-csi.yml or host_vars
 synology_csi_enabled: true
 synology_csi_endpoint: "nas.example.com"
 synology_csi_username: "k8s-csi"

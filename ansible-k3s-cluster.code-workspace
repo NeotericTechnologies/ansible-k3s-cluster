@@ -1,0 +1,10 @@
+{
+    "folders": [
+        {
+            "path": "."
+        },
+        {
+            "path": "../ansible-k3s-cluster-ops"
+        }
+    ]
+}

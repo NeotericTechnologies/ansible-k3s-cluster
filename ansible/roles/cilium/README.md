@@ -37,7 +37,7 @@ cilium_kubelet_cni_bin_path: "/var/lib/rancher/k3s/data/cni"       # Stable kube
 - Removes stale `10-flannel.conflist` files from common k3s CNI directories to avoid Multus auto-config selecting legacy Flannel bridge config after Cilium migration
 - Waits for the Cilium DaemonSet to report all pods ready
 - Restarts `kube-multus-ds` (when `multus_enabled: true`) so Multus re-autodetects the active primary CNI config
-- Applies the `CiliumEgressGatewayPolicy` CR when `kube_vip_egress_enabled: true` (after the DaemonSet-ready wait, so the CRD is guaranteed to exist); uses `kube_vip_egress_*` variables owned by the kube-vip role and mirrored in `ansible/group_vars/all.yml`
+- Applies the `CiliumEgressGatewayPolicy` CR when `kube_vip_egress_enabled: true` (after the DaemonSet-ready wait, so the CRD is guaranteed to exist); uses `kube_vip_egress_*` variables owned by the kube-vip role and mirrored in `ansible/group_vars/all/kube-vip.yml`
 
 **Note on CNI Plugin Discovery:** The k3s-server role (via k3s-common) configures containerd's PluginDirs to include `/var/lib/rancher/k3s/data/cni` during cluster initialization. This ensures pod sandbox creation can find all standard CNI plugins (loopback, host-local, bridge, bandwidth) at cluster startup, regardless of whether Flannel or Cilium is used. No additional symlink configuration is needed in this role.
 

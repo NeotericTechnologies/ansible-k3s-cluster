@@ -1,7 +1,7 @@
 ---
 # Scale Operation Smoke Tests
 # Purpose: Validate scale-nodes.yml playbook functionality
-# Usage: ansible-playbook -i tests/ansible/inventories/local tests/ansible/smoke/scale-test.yml
+# Usage: ansible-playbook -i ansible/default-inventory.yml -i ../ansible-k3s-cluster-ops/ansible/inventories/test-cluster tests/ansible/smoke/scale-test.yml
 #
 # Test Scenarios:
 # 1. Add a worker node to existing cluster
@@ -40,12 +40,12 @@
   tasks:
     - name: Instructions for add test
       ansible.builtin.debug:
-        msg:
-          - "To test adding a worker node:"
-          - "1. Add a new entry to k3s_agents in your inventory"
-          - "2. Run: ansible-playbook -i <inventory> playbooks/scale-nodes.yml"
-          - "3. Verify the new node appears in 'kubectl get nodes'"
-          - "4. Run this test again to validate the addition"
+        msg: |
+          To test adding a worker node:
+          1. Add a new entry to k3s_agents in your inventory
+          2. Run: ansible-playbook -i <inventory> playbooks/scale-nodes.yml
+          3. Verify the new node appears in 'kubectl get nodes'
+          4. Run this test again to validate the addition
 
 - name: Test Scenario 2 - Remove Worker Node
   hosts: localhost
@@ -53,12 +53,12 @@
   tasks:
     - name: Instructions for remove test
       ansible.builtin.debug:
-        msg:
-          - "To test removing a worker node:"
-          - "1. Remove a worker entry from k3s_agents in your inventory"
-          - "2. Run: ansible-playbook -i <inventory> playbooks/scale-nodes.yml"
-          - "3. Verify node is drained and removed from 'kubectl get nodes'"
-          - "4. Run this test again to validate the removal"
+        msg: |
+          To test removing a worker node:
+          1. Remove a worker entry from k3s_agents in your inventory
+          2. Run: ansible-playbook -i <inventory> playbooks/scale-nodes.yml
+          3. Verify node is drained and removed from 'kubectl get nodes'
+          4. Run this test again to validate the removal
 
 - name: Test Scenario 3 - Etcd Quorum Protection
   hosts: k3s_servers[0]
@@ -78,12 +78,12 @@
 
     - name: Verify etcd quorum protection
       ansible.builtin.debug:
-        msg:
-          - "Etcd quorum protection test:"
-          - "- Current control-plane nodes: {{ control_plane_nodes.stdout_lines | length }}"
-          - "- Minimum required: 1"
-          - "- scale-nodes.yml will prevent removing the last control-plane node"
-          - "- For HA, odd numbers (3, 5, 7) are recommended"
+        msg: |
+          Etcd quorum protection test:
+          - Current control-plane nodes: {{ control_plane_nodes.stdout_lines | length }}
+          - Minimum required: 1
+          - scale-nodes.yml will prevent removing the last control-plane node
+          - For HA, odd numbers (3, 5, 7) are recommended
 
 - name: Test Scenario 4 - Override Precedence
   hosts: localhost
@@ -97,11 +97,11 @@
 
     - name: Override precedence instructions
       ansible.builtin.debug:
-        msg:
-          - "To validate override precedence during scale operations:"
-          - "1. Set ha_component_overrides in inventory group vars (example: traefik.expected_target=3)"
-          - "2. Run scale-nodes.yml"
-          - "3. Confirm validation uses override target instead of default HA target"
+        msg: |
+          To validate override precedence during scale operations:
+          1. Set ha_component_overrides in inventory group vars (example: traefik.expected_target=3)
+          2. Run scale-nodes.yml
+          3. Confirm validation uses override target instead of default HA target
 
 - name: Automated Add/Remove Worker Flow (Optional)
   hosts: localhost
@@ -109,13 +109,13 @@
   tasks:
     - name: Automated test instructions
       ansible.builtin.debug:
-        msg:
-          - "For automated testing:"
-          - "1. Create a test inventory with spare worker capacity"
-          - "2. Add a worker to inventory and run scale-nodes.yml"
-          - "3. Verify addition: kubectl get nodes | grep Ready"
-          - "4. Remove same worker from inventory and run scale-nodes.yml"
-          - "5. Verify removal: kubectl get nodes (should not list removed node)"
+        msg: |
+          For automated testing:
+          1. Create a test inventory with spare worker capacity
+          2. Add a worker to inventory and run scale-nodes.yml
+          3. Verify addition: kubectl get nodes | grep Ready
+          4. Remove same worker from inventory and run scale-nodes.yml
+          5. Verify removal: kubectl get nodes (should not list removed node)
 
 - name: Validate Current Cluster State
   hosts: k3s_servers[0]
@@ -131,7 +131,7 @@
 
     - name: Display node list
       ansible.builtin.debug:
-        msg: "{{ current_nodes.stdout_lines }}"
+        msg: "{{ current_nodes.stdout }}"
 
     - name: Get node readiness
       ansible.builtin.command:
@@ -175,15 +175,15 @@
   tasks:
     - name: Display test summary
       ansible.builtin.debug:
-        msg:
-          - "====== Scale Test Summary ======"
-          - "Baseline: {{ hostvars['localhost']['baseline_node_count'] | default('N/A') }} nodes"
-          - ""
-          - "Manual Testing Steps:"
-          - "1. Update inventory to add/remove nodes"
-          - "2. Run scale-nodes.yml playbook"
-          - "3. Verify with kubectl get nodes"
-          - "4. Re-run this test to validate"
-          - ""
-          - "All automated validations passed."
-          - "Scale functionality is ready for use."
+        msg: |
+          ====== Scale Test Summary ======
+          Baseline: {{ hostvars['localhost']['baseline_node_count'] | default('N/A') }} nodes
+
+          Manual Testing Steps:
+          1. Update inventory to add/remove nodes
+          2. Run scale-nodes.yml playbook
+          3. Verify with kubectl get nodes
+          4. Re-run this test to validate
+
+          All automated validations passed.
+          Scale functionality is ready for use.

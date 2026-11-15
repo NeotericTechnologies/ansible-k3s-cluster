@@ -1,0 +1,25 @@
+---
+# HA policy execution controls and critical subset resilience probes
+ha_enable_policy_validation: true
+ha_fail_on_unmet_targets: true
+ha_validate_critical_subset: true
+ha_run_disruption_test: false
+ha_disruption_window_seconds: 600
+ha_probe_requests_per_second: 1
+ha_probe_min_availability_percent: 99.0
+
+critical_component_subset:
+  - k3s-control-plane
+  - traefik
+
+# The control-plane VIP and Traefik LoadBalancer endpoints are resolved dynamically during disruption tests.
+
+# Sensitive information: maintain actual values as overrides in your private
+# ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
+critical_component_probes:
+  k3s-control-plane:
+    url: ""
+    insecure: true
+  traefik:
+    url: ""
+    insecure: false

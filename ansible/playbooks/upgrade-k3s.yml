@@ -58,12 +58,12 @@
 
     - name: Display upgrade plan
       ansible.builtin.debug:
-        msg:
-          - "Upgrade Plan:"
-          - "  Current version: {{ current_version }}"
-          - "  Target version:  {{ k3s_version }}"
-          - "  Control-plane nodes: {{ groups['k3s_servers'] | length }}"
-          - "  Worker nodes: {{ groups['k3s_agents'] | default([]) | length }}"
+        msg: |
+          Upgrade Plan:
+            Current version: {{ current_version }}
+            Target version:  {{ k3s_version }}
+            Control-plane nodes: {{ groups['k3s_servers'] | length }}
+            Worker nodes: {{ groups['k3s_agents'] | default([]) | length }}
 
     - name: Warn if versions are the same
       ansible.builtin.debug:
@@ -97,10 +97,10 @@
 
     - name: Recommendation to backup etcd
       ansible.builtin.debug:
-        msg:
-          - "IMPORTANT: Ensure you have a recent etcd backup before proceeding."
-          - "k3s stores etcd data in /var/lib/rancher/k3s/server/db/"
-          - "Consider creating a snapshot before major upgrades."
+        msg: |
+          IMPORTANT: Ensure you have a recent etcd backup before proceeding.
+          k3s stores etcd data in /var/lib/rancher/k3s/server/db/
+          Consider creating a snapshot before major upgrades.
 
     - name: Pause for confirmation (optional - comment out to skip)
       ansible.builtin.pause:
@@ -312,17 +312,17 @@
 
     - name: Upgrade complete summary
       ansible.builtin.debug:
-        msg:
-          - "====== Upgrade Complete ======"
-          - "Target version: {{ k3s_version }}"
-          - "Total nodes: {{ node_versions | length }}"
-          - "All nodes verified at target version"
-          - "Cluster is healthy and functional"
-          - ""
-          - "Next steps:"
-          - "1. Test application workloads"
-          - "2. Monitor cluster stability"
-          - "3. Update documentation with new version"
+        msg: |
+          ====== Upgrade Complete ======
+          Target version: {{ k3s_version }}
+          Total nodes: {{ node_versions | length }}
+          All nodes verified at target version
+          Cluster is healthy and functional
+
+          Next steps:
+          1. Test application workloads
+          2. Monitor cluster stability
+          3. Update documentation with new version
 
     - name: Collect HA observations after upgrade
       ansible.builtin.include_tasks: ../roles/k3s-common/tasks/collect-ha-observations.yml

@@ -33,10 +33,10 @@ Install and configure k3s control-plane (server) nodes with embedded etcd high a
 
 ## Role Variables
 
-### Required (from group_vars/all.yml)
+### Required (from group_vars/all/k3s.yml)
 
 ```yaml
-k3s_version: "<managed in ansible/group_vars/all.yml>"
+k3s_version: "<managed in ansible/group_vars/all/k3s.yml>"
 control_plane_vip: "192.168.1.100"
 api_port: 6443
 ha_mode: "embedded-etcd-ha"  # or "single-node"
