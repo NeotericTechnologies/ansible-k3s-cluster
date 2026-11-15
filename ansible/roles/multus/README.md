@@ -71,6 +71,8 @@ multus_vlan_networks:
 
 **How it works**: The DHCP daemon runs on every node and proxies DHCP requests from pods to the external DHCP server on the attached VLAN. No additional pod-level configuration is needed.
 
+The host does not need to run a DHCP client or have its own IP address on that VLAN. Its interface must be up and able to pass DHCP traffic to a reachable DHCP server; the pod receives its own lease.
+
 #### Host-local
 
 Assigns IPs from a node-local subnet range. Requires `cidr`; `gateway` is optional.
