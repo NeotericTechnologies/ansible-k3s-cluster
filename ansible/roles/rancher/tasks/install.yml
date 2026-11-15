@@ -19,7 +19,7 @@
 
 - name: Wait for Kubernetes API readiness before Rancher Helm upgrade
   ansible.builtin.shell: >-
-    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    kubectl --server https://{{ k3s_api_server_fqdn }}:{{ api_port }}
     --insecure-skip-tls-verify=true
     get --raw=/readyz --request-timeout=10s
     ||
@@ -196,7 +196,7 @@
 
 - name: Wait for Kubernetes API readiness after Rancher Helm command
   ansible.builtin.shell: >-
-    kubectl --server https://{{ control_plane_vip }}:{{ api_port }}
+    kubectl --server https://{{ k3s_api_server_fqdn }}:{{ api_port }}
     --insecure-skip-tls-verify=true
     get --raw=/readyz --request-timeout=10s
     ||

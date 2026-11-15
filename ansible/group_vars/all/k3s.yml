@@ -20,4 +20,6 @@ ha_mode: "embedded-etcd-ha"
 # ansible-k3s-cluster-ops repository and encrypt them with Ansible Vault.
 # Control-plane access (VIP managed by kube-vip)
 control_plane_vip: "192.168.1.100"
+# API endpoint name; override with an FQDN that resolves to the VIP.
+k3s_api_server_fqdn: "{{ control_plane_vip }}"
 api_port: 6443

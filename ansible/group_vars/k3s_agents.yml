@@ -15,5 +15,5 @@ k3s_agent_taints: []
 # Additional k3s agent arguments
 k3s_agent_extra_args: ""
 
-# Server URL for agents to join (constructed from control_plane_vip)
-k3s_server_url: "https://{{ control_plane_vip }}:{{ api_port }}"
+# Server URL for agents to join
+k3s_server_url: "https://{{ k3s_api_server_fqdn }}:{{ api_port }}"

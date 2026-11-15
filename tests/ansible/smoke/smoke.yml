@@ -53,11 +53,11 @@
 
     - name: Check control-plane VIP reachability
       ansible.builtin.wait_for:
-        host: "{{ control_plane_vip }}"
+        host: "{{ k3s_api_server_fqdn | default(control_plane_vip) }}"
         port: "{{ api_port }}"
         timeout: 5
       register: control_plane_vip_status
-      when: control_plane_vip is defined
+      when: k3s_api_server_fqdn is defined or control_plane_vip is defined
 
     - name: Compute topology classification for smoke validation
       ansible.builtin.set_fact:

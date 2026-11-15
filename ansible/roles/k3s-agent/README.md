@@ -32,13 +32,15 @@ Install and configure k3s worker (agent) nodes that join an existing k3s cluster
 ```yaml
 k3s_version: "<managed in ansible/group_vars/all/k3s.yml>"
 control_plane_vip: "192.168.1.100"
+# Optional; defaults to control_plane_vip.
+k3s_api_server_fqdn: "api.example.com"
 api_port: 6443
 ```
 
 ### Required (from group_vars/k3s_agents.yml)
 
 ```yaml
-k3s_server_url: "https://{{ control_plane_vip }}:{{ api_port }}"
+k3s_server_url: "https://{{ k3s_api_server_fqdn }}:{{ api_port }}"
 ```
 
 ### Optional (from group_vars/k3s_agents.yml)

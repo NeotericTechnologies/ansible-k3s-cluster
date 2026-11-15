@@ -34,7 +34,7 @@
 
 - name: Verify control-plane VIP is accessible after kube-vip upgrade
   ansible.builtin.uri:
-    url: "https://{{ control_plane_vip }}:{{ api_port }}/healthz"
+    url: "https://{{ k3s_api_server_fqdn }}:{{ api_port }}/healthz"
     validate_certs: false
     status_code:
       - 200

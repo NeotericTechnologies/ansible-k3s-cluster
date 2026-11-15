@@ -70,6 +70,8 @@ examples show the corresponding component settings:
 cluster_name: "my-k3s-cluster"
 k3s_version: "v1.28.5+k3s1"
 control_plane_vip: "192.168.1.100"
+# Optional API endpoint FQDN; defaults to control_plane_vip.
+k3s_api_server_fqdn: "api.example.com"
 
 # ansible/group_vars/all/kube-vip.yml
 kube_vip_interface: "eth0"

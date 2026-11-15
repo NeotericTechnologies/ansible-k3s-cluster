@@ -29,7 +29,7 @@
 
 - name: Wait for k3s server to be available
   ansible.builtin.wait_for:
-    host: "{{ control_plane_vip }}"
+    host: "{{ k3s_api_server_fqdn }}"
     port: "{{ api_port }}"
     timeout: 300
   delegate_to: localhost
